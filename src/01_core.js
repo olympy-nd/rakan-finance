@@ -276,9 +276,29 @@
       });
       return out;
     }
+    // دمج تصفيتين (تصفية المعادلة نفسها + التصفية العامة للشاشة)، مع حصرها في مفاتيح معينة عند الحاجة
+    function mergeF(a, b, keys) {
+      var x = parseFilter(a), y = parseFilter(b), out = {}, any = false;
+      [x, y].forEach(function (f) { if (!f) return; Object.keys(f).forEach(function (k) { if (keys && keys.indexOf(k) < 0) return; if (f[k] && f[k].length) { out[k] = (out[k] || []).concat(f[k]); any = true; } }); });
+      return any ? out : null;
+    }
+    // حسابات العملاء بعد تصفية العميل (للمديونية والتحصيل وأعمار الديون)
+    function partyFilter(ids, flt) {
+      var f = parseFilter(flt);
+      if (!f || !((f.cust && f.cust.length) || (f.xcust && f.xcust.length))) return ids;
+      return ids.filter(function (id) {
+        var a = acc(id), nm = a ? a.name : '', cd = a ? a.code : '';
+        if (f.cust && f.cust.length && !matchAny(f.cust, id, nm, cd)) return false;
+        if (f.xcust && f.xcust.length && matchAny(f.xcust, id, nm, cd)) return false;
+        return true;
+      });
+    }
+    function recvFor(flt) { return partyFilter(recvIds(), flt); }
+    function hasCustF(flt) { var f = parseFilter(flt); return !!(f && ((f.cust && f.cust.length) || (f.xcust && f.xcust.length))); }
     function matchAny(list, id, name, code) {
       return list.some(function (x) {
         x = String(x);
+        if (x.charAt(0) === '@') return x.slice(1) === String(id);   // اختيار من القائمة: المعرّف بالضبط
         return x === String(id) || (code && (code === x || code.indexOf(x) === 0)) || (name && x.length > 1 && String(name).indexOf(x) >= 0);
       });
     }
@@ -342,8 +362,8 @@
       return r;
     }
     // التحصيل من العملاء إلى صناديق أو بنوك: لكل قيد = الأقل بين المدين على الصناديق والدائن على حسابات العملاء
-    function collections(from, to, kind, perCust) {
-      var bx = boxIds(kind), recv = recvIds(), bset = {}, rset = {}, tot = 0, by = {};
+    function collections(from, to, kind, perCust, recvList) {
+      var bx = boxIds(kind), recv = recvList || recvIds(), bset = {}, rset = {}, tot = 0, by = {};
       if (!bx.length && kind) return perCust ? {} : 0;
       bx.forEach(function (x) { bset[x] = 1; }); recv.forEach(function (x) { rset[x] = 1; });
       entriesIn(from, to).forEach(function (l0) {

@@ -1,5 +1,5 @@
 /* راكان المالية · عامل الخدمة: يحفظ ملفات التطبيق ليفتح بسرعة وبلا إنترنت (البيانات نفسها محفوظة في IndexedDB) */
-var VERSION = 'rakan-fin-v2';
+var VERSION = 'rakan-fin-v3';
 var SHELL = ['./', 'index.html', 'style.css', 'app.js', 'fin.js', 'core.js', 'config.js', 'logo.png', 'icon-192.png', 'icon-512.png',
   'manifest.webmanifest', 'xlsx.style.min.js', 'fonts/Tajawal-Regular.ttf', 'fonts/Tajawal-Bold.ttf', 'fonts/Tajawal-ExtraBold.ttf'];
 

@@ -333,3 +333,52 @@ table.daily tr.dsep th { background: #0C4CA2; color: #fff; text-align: left; fon
 button.kpi { text-align: start; font: inherit; cursor: pointer; width: 100%; }
 button.kpi:hover { border-color: var(--blue); }
 code { unicode-bidi: plaintext; }
+/* ---------- لوحة التصفية ---------- */
+.fp { margin-top: 12px; border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; background: var(--tint); }
+.fp-head { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.fp-t { font-weight: 800; color: var(--blue-deep); margin-inline-end: 4px; }
+.fp-add { padding: 5px 12px; background: var(--card); }
+.fp-add.on { background: var(--blue); color: #fff; border-color: var(--blue); }
+.fp-add.fp-x.on { background: var(--err); border-color: var(--err); }
+.fp-n { display: inline-block; min-width: 18px; padding: 0 5px; border-radius: 9px; background: #fff; color: var(--blue-deep); font-size: 12px; font-weight: 800; margin-inline-start: 4px; }
+.fp-applied { margin-top: 10px; display: grid; gap: 6px; }
+.fp-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.fp-lbl { font-size: 13px; font-weight: 700; color: var(--muted); min-width: 110px; }
+.fp-tag { display: inline-flex; align-items: center; gap: 4px; background: var(--blue-soft); color: var(--blue-deep); border: 1px solid var(--blue); border-radius: 999px; padding: 3px 4px 3px 10px; font-size: 13px; font-weight: 700; }
+.fp-tag.x { background: #fdecec; color: var(--err); border-color: var(--err); text-decoration: line-through; }
+.fp-tag button { border: 0; background: rgba(0,0,0,.08); color: inherit; width: 20px; height: 20px; border-radius: 50%; cursor: pointer; font-size: 14px; line-height: 1; padding: 0; }
+.fp-tag button:hover { background: rgba(0,0,0,.18); }
+.fp-clear { justify-self: start; }
+.fp-none { margin-top: 6px; }
+.pm-sel { background: var(--tint); border-radius: 10px; padding: 8px 10px; margin-bottom: 8px; max-height: 120px; overflow-y: auto; }
+.pm-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px; }
+.pm-tools { margin-top: 6px; align-items: center; }
+.pm-it { display: flex; align-items: center; gap: 10px; }
+.pm-box { flex: 0 0 22px; width: 22px; height: 22px; border: 2px solid var(--line); border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; font-weight: 900; color: #fff; }
+.pm-it.sel { background: var(--blue-soft); border-color: var(--blue); }
+.pm-it.sel .pm-box { background: var(--blue); border-color: var(--blue); }
+/* ---------- الحساب المبسّط ---------- */
+.tk-g { margin-bottom: 12px; }
+.tk-gt { font-weight: 800; color: var(--blue-deep); margin-bottom: 6px; }
+.tk-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 6px; }
+.tk-it { text-align: start; font: inherit; font-weight: 700; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); color: var(--ink); cursor: pointer; }
+.tk-it:hover { border-color: var(--blue); background: var(--blue-soft); }
+.tb { display: grid; gap: 8px; }
+.tb-row { display: flex; gap: 8px; align-items: flex-start; border: 1px solid var(--line); border-radius: 12px; padding: 8px; background: var(--card); }
+.tb-op { flex: 0 0 58px; width: 58px; font-size: 20px; font-weight: 800; text-align: center; padding: 4px; }
+.tb-op0 { flex: 0 0 58px; text-align: center; font-size: 20px; font-weight: 800; color: var(--muted); padding-top: 6px; }
+.tb-main { flex: 1; min-width: 0; display: grid; gap: 6px; }
+.tb-what { text-align: start; font: inherit; font-weight: 800; font-size: 15px; padding: 8px 12px; border-radius: 10px; border: 1.5px solid var(--blue); background: var(--blue-soft); color: var(--blue-deep); cursor: pointer; }
+.tb-opts { display: flex; flex-wrap: wrap; gap: 6px; }
+.tb-o { padding: 4px 10px; font-size: 13px; }
+.tb-sel, .tb-num { max-width: 220px; padding: 6px 10px; }
+.tb-det { color: var(--blue-deep); }
+.tb-del { flex: 0 0 auto; }
+.tb-add { justify-self: start; }
+.fe-res { background: var(--tint); border-radius: 10px; padding: 10px 12px; margin: 4px 0 10px; }
+.fe-res b { font-size: 20px; color: var(--blue-deep); }
+.fe-more { border-top: 1px dashed var(--line); padding-top: 6px; }
+.fe-more summary { cursor: pointer; font-weight: 700; color: var(--muted); padding: 4px 0; }
+.fe-txt { color: var(--ink); }
+@media (max-width: 560px) { .tb-op, .tb-op0 { flex-basis: 46px; width: 46px; } .fp-lbl { min-width: 0; flex-basis: 100%; } }
+.pm-list + [data-ok], .fe > #fesv { position: sticky; bottom: 0; z-index: 2; box-shadow: 0 -6px 14px rgba(255,255,255,.9); }

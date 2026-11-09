@@ -10,26 +10,26 @@
     fn('حركة', 'MOV', '"رموز الحسابات"', 'صافي حركة الحساب خلال الفترة (مدين − دائن).', function (c, a) { var b = balance(byCodes(a[0]), c.from, c.to); return b.dr - b.cr; }, G_ACC);
     fn('مدين', 'DR', '"رموز الحسابات"', 'مجموع المدين خلال الفترة.', function (c, a) { return balance(byCodes(a[0]), c.from, c.to).dr; }, G_ACC);
     fn('دائن', 'CR', '"رموز الحسابات"', 'مجموع الدائن خلال الفترة.', function (c, a) { return balance(byCodes(a[0]), c.from, c.to).cr; }, G_ACC);
-    fn('مديونية', 'DEBT', '', 'مديونية العملاء في نهاية الفترة (حسابات العملاء المحددة في الإعدادات).', function (c) { return balance(recvIds(), null, c.to).close; }, G_ACC);
+    fn('مديونية', 'DEBT', '', 'مديونية العملاء في نهاية الفترة (حسابات العملاء المحددة في الإعدادات).', function (c, a) { return balance(recvFor(mergeF(a[0], c.flt, ['cust', 'xcust'])), null, c.to).close; }, G_ACC);
     fn('الموردون', 'SUPP', '', 'ما للموردين على الشركة في نهاية الفترة (رصيد دائن).', function (c) { return -balance(payIds(), null, c.to).close; }, G_ACC);
-    fn('مبيعات', 'SALES', '"تصفية اختيارية"', 'صافي المبيعات (المبيع − المرتجع) في الفترة.', function (c, a) { return salesStats(c.from, c.to, a[0]).net; }, G_SAL);
-    fn('مبيعات_إجمالي', 'GSALES', '"تصفية"', 'المبيعات قبل خصم المرتجعات.', function (c, a) { return salesStats(c.from, c.to, a[0]).sales; }, G_SAL);
-    fn('مرتجعات', 'RETURNS', '"تصفية"', 'قيمة مرتجعات المبيع.', function (c, a) { return salesStats(c.from, c.to, a[0]).ret; }, G_SAL);
-    fn('كمية_مبيعات', 'SQTY', '"تصفية"', 'صافي الكمية المباعة بالوحدة الشائعة (الكرتونة/الصندوق).', function (c, a) { return salesStats(c.from, c.to, a[0]).nqty; }, G_SAL);
-    fn('كمية_مرتجعات', 'RQTY', '"تصفية"', 'الكمية المرتجعة.', function (c, a) { return salesStats(c.from, c.to, a[0]).rqty; }, G_SAL);
-    fn('هدايا', 'GIFTS', '"تصفية"', 'كمية الهدايا في فواتير المبيع.', function (c, a) { return salesStats(c.from, c.to, a[0]).gift; }, G_SAL);
-    fn('ربح', 'PROFIT', '"تصفية"', 'مجمل الربح (القيمة − التكلفة).', function (c, a) { return salesStats(c.from, c.to, a[0]).profit; }, G_SAL);
-    fn('تكلفة_مبيعات', 'COGS', '"تصفية"', 'تكلفة البضاعة المباعة.', function (c, a) { return salesStats(c.from, c.to, a[0]).cost; }, G_SAL);
-    fn('فواتير_مبيع', 'NINV', '"تصفية"', 'عدد فواتير المبيع.', function (c, a) { return salesStats(c.from, c.to, a[0]).n; }, G_SAL);
-    fn('عملاء_مشترون', 'NCUST', '"تصفية"', 'عدد العملاء الذين اشتروا في الفترة.', function (c, a) { return salesStats(c.from, c.to, a[0]).cust; }, G_SAL);
-    fn('مشتريات', 'PURCH', '"تصفية"', 'صافي المشتريات (الشراء − مرتجع الشراء).', function (c, a) { var s = salesStats(c.from, c.to, a[0]); return s.purch - s.pret; }, G_SAL);
-    fn('كمية_مشتريات', 'PQTY', '"تصفية"', 'صافي الكمية المشتراة بالوحدة الشائعة.', function (c, a) { return salesStats(c.from, c.to, a[0]).pqty; }, G_SAL);
-    fn('تحصيل', 'COLL', '"صندوق" أو "بنك" أو اسم', 'المحصّل من العملاء في الفترة إلى الصناديق أو البنوك المعرّفة. بدون قيمة: الكل.', function (c, a) { return collections(c.from, c.to, a[0] || ''); }, G_CASH);
+    fn('مبيعات', 'SALES', '"تصفية اختيارية"', 'صافي المبيعات (المبيع − المرتجع) في الفترة.', function (c, a) { return salesStats(c.from, c.to, mergeF(a[0], c.flt)).net; }, G_SAL);
+    fn('مبيعات_إجمالي', 'GSALES', '"تصفية"', 'المبيعات قبل خصم المرتجعات.', function (c, a) { return salesStats(c.from, c.to, mergeF(a[0], c.flt)).sales; }, G_SAL);
+    fn('مرتجعات', 'RETURNS', '"تصفية"', 'قيمة مرتجعات المبيع.', function (c, a) { return salesStats(c.from, c.to, mergeF(a[0], c.flt)).ret; }, G_SAL);
+    fn('كمية_مبيعات', 'SQTY', '"تصفية"', 'صافي الكمية المباعة بالوحدة الشائعة (الكرتونة/الصندوق).', function (c, a) { return salesStats(c.from, c.to, mergeF(a[0], c.flt)).nqty; }, G_SAL);
+    fn('كمية_مرتجعات', 'RQTY', '"تصفية"', 'الكمية المرتجعة.', function (c, a) { return salesStats(c.from, c.to, mergeF(a[0], c.flt)).rqty; }, G_SAL);
+    fn('هدايا', 'GIFTS', '"تصفية"', 'كمية الهدايا في فواتير المبيع.', function (c, a) { return salesStats(c.from, c.to, mergeF(a[0], c.flt)).gift; }, G_SAL);
+    fn('ربح', 'PROFIT', '"تصفية"', 'مجمل الربح (القيمة − التكلفة).', function (c, a) { return salesStats(c.from, c.to, mergeF(a[0], c.flt)).profit; }, G_SAL);
+    fn('تكلفة_مبيعات', 'COGS', '"تصفية"', 'تكلفة البضاعة المباعة.', function (c, a) { return salesStats(c.from, c.to, mergeF(a[0], c.flt)).cost; }, G_SAL);
+    fn('فواتير_مبيع', 'NINV', '"تصفية"', 'عدد فواتير المبيع.', function (c, a) { return salesStats(c.from, c.to, mergeF(a[0], c.flt)).n; }, G_SAL);
+    fn('عملاء_مشترون', 'NCUST', '"تصفية"', 'عدد العملاء الذين اشتروا في الفترة.', function (c, a) { return salesStats(c.from, c.to, mergeF(a[0], c.flt)).cust; }, G_SAL);
+    fn('مشتريات', 'PURCH', '"تصفية"', 'صافي المشتريات (الشراء − مرتجع الشراء).', function (c, a) { var s = salesStats(c.from, c.to, mergeF(a[0], c.flt)); return s.purch - s.pret; }, G_SAL);
+    fn('كمية_مشتريات', 'PQTY', '"تصفية"', 'صافي الكمية المشتراة بالوحدة الشائعة.', function (c, a) { return salesStats(c.from, c.to, mergeF(a[0], c.flt)).pqty; }, G_SAL);
+    fn('تحصيل', 'COLL', '"صندوق" أو "بنك" أو اسم', 'المحصّل من العملاء في الفترة إلى الصناديق أو البنوك المعرّفة. بدون قيمة: الكل.', function (c, a) { var f = mergeF(a[1], c.flt, ['cust', 'xcust']); return collections(c.from, c.to, a[0] || '', false, f ? recvFor(f) : null); }, G_CASH);
     fn('مقبوضات', 'REC', '', 'مجموع سندات القبض في الفترة.', function (c) { return cashStats(c.from, c.to).rec; }, G_CASH);
     fn('مدفوعات', 'PAY', '', 'مجموع سندات الدفع في الفترة.', function (c) { return cashStats(c.from, c.to).pay; }, G_CASH);
     fn('رصيد_صناديق', 'BOXBAL', '"صندوق" أو "بنك" أو اسم', 'رصيد الصناديق أو البنوك المعرّفة في نهاية الفترة.', function (c, a) { var b = boxIds(a[0] || ''); return b.length ? balance(b, null, c.to).close : 0; }, G_CASH);
-    fn('مخزون_كمية', 'STOCKQ', '"المخازن" ، "تصفية"', 'كمية المخزون في نهاية الفترة بالوحدة الشائعة. بدون مخزن: كل المخازن.', function (c, a) { return stockTotals(c.to, splitList(a[0]), a[1]).qty; }, G_STK);
-    fn('مخزون_قيمة', 'STOCKV', '"المخازن" ، "تصفية"', 'قيمة المخزون بمتوسط التكلفة في نهاية الفترة.', function (c, a) { return stockTotals(c.to, splitList(a[0]), a[1]).val; }, G_STK);
+    fn('مخزون_كمية', 'STOCKQ', '"المخازن" ، "تصفية"', 'كمية المخزون في نهاية الفترة بالوحدة الشائعة. بدون مخزن: كل المخازن.', function (c, a) { return stockTotals(c.to, splitList(a[0]), mergeF(a[1], c.flt, ['item', 'xitem', 'st'])).qty; }, G_STK);
+    fn('مخزون_قيمة', 'STOCKV', '"المخازن" ، "تصفية"', 'قيمة المخزون بمتوسط التكلفة في نهاية الفترة.', function (c, a) { return stockTotals(c.to, splitList(a[0]), mergeF(a[1], c.flt, ['item', 'xitem', 'st'])).val; }, G_STK);
     fn('أيام', 'DAYS', '', 'عدد أيام الفترة.', function (c) { return days(c.from, c.to) + 1; }, G_MATH);
     fn('قسمة', 'DIV', 'أ ، ب', 'أ ÷ ب، ويعطي صفراً إذا كانت ب صفراً.', function (c, a) { return a[1] ? a[0] / a[1] : 0; }, G_MATH);
     fn('نسبة', 'PCT', 'أ ، ب', 'أ ÷ ب × 100.', function (c, a) { return a[1] ? a[0] / a[1] * 100 : 0; }, G_MATH);
@@ -112,21 +112,23 @@
       return n.op === '+' ? a + b : n.op === '-' ? a - b : n.op === '*' ? a * b : b ? a / b : 0;
     }
     var PARSED = {};
-    function evalFormula(src, from, to, vars) {
+    function evalFormula(src, from, to, vars, flt) {
       var tree = PARSED[src] || (PARSED[src] = parseFormula(src));
-      var v = evalTree(tree, { from: from, to: to, vars: vars });
+      var v = evalTree(tree, { from: from, to: to, vars: vars, flt: flt || null });
       if (typeof v === 'string') throw new Error('النتيجة نص، وليست رقماً');
       return isFinite(v) ? v : 0;
     }
-    function tryFormula(src, from, to, vars) { try { return { v: evalFormula(src, from, to, vars) }; } catch (e) { return { err: e.message }; } }
+    function tryFormula(src, from, to, vars, flt) { try { return { v: evalFormula(src, from, to, vars, flt) }; } catch (e) { return { err: e.message }; } }
     // تقييم قائمة (بطاقات أو أسطر) بالترتيب، وكل سطر يمكنه استعمال ما قبله بالاسم {الاسم}
-    function evalList(list, from, to) {
+    function evalList(list, from, to, flt) {
       var vars = {};
       return list.map(function (it) {
-        if (!it.f) return { sep: true };
-        var r = tryFormula(it.f, from, to, vars);
+        var f = itemF(it);
+        if (!f) return { sep: true };
+        var r = tryFormula(f, from, to, vars, flt);
         if (it.name) vars[String(it.name).trim()] = r.err ? 'err' : r.v;
-        if (it.sub) { var s2 = tryFormula(it.sub, from, to, vars); r.sub = s2.err ? null : s2.v; }
+        var sf = it.subTerms ? termsToF(it.subTerms) : it.sub;
+        if (sf) { var s2 = tryFormula(sf, from, to, vars, flt); r.sub = s2.err ? null : s2.v; }
         return r;
       });
     }
@@ -136,27 +138,98 @@
       return f === 'money' ? fm(v) : f === 'money0' ? fk(v) : f === 'dec2' ? f2(v) : f === 'int' ? fk(v) : f === 'pct' ? fp(v) : fq(v);
     }
 
+    /* ---------- المعادلة المبسّطة: عناصر بأسماء واضحة بينها + − × ÷ ---------- */
+    // نوع الخيار: flt = تصفية اختيارية (عملاء/أصناف/مخازن) · acc = حسابات · stock = مخازن + أصناف · box = صندوق/بنك · none
+    var TK = [
+      ['المبيعات', [['مبيعات', 'صافي المبيعات', 'flt'], ['كمية_مبيعات', 'الكمية المباعة', 'flt'], ['مبيعات_إجمالي', 'المبيعات قبل المرتجعات', 'flt'], ['مرتجعات', 'قيمة المرتجعات', 'flt'],
+        ['كمية_مرتجعات', 'الكمية المرتجعة', 'flt'], ['ربح', 'مجمل الربح', 'flt'], ['تكلفة_مبيعات', 'تكلفة المبيعات', 'flt'], ['هدايا', 'كمية الهدايا', 'flt'], ['فواتير_مبيع', 'عدد فواتير المبيع', 'flt'], ['عملاء_مشترون', 'عدد العملاء المشترين', 'flt']]],
+      ['المشتريات', [['مشتريات', 'صافي المشتريات', 'flt'], ['كمية_مشتريات', 'الكمية المشتراة', 'flt']]],
+      ['العملاء والتحصيل', [['مديونية', 'مديونية العملاء', 'cust'], ['تحصيل', 'التحصيل من العملاء', 'coll'], ['الموردون', 'ما للموردين', 'none']]],
+      ['الصناديق والبنوك', [['رصيد_صناديق', 'رصيد الصناديق والبنوك', 'box'], ['مقبوضات', 'سندات القبض', 'none'], ['مدفوعات', 'سندات الدفع', 'none']]],
+      ['المخزون', [['مخزون_كمية', 'كمية المخزون', 'stock'], ['مخزون_قيمة', 'قيمة المخزون', 'stock']]],
+      ['الحسابات', [['رصيد', 'رصيد حساب', 'acc'], ['رصيد_دائن', 'رصيد دائن لحساب', 'acc'], ['حركة', 'حركة حساب في الفترة', 'acc'], ['مدين', 'مدين حساب في الفترة', 'acc'], ['دائن', 'دائن حساب في الفترة', 'acc'], ['افتتاحي', 'رصيد حساب أول الفترة', 'acc']]],
+      ['أخرى', [['#num', 'رقم ثابت', 'num'], ['#var', 'نتيجة سطر أو بطاقة سابقة', 'var'], ['أيام', 'عدد أيام الفترة', 'none']]]
+    ];
+    var TKMAP = {}; TK.forEach(function (g) { g[1].forEach(function (t) { TKMAP[t[0]] = { k: t[0], label: t[1], type: t[2], grp: g[0] }; }); });
+    var OPS = { '+': '+', '-': '−', '*': '×', '/': '÷' };
+    var FKEY_AR = { cust: 'عميل', item: 'صنف', st: 'مخزن', xcust: 'بدون_عميل', xitem: 'بدون_صنف', ag: 'مندوب' };
+    function fltToStr(f) { if (!f) return ''; return Object.keys(f).filter(function (k) { return f[k] && f[k].length && FKEY_AR[k]; }).map(function (k) { return FKEY_AR[k] + ':' + f[k].join(','); }).join('; '); }
+    function q2(s) { return '"' + String(s).replace(/"/g, '') + '"'; }
+    function termToF(t) {
+      var d = TKMAP[t.k];
+      if (!d) return '0';
+      if (d.type === 'num') return String(Number(t.n) || 0);
+      if (d.type === 'var') return '{' + (t.v || '') + '}';
+      var fs = fltToStr(t.flt);
+      if (d.type === 'flt') return t.k + '(' + (fs ? q2(fs) : '') + ')';
+      if (d.type === 'cust') return t.k + '(' + (fs ? q2(fs) : '') + ')';
+      if (d.type === 'coll') return t.k + '(' + (t.box || fs ? q2(t.box || '') : '') + (fs ? ', ' + q2(fs) : '') + ')';
+      if (d.type === 'box') return t.k + '(' + (t.box ? q2(t.box) : '') + ')';
+      if (d.type === 'acc') return t.k + '(' + q2((t.acc || []).join(',')) + ')';
+      if (d.type === 'stock') return t.k + '(' + ((t.st && t.st.length) || fs ? q2((t.st || []).join(',')) : '') + (fs ? ', ' + q2(fs) : '') + ')';
+      return t.k + '()';
+    }
+    function termsToF(terms) {
+      return (terms || []).map(function (t, i) { return (i ? ' ' + (t.op || '+') + ' ' : '') + termToF(t); }).join('');
+    }
+    function itemF(it) { return it.terms && it.terms.length ? termsToF(it.terms) : (it.f || ''); }
+    function strToFlt(s) { var f = parseFilter(s); if (!f) return null; var o = {}; Object.keys(f).forEach(function (k) { if (FKEY_AR[k]) o[k] = f[k]; }); return o; }
+    // تحويل معادلة نصية بسيطة إلى عناصر (للتعديل السهل)؛ يعيد null إن كانت معقدة (أقواس أو دوال متداخلة)
+    function fToTerms(src) { try { return fToTerms0(src); } catch (e) { return null; } }
+    function fToTerms0(src) {
+      var tk; try { tk = tokenize(src); parseFormula(src); } catch (e) { return null; }
+      var i = 0, out = [], op = '+';
+      while (i < tk.length) {
+        var t = tk[i], term = null;
+        if (t.t === 'n') { term = { k: '#num', n: t.v }; i++; }
+        else if (t.t === 'var') { term = { k: '#var', v: t.v }; i++; }
+        else if (t.t === 'acc') { term = { k: 'رصيد', acc: splitList(t.v) }; i++; }
+        else if (t.t === 'id') {
+          var f = FNMAP[t.v]; if (!f || !TKMAP[f.ar]) return null;
+          var d = TKMAP[f.ar], args = []; i++;
+          if (tk[i] && tk[i].t === '(') {
+            i++;
+            while (tk[i] && tk[i].t !== ')') { if (tk[i].t === 's') args.push(tk[i].v); else if (tk[i].t !== ',') return null; i++; }
+            if (!tk[i]) return null; i++;
+          }
+          term = { k: f.ar };
+          if (d.type === 'flt' || d.type === 'cust') { if (args[0]) term.flt = strToFlt(args[0]); }
+          else if (d.type === 'coll') { term.box = args[0] || ''; if (args[1]) term.flt = strToFlt(args[1]); }
+          else if (d.type === 'box') term.box = args[0] || '';
+          else if (d.type === 'acc') term.acc = splitList(args[0]);
+          else if (d.type === 'stock') { term.st = splitList(args[0]); if (args[1]) term.flt = strToFlt(args[1]); }
+        } else return null;
+        term.op = op; out.push(term);
+        if (i >= tk.length) break;
+        var o = tk[i]; if (!OPS[o.t]) return null; op = o.t; i++;
+        if (i >= tk.length) return null;
+      }
+      if (out.length) delete out[0].op;
+      return out.length ? out : null;
+    }
+
     /* ---------- الإعدادات الافتراضية للبطاقات والتقرير اليومي ---------- */
+    function T1(k, extra) { return Object.assign({ k: k }, extra || {}); }
     var DEFAULT_CARDS = [
-      { id: 'c1', name: 'صافي المبيعات', f: 'مبيعات()', fmt: 'money0', sub: 'فواتير_مبيع()', subl: 'فاتورة مبيع', subfmt: 'int', cmp: true, good: 'up', rep: 'sales_trend' },
-      { id: 'c2', name: 'مجمل الربح', f: 'ربح()', fmt: 'money0', sub: 'نسبة(ربح(), مبيعات())', subl: 'هامش الربح', subfmt: 'pct', cmp: true, good: 'up', rep: 'gross_profit' },
-      { id: 'c3', name: 'التحصيل', f: 'تحصيل()', fmt: 'money0', sub: 'نسبة(تحصيل(), مبيعات())', subl: 'من المبيعات', subfmt: 'pct', cmp: true, good: 'up', rep: 'collections_cust' },
-      { id: 'c4', name: 'مديونية العملاء', f: 'مديونية()', fmt: 'money0', cmp: true, good: 'down', rep: 'recv_balances' },
-      { id: 'c5', name: 'أرصدة الصناديق والبنوك', f: 'رصيد_صناديق()', fmt: 'money0', cmp: false, rep: 'boxes' },
-      { id: 'c6', name: 'قيمة المخزون', f: 'مخزون_قيمة()', fmt: 'money0', sub: 'مخزون_كمية()', subl: 'كرتونة/وحدة', subfmt: 'qty', cmp: false, rep: 'stock_store' }
+      { id: 'c1', name: 'صافي المبيعات', terms: [T1('مبيعات')], fmt: 'money0', subTerms: [T1('فواتير_مبيع')], subl: 'فاتورة مبيع', subfmt: 'int', cmp: true, good: 'up', rep: 'sales_trend' },
+      { id: 'c2', name: 'مجمل الربح', terms: [T1('ربح')], fmt: 'money0', subTerms: [T1('ربح'), T1('مبيعات', { op: '/' }), T1('#num', { op: '*', n: 100 })], subl: 'هامش الربح', subfmt: 'pct', cmp: true, good: 'up', rep: 'gross_profit' },
+      { id: 'c3', name: 'التحصيل', terms: [T1('تحصيل')], fmt: 'money0', subTerms: [T1('تحصيل'), T1('مبيعات', { op: '/' }), T1('#num', { op: '*', n: 100 })], subl: 'من المبيعات', subfmt: 'pct', cmp: true, good: 'up', rep: 'collections_cust' },
+      { id: 'c4', name: 'مديونية العملاء', terms: [T1('مديونية')], fmt: 'money0', cmp: true, good: 'down', rep: 'recv_balances' },
+      { id: 'c5', name: 'أرصدة الصناديق والبنوك', terms: [T1('رصيد_صناديق')], fmt: 'money0', cmp: false, rep: 'boxes' },
+      { id: 'c6', name: 'قيمة المخزون', terms: [T1('مخزون_قيمة')], fmt: 'money0', subTerms: [T1('مخزون_كمية')], subl: 'كرتونة/وحدة', subfmt: 'qty', cmp: false, rep: 'stock_store' }
     ];
     var DEFAULT_DAILY = { title: 'التقرير اليومي للإدارة', rows: [
-      { name: 'Total Sell-Out', f: 'كمية_مبيعات()', fmt: 'dec2' },
-      { name: 'Total Sell-Out Amount', f: 'مبيعات()', fmt: 'dec2' },
-      { name: 'Total Collection Cash', f: 'تحصيل("صندوق")', fmt: 'dec2' },
-      { name: 'Total Collection Transfer', f: 'تحصيل("بنك")', fmt: 'dec2' },
-      { name: 'AL ZAHRA Account', f: 'رصيد_دائن("261004")', fmt: 'dec2' },
-      { name: 'Total Dept in the market', f: 'مديونية()', fmt: 'dec2' },
-      { name: 'Inventory (Qty) Main', f: 'مخزون_كمية("المستودع الرئيسي")', fmt: 'dec2' },
-      { name: 'Inventory Value Main', f: 'مخزون_قيمة("المستودع الرئيسي")', fmt: 'dec2' },
-      { name: 'Inventory (Qty) Agents', f: 'مخزون_كمية("بنغازي,سبها")', fmt: 'dec2' },
-      { name: 'Inventory Value Agents', f: 'مخزون_قيمة("بنغازي,سبها")', fmt: 'dec2' },
-      { name: 'Avarage Selling Price', f: 'قسمة(مبيعات(), كمية_مبيعات())', fmt: 'dec2' }
+      { name: 'Total Sell-Out', terms: [T1('كمية_مبيعات')], fmt: 'dec2' },
+      { name: 'Total Sell-Out Amount', terms: [T1('مبيعات')], fmt: 'dec2' },
+      { name: 'Total Collection Cash', terms: [T1('تحصيل', { box: 'صندوق' })], fmt: 'dec2' },
+      { name: 'Total Collection Transfer', terms: [T1('تحصيل', { box: 'بنك' })], fmt: 'dec2' },
+      { name: 'AL ZAHRA Account', terms: [T1('رصيد_دائن', { acc: ['261004'] })], fmt: 'dec2' },
+      { name: 'Total Dept in the market', terms: [T1('مديونية')], fmt: 'dec2' },
+      { name: 'Inventory (Qty) Main', terms: [T1('مخزون_كمية', { st: ['المستودع الرئيسي'] })], fmt: 'dec2' },
+      { name: 'Inventory Value Main', terms: [T1('مخزون_قيمة', { st: ['المستودع الرئيسي'] })], fmt: 'dec2' },
+      { name: 'Inventory (Qty) Agents', terms: [T1('مخزون_كمية', { st: ['بنغازي', 'سبها'] })], fmt: 'dec2' },
+      { name: 'Inventory Value Agents', terms: [T1('مخزون_قيمة', { st: ['بنغازي', 'سبها'] })], fmt: 'dec2' },
+      { name: 'Avarage Selling Price', terms: [T1('مبيعات'), T1('كمية_مبيعات', { op: '/' })], fmt: 'dec2' }
     ] };
     function cards() { return (F.config.cards && F.config.cards.length ? F.config.cards : DEFAULT_CARDS); }
     function dailyDef() { return F.config.daily && F.config.daily.rows ? F.config.daily : DEFAULT_DAILY; }
