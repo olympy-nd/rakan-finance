@@ -34,9 +34,15 @@
     function uniq(a) { var o = {}, r = []; a.forEach(function (x) { if (!o[x]) { o[x] = 1; r.push(x); } }); return r; }
 
     var PRESETS = [['today', 'اليوم'], ['yesterday', 'أمس'], ['week', 'هذا الأسبوع'], ['last7', 'آخر 7 أيام'], ['month', 'هذا الشهر'],
-      ['lastmonth', 'الشهر الماضي'], ['quarter', 'هذا الربع'], ['year', 'هذه السنة'], ['custom', 'فترة محددة']];
-    function presetRange(p, from, to) {
-      var t = today(), m = t.slice(0, 7);
+      ['lastmonth', 'الشهر الماضي'], ['quarter', 'هذا الربع'], ['year', 'هذه السنة'], ['lastyear', 'السنة الماضية'], ['custom', 'فترة محددة']];
+    var QNAMES = ['الربع الأول', 'الربع الثاني', 'الربع الثالث', 'الربع الرابع'];
+    // الفترة: اسم جاهز، أو ربع q1..q4 من سنة، أو شهر محدد m، أو مقارنة الأرباع cmpq / الأشهر cmpm لسنة
+    function presetRange(p, from, to, year, month) {
+      var t = today(), m = t.slice(0, 7), y = String(year || t.slice(0, 4));
+      var cap = function (d) { return d > t ? t : d; };
+      if (/^q[1-4]$/.test(p)) { var qs = (+p[1] - 1) * 3 + 1, qe = qs + 2; var a = y + '-' + ('0' + qs).slice(-2) + '-01'; return [a, cap(monthEnd(y + '-' + ('0' + qe).slice(-2)))]; }
+      if (p === 'cmpq' || p === 'cmpm') return [y + '-01-01', cap(y + '-12-31')];
+      if (p === 'mon' && month) return [month + '-01', cap(monthEnd(month))];
       switch (p) {
         case 'today': return [t, t];
         case 'yesterday': return [addD(t, -1), addD(t, -1)];
@@ -46,16 +52,34 @@
         case 'lastmonth': var lm = addD(m + '-01', -1).slice(0, 7); return [lm + '-01', monthEnd(lm)];
         case 'quarter': var qm = Math.floor((+t.slice(5, 7) - 1) / 3) * 3 + 1; return [t.slice(0, 4) + '-' + ('0' + qm).slice(-2) + '-01', t];
         case 'year': return [t.slice(0, 4) + '-01-01', t];
+        case 'lastyear': var ly = +t.slice(0, 4) - 1; return [ly + '-01-01', ly + '-12-31'];
         default: return [from || m + '-01', to || t];
       }
     }
+    function curQuarter() { return 'q' + (Math.floor((+today().slice(5, 7) - 1) / 3) + 1); }
+    // أعمدة المقارنة: كل ربع أو كل شهر في السنة حتى اليوم
+    function comparePeriods(p, year) {
+      var y = String(year || today().slice(0, 4)), t = today(), out = [];
+      if (p === 'cmpq') for (var i = 1; i <= 4; i++) { var r = presetRange('q' + i, null, null, y); if (r[0] <= t) out.push({ k: 'q' + i, l: QNAMES[i - 1] + (r[1] === t && t < r[1].slice(0, 4) + '-' + ('0' + i * 3).slice(-2) + '-28' ? ' (حتى اليوم)' : ''), from: r[0], to: r[1] }); }
+      if (p === 'cmpm') for (var mI = 1; mI <= 12; mI++) { var mm = y + '-' + ('0' + mI).slice(-2); if (mm + '-01' <= t) out.push({ k: mm, l: MONTHS[mI - 1], from: mm + '-01', to: monthEnd(mm) > t ? t : monthEnd(mm) }); }
+      return out;
+    }
+    function presetName(p, year, month) {
+      if (/^q[1-4]$/.test(p)) return QNAMES[+p[1] - 1] + ' ' + (year || today().slice(0, 4));
+      if (p === 'cmpq') return 'مقارنة الأرباع ' + (year || today().slice(0, 4));
+      if (p === 'cmpm') return 'مقارنة الأشهر ' + (year || today().slice(0, 4));
+      if (p === 'mon' && month) return monthLabel(month);
+      var x = PRESETS.filter(function (z) { return z[0] === p; })[0];
+      return x ? x[1] : 'فترة محددة';
+    }
     function prevRange(from, to, p) {
-      if (p === 'month' || p === 'lastmonth') {
+      if (p === 'month' || p === 'lastmonth' || p === 'mon') {
         var pm = addD(from, -1).slice(0, 7), n = days(from, to);
         var pe = addD(pm + '-01', n);
         return [pm + '-01', pe > monthEnd(pm) ? monthEnd(pm) : pe];
       }
-      if (p === 'year') { var y = +from.slice(0, 4) - 1; return [y + from.slice(4), y + to.slice(4)]; }
+      if (/^q[1-4]$/.test(p) || p === 'quarter') { var s0 = from.slice(0, 7), pq = addD(s0 + '-01', -1).slice(0, 7), ps = addD(addD(pq + '-01', -1).slice(0, 7) + '-01', -1).slice(0, 7) + '-01'; var n2 = days(from, to); var pe2 = addD(ps, n2); var qend = addD(from, -1); return [ps, pe2 > qend ? qend : pe2]; }
+      if (p === 'year' || p === 'lastyear') { var y = +from.slice(0, 4) - 1; return [y + from.slice(4), y + to.slice(4)]; }
       var len = days(from, to) + 1;
       return [addD(from, -len), addD(from, -1)];
     }

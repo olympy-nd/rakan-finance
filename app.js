@@ -15,6 +15,10 @@
     out: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4h4v16h-4"/><path d="M10 8l-4 4 4 4"/><path d="M6 12h10"/></svg>',
     close: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>',
     print: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 9V3h10v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M7 14h10v7H7z"/></svg>',
+    dash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>',
+    daily: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4M7 13h4M7 17h7"/></svg>',
+    reports: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h9l5 5v15H6z"/><path d="M14 2v6h6M9 13h7M9 17h7"/></svg>',
+    more: '<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>',
     key: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3M15 8l2 2"/></svg>'
   };
 
@@ -179,15 +183,28 @@
       '<span class="net" id="net"></span><button class="iconbtn" id="pinb" aria-label="تغيير الرقم السري" title="تغيير الرقم السري">' + ICON.key + '</button>' +
       '<button class="iconbtn" id="lo" aria-label="خروج" title="خروج">' + ICON.out + '</button></div>' +
       '<nav class="tabs" id="tabs">' + tabs.map(function (t) { return '<button class="tab" data-tab="' + t[0] + '">' + esc(t[1]) + '</button>'; }).join('') + '</nav>' +
-      '</header><main id="main"></main>';
+      '</header><main id="main"></main>' +
+      // شريط سفلي للهاتف: الأقسام الرئيسية + «المزيد»
+      '<nav class="bnav" id="bnav">' + tabs.filter(function (t) { return BMAIN[t[0]]; }).map(function (t) { return '<button class="bn" data-tab="' + t[0] + '">' + ICON[t[0]] + '<span>' + esc(BMAIN[t[0]]) + '</span></button>'; }).join('') +
+      '<button class="bn" data-more>' + ICON.more + '<span>المزيد</span></button></nav>';
     q('#lo').onclick = function () { confirmBox('خروج', 'هل تريد الخروج؟ تُمسح البيانات المالية من هذا الجهاز.', 'خروج').then(function (y) { if (y) logout(); }); };
     q('#pinb').onclick = pinSheet;
     qa('[data-tab]').forEach(function (b) { b.onclick = function () { go(b.dataset.tab); }; });
+    q('[data-more]').onclick = function () {
+      var rest = tabs.filter(function (t) { return !BMAIN[t[0]]; });
+      sheet('المزيد', '<div class="more-list">' + rest.map(function (t) { return '<button class="item tap more-it' + (st.tab === t[0] ? ' sel' : '') + '" data-tab="' + t[0] + '"><b>' + esc(t[1]) + '</b></button>'; }).join('') +
+        '<button class="item tap more-it" data-mpin>' + ICON.key + '<b>تغيير الرقم السري</b></button><button class="item tap more-it" data-mlo>' + ICON.out + '<b>خروج</b></button></div>', function (s) {
+        qa('[data-tab]', s.el).forEach(function (b) { b.onclick = function () { s.close(); go(b.dataset.tab); }; });
+        q('[data-mpin]', s.el).onclick = function () { s.close(); pinSheet(); };
+        q('[data-mlo]', s.el).onclick = function () { s.close(); q('#lo').click(); };
+      });
+    };
     netUI();
     render();
     refresh(false);
   }
 
+  var BMAIN = { dash: 'المؤشرات', daily: 'اليومي', reports: 'التقارير' };
   function go(tab) { st.tab = tab; render(); refresh(true); window.scrollTo(0, 0); }
 
   function netUI() {
@@ -199,6 +216,7 @@
 
   function render() {
     qa('[data-tab]').forEach(function (b) { b.classList.toggle('on', b.dataset.tab === st.tab); });
+    var mb = q('[data-more]'); if (mb) mb.classList.toggle('on', !BMAIN[st.tab]);
     var m = q('#main'), v = VIEWS[st.tab];
     if (!m) return;
     try { if (v) m.innerHTML = v.html(); if (v && v.bind) v.bind(m); }
@@ -305,7 +323,7 @@
   // محرّك التقارير وشاشاتها (fin.js)
   if (window.RKFIN) try {
     window.RKFIN({ esc: esc, q: q, qa: qa, call: call, sheet: sheet, toast: toast, busy: busy, ICON: ICON, st: st,
-      VIEWS: VIEWS, render: render, go: go, withXLSX: withXLSX, saveBook: saveBook, confirmBox: confirmBox,
+      VIEWS: VIEWS, render: render, go: go, N: N, withXLSX: withXLSX, saveBook: saveBook, confirmBox: confirmBox,
       onLogout: function (f) { window.RKFIN_RESET = f; } });
   } catch (e) { if (window.console) console.error(e); }
 

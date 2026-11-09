@@ -147,50 +147,142 @@
     function syncLine() {
       var m = F.meta || {}, ck = m.check || {};
       var lb = m.agent && m.agent.last_beat;
-      return '<div class="row small muted fin-sync"><span>آخر بيانات مالية من سراج: ' + (m.last ? N(String(m.last).slice(0, 16)) : '—') + '</span>' +
-        (ck.balanced === false ? '<span class="badge b-flag">القيود غير متوازنة في سراج</span>' : ck.balanced ? '<span class="badge b-delivered">القيود متوازنة ✓</span>' : '') +
-        (lb ? '<span>الوكيل: ' + N(String(lb).slice(11, 16)) + '</span>' : '') + '<button class="btn sm ghost" data-frefresh>' + ICON.refresh + ' تحديث البيانات</button></div>';
+      return '<div class="fin-sync"><span class="fs-dot' + (ck.balanced === false ? ' bad' : '') + '"></span><span class="fs-t">آخر بيانات من سراج ' + (m.last ? N(String(m.last).slice(5, 16).replace('-', '/')) : '—') + '</span>' +
+        (ck.balanced === false ? '<span class="badge b-flag">القيود غير متوازنة في سراج</span>' : ck.balanced ? '<span class="fs-ok">القيود متوازنة ✓</span>' : '') +
+        (lb ? '<span class="fs-ag">الوكيل ' + N(String(lb).slice(11, 16)) + '</span>' : '') + '<button class="btn sm ghost fs-btn" data-frefresh aria-label="تحديث البيانات">' + ICON.refresh + '<span class="bt-txt">تحديث</span></button></div>';
     }
 
-    /* ---------- لوحة المؤشرات (بطاقات بالمعادلات) ---------- */
+    /* ---------- اختيار الفترة (موحّد للوحة والتقارير) ---------- */
+    var QUICK = [['today', 'اليوم'], ['week', 'الأسبوع'], ['month', 'الشهر'], ['@q', 'الربع'], ['year', 'السنة']];
+    var ICON_CAL = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" style="vertical-align:-3px"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/></svg>';
+    var ICON_XLS = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 2h9l5 5v15H6z"/><path d="M9 11l5 6M14 11l-5 6"/></svg>';
+    var ICON_EDIT = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg>';
+    function rangeText(a, b) {
+      var d1 = +a.slice(8, 10), m1 = +a.slice(5, 7), y1 = a.slice(0, 4), d2 = +b.slice(8, 10), m2 = +b.slice(5, 7), y2 = b.slice(0, 4);
+      if (a === b) return d1 + ' ' + MONTHS[m1 - 1] + ' ' + y1;
+      if (y1 === y2 && m1 === m2) return d1 + ' – ' + d2 + ' ' + MONTHS[m1 - 1] + ' ' + y1;
+      if (y1 === y2) return d1 + ' ' + MONTHS[m1 - 1] + ' – ' + d2 + ' ' + MONTHS[m2 - 1] + ' ' + y1;
+      return d1 + ' ' + MONTHS[m1 - 1] + ' ' + y1 + ' – ' + d2 + ' ' + MONTHS[m2 - 1] + ' ' + y2;
+    }
+    function perRange(ps) { return presetRange(ps.preset, ps.from, ps.to, ps.year, ps.month); }
+    function isCmp(p) { return p === 'cmpq' || p === 'cmpm'; }
+    function isQ(p) { return /^q[1-4]$/.test(p) || p === 'quarter' || p === 'cmpq'; }
+    function yearsAvail() {
+      if (!F.cache.years) { var mn = T().jl.reduce(function (x, l) { return l.d && l.d < x ? l.d : x; }, today()); var out = []; for (var y = +today().slice(0, 4); y >= +mn.slice(0, 4); y--) out.push(String(y)); F.cache.years = out; }
+      return F.cache.years;
+    }
+    function periodHTML(ps, key, o) {
+      o = o || {};
+      var r = perRange(ps), cmp = isCmp(ps.preset), pr = o.prev && !cmp ? prevRange(r[0], r[1], ps.preset) : null;
+      var on = function (k) { return k === '@q' ? isQ(ps.preset) : ps.preset === k; };
+      var moreOn = !QUICK.some(function (k) { return on(k[0]); });
+      var qLbl = ps.preset === 'cmpq' ? 'مقارنة الأرباع' : /^q[1-4]$/.test(ps.preset) ? QNAMES[+ps.preset[1] - 1] : ps.preset === 'quarter' ? 'هذا الربع' : 'الربع';
+      return '<div class="per"><div class="per-strip" role="group" aria-label="الفترة">' + QUICK.map(function (k) {
+        return '<button class="per-b' + (on(k[0]) ? ' on' : '') + '" ' + (k[0] === '@q' ? 'data-pq="' + key + '"' : 'data-pset="' + key + '|' + k[0] + '"') + '>' + (k[0] === '@q' ? esc(qLbl) + ' <i class="car">▾</i>' : k[1]) + '</button>';
+      }).join('') + '<button class="per-b per-more' + (moreOn ? ' on' : '') + '" data-per="' + key + '">' + (moreOn ? esc(presetName(ps.preset, ps.year, ps.month)) : 'فترة أخرى') + ' <i class="car">▾</i></button></div>' +
+        '<div class="per-info">' + ICON_CAL + ' <b>' + esc(cmp ? presetName(ps.preset, ps.year) + ' (' + rangeText(r[0], r[1]) + ')' : rangeText(r[0], r[1])) + '</b>' +
+        (ps.year && ps.year !== today().slice(0, 4) && !cmp && /^q|mon/.test(ps.preset) ? '' : '') + (pr ? '<span class="per-prev">مقارنة بـ ' + esc(rangeText(pr[0], pr[1])) + '</span>' : '') + '</div></div>';
+    }
+    function yearChips(y) { var ys = yearsAvail(); return ys.length > 1 ? '<div class="ps-years">' + ys.map(function (x) { return '<button class="chip' + (x === y ? ' on' : '') + '" data-yr="' + x + '">' + x + '</button>'; }).join('') + '</div>' : ''; }
+    function quarterSheet(ps, allowCmp) {
+      return new Promise(function (res) {
+        var y = ps.year || today().slice(0, 4);
+        sheet('اختر الربع', '<div id="qsb"></div>', function (s) {
+          var draw = function () {
+            var t = today();
+            q('#qsb', s.el).innerHTML = yearChips(y) + '<div class="ps-q">' + [0, 1, 2, 3].map(function (i) {
+              var rr = presetRange('q' + (i + 1), null, null, y), fut = rr[0] > t, sel = ps.preset === 'q' + (i + 1) && (ps.year || t.slice(0, 4)) === y;
+              return '<button class="ps-qb' + (sel ? ' on' : '') + '" data-setp="q' + (i + 1) + '"' + (fut ? ' disabled' : '') + '><b>' + QNAMES[i] + '</b><span>' + MONTHS[i * 3] + ' – ' + MONTHS[i * 3 + 2] + '</span>' + (fut ? '<em>لم يبدأ</em>' : rr[1] < monthEnd(rr[1].slice(0, 7)) || (rr[1] === t) ? '<em>حتى اليوم</em>' : '') + '</button>';
+            }).join('') + '</div>' + (allowCmp ? '<button class="ps-cmp' + (ps.preset === 'cmpq' ? ' on' : '') + '" data-setp="cmpq"><b>كل الأرباع: مقارنة بينها</b><span>عمود لكل ربع في ' + y + ' مع الإجمالي</span></button>' : '');
+            qa('[data-yr]', s.el).forEach(function (b) { b.onclick = function () { y = b.dataset.yr; draw(); }; });
+            qa('[data-setp]', s.el).forEach(function (b) { b.onclick = function () { s.done = true; s.close(); res({ preset: b.dataset.setp, year: y }); }; });
+          };
+          draw();
+          s.onclose = function () { if (!s.done) res(null); };
+        });
+      });
+    }
+    function periodSheet(ps, allowCmp) {
+      return new Promise(function (res) {
+        var y = ps.year || today().slice(0, 4), r0 = perRange(ps);
+        sheet('اختر الفترة', '<div id="psb"></div>', function (s) {
+          var draw = function () {
+            var t = today(), cy = y === t.slice(0, 4);
+            var b = function (k, l, extra, dis) { return '<button class="ps-b' + (ps.preset === k && (!extra || extra === ps.month) ? ' on' : '') + '" data-setp="' + k + '"' + (extra ? ' data-mon="' + extra + '"' : '') + (dis ? ' disabled' : '') + '>' + l + '</button>'; };
+            q('#psb', s.el).innerHTML =
+              '<div class="ps-sec"><div class="ps-h">سريع</div><div class="ps-grid">' + b('today', 'اليوم') + b('yesterday', 'أمس') + b('week', 'هذا الأسبوع') + b('last7', 'آخر 7 أيام') + b('month', 'هذا الشهر') + b('lastmonth', 'الشهر الماضي') + '</div></div>' +
+              (yearsAvail().length > 1 ? '<div class="ps-sec"><div class="ps-h">السنة</div>' + yearChips(y) + '</div>' : '') +
+              '<div class="ps-sec"><div class="ps-h">شهر من ' + y + '</div><div class="ps-grid ps-m">' + MONTHS.map(function (mn, i) { var mm = y + '-' + ('0' + (i + 1)).slice(-2); return b('mon', mn, mm, mm + '-01' > t); }).join('') + '</div></div>' +
+              '<div class="ps-sec"><div class="ps-h">ربع من ' + y + '</div><div class="ps-grid">' + [1, 2, 3, 4].map(function (i) { var rr = presetRange('q' + i, null, null, y); return '<button class="ps-b' + (ps.preset === 'q' + i && (ps.year || t.slice(0, 4)) === y ? ' on' : '') + '" data-setp="q' + i + '"' + (rr[0] > t ? ' disabled' : '') + '>' + QNAMES[i - 1] + '</button>'; }).join('') + '</div></div>' +
+              '<div class="ps-sec"><div class="ps-h">السنة كاملة</div><div class="ps-grid">' + '<button class="ps-b" data-yfull>سنة ' + y + (cy ? ' حتى اليوم' : '') + '</button>' +
+              (allowCmp ? '<button class="ps-b ps-c' + (ps.preset === 'cmpq' ? ' on' : '') + '" data-setp="cmpq">مقارنة الأرباع ' + y + '</button><button class="ps-b ps-c' + (ps.preset === 'cmpm' ? ' on' : '') + '" data-setp="cmpm">مقارنة الأشهر ' + y + '</button>' : '') + '</div></div>' +
+              '<div class="ps-sec"><div class="ps-h">فترة محددة</div><div class="ps-cust"><label>من<input type="date" class="input num" id="psf" value="' + r0[0] + '"></label><label>إلى<input type="date" class="input num" id="pst" value="' + r0[1] + '"></label><button class="btn primary" data-pscust>تطبيق</button></div></div>';
+            qa('[data-yr]', s.el).forEach(function (bb) { bb.onclick = function () { y = bb.dataset.yr; draw(); }; });
+            qa('[data-setp]', s.el).forEach(function (bb) { bb.onclick = function () { s.done = true; s.close(); res({ preset: bb.dataset.setp, year: y, month: bb.dataset.mon || null }); }; });
+            q('[data-yfull]', s.el).onclick = function () { s.done = true; s.close(); res({ preset: 'custom', from: y + '-01-01', to: (y + '-12-31') > t ? t : y + '-12-31', year: y }); };
+            q('[data-pscust]', s.el).onclick = function () { var f = q('#psf', s.el).value, tt = q('#pst', s.el).value; if (!f || !tt || f > tt) { toast('اختر تاريخين صحيحين', true); return; } s.done = true; s.close(); res({ preset: 'custom', from: f, to: tt }); };
+          };
+          draw();
+          s.onclose = function () { if (!s.done) res(null); };
+        });
+      });
+    }
+    function bindPeriod(m, key, getPs, setPs, allowCmp) {
+      var apply = function (patch) { if (!patch) return; var ps = Object.assign({}, getPs(), patch); if (patch.preset !== 'custom') { var r = presetRange(ps.preset, null, null, ps.year, ps.month); ps.from = r[0]; ps.to = r[1]; } setPs(ps); };
+      qa('[data-pset^="' + key + '|"]', m).forEach(function (b) { b.onclick = function () { apply({ preset: b.dataset.pset.split('|')[1], year: null, month: null }); }; });
+      var bq = q('[data-pq="' + key + '"]', m); if (bq) bq.onclick = function () { quarterSheet(getPs(), allowCmp).then(apply); };
+      var bm = q('[data-per="' + key + '"]', m); if (bm) bm.onclick = function () { periodSheet(getPs(), allowCmp).then(apply); };
+    }
+
+    /* ---------- لوحة المؤشرات (بطاقات) ---------- */
     var DASH_DIMS = ['cust', 'item', 'st', 'ag', 'xcust', 'xitem'];
-    var DASH_PRESETS = PRESETS.filter(function (p) { return ['today', 'yesterday', 'week', 'month', 'lastmonth', 'quarter', 'year', 'custom'].indexOf(p[0]) >= 0; });
     function cardHTML(c, r, pr, i) {
       var v = r.err ? null : r.v, pv = pr && !pr.err ? pr.v : null;
       var ch = c.cmp && pv ? (v - pv) / Math.abs(pv) * 100 : null, good = c.good === 'down' ? ch < 0 : ch > 0;
-      return '<' + (c.rep && R[c.rep] ? 'button data-crep="' + esc(c.rep) + '"' : 'div') + ' class="kpi fin-kpi' + (c.rep && R[c.rep] ? ' tap' : '') + '" title="' + esc(itemText(c)) + '"><span>' + esc(c.name) + '</span>' +
-        (r.err ? '<b class="num">—</b><small class="down">خطأ في المعادلة: ' + esc(r.err) + '</small>' : '<b class="num">' + fmtVal(v, c.fmt || 'money0') + '</b>') +
-        (ch !== null && isFinite(ch) ? '<small class="' + (Math.abs(ch) < 0.05 ? '' : good ? 'up' : 'down') + '">' + (ch > 0 ? '▲ ' : ch < 0 ? '▼ ' : '') + fp(Math.abs(ch)) + ' عن الفترة السابقة</small>' : c.cmp ? '<small class="muted">لا مقارنة</small>' : '') +
-        (c.sub && r.sub !== null && r.sub !== undefined ? '<small class="muted">' + fmtVal(r.sub, c.subfmt || 'int') + ' ' + esc(c.subl || '') + '</small>' : '') + '</' + (c.rep && R[c.rep] ? 'button' : 'div') + '>';
+      var tag = c.rep && R[c.rep] ? 'button' : 'div';
+      return '<' + tag + (tag === 'button' ? ' data-crep="' + esc(c.rep) + '"' : '') + ' class="kpi fin-kpi' + (tag === 'button' ? ' tap' : '') + '" title="' + esc(itemText(c)) + '"><span class="k-n">' + esc(c.name) + '</span>' +
+        (r.err ? '<b class="num">—</b><small class="down">خطأ: ' + esc(r.err) + '</small>' : '<b class="num">' + fmtVal(v, c.fmt || 'money0') + '</b>') +
+        (ch !== null && isFinite(ch) ? '<small class="k-ch ' + (Math.abs(ch) < 0.05 ? '' : good ? 'up' : 'down') + '">' + (ch > 0 ? '▲ ' : ch < 0 ? '▼ ' : '') + fp(Math.abs(ch)) + ' <span class="muted">عن السابقة</span></small>' : '') +
+        (c.sub && r.sub !== null && r.sub !== undefined ? '<small class="muted">' + fmtVal(r.sub, c.subfmt || 'int') + ' ' + esc(c.subl || '') + '</small>' : '') + '</' + tag + '>';
     }
-    function dashRange() { return presetRange(F.dashPer, F.dashFrom, F.dashTo); }
+    function dashPs() { return F.dash || (F.dash = { preset: 'month' }); }
+    function dashRange() { return perRange(dashPs()); }
     function dashHTML() {
-      var r = dashRange(), pr = prevRange(r[0], r[1], F.dashPer), list = cards();
+      var ps = dashPs(), r = dashRange(), list = cards(), gf = F.gflt, rv = recvFor(gf), cmp = isCmp(ps.preset);
       F.lastRange = r;
-      var gf = F.gflt, rv = recvFor(gf);
+      var h = '<div class="card head-card"><div class="hc-top"><h2>لوحة المؤشرات</h2>' + (canEdit() ? '<button class="btn sm ghost" data-custom>' + ICON_EDIT + '<span class="bt-txt">تخصيص البطاقات</span></button>' : '') + '</div>' +
+        periodHTML(ps, 'dash', { prev: true }) + fltPanelHTML(DASH_DIMS, gf, 'dash') + '</div>';
+      if (cmp) {
+        var pcs = comparePeriods(ps.preset, ps.year), vals = pcs.map(function (c) { return evalList(list, c.from, c.to, gf); });
+        h += '<div class="card scroll-x fin-table"><h3>' + esc(presetName(ps.preset, ps.year)) + '</h3><table class="tbl fin"><thead><tr><th>المؤشر</th>' + pcs.map(function (c) { return '<th class="n">' + esc(c.l) + '</th>'; }).join('') + '</tr></thead><tbody>' +
+          list.map(function (c, i) { return '<tr><td>' + esc(c.name) + '</td>' + vals.map(function (v) { return '<td class="n">' + (v[i].err ? '—' : fmtVal(v[i].v, c.fmt || 'money0')) + '</td>'; }).join('') + '</tr>'; }).join('') + '</tbody></table></div>';
+        if (list.length) h += '<div class="card"><h3>' + esc(list[0].name) + '</h3>' + chartSVG({ type: 'bar', x: 'name', y: ['v'], yl: [list[0].name] }, pcs.map(function (c, j) { return { name: c.l, v: vals[j][0].err ? 0 : vals[j][0].v }; })) + '</div>';
+        return h;
+      }
+      var pr = prevRange(r[0], r[1], ps.preset);
       var cur = evalList(list, r[0], r[1], gf), prev = list.some(function (c) { return c.cmp; }) ? evalList(list, pr[0], pr[1], gf) : [];
-      var h = '<div class="card"><div class="row" style="align-items:center"><div class="chips grow">' + DASH_PRESETS.map(function (pp) { return '<button class="chip' + (F.dashPer === pp[0] ? ' on' : '') + '" data-dper="' + pp[0] + '">' + pp[1] + '</button>'; }).join('') + '</div>' +
-        (canEdit() ? '<button class="btn sm ghost" data-custom>تخصيص البطاقات</button>' : '') + '</div>' +
-        (F.dashPer === 'custom' ? '<div class="row" style="margin-top:10px"><input type="date" class="input num" id="dfrom" value="' + r[0] + '" style="max-width:180px"><input type="date" class="input num" id="dto" value="' + r[1] + '" style="max-width:180px"></div>' : '') +
-        '<div class="small muted" style="margin-top:6px">' + perLabel(r[0], r[1]) + ' · مقارنة بـ ' + perLabel(pr[0], pr[1]) + '</div>' + fltPanelHTML(DASH_DIMS, gf, 'dash') + '</div>';
       h += '<div class="kpis fin-kpis">' + list.map(function (c, i) { return cardHTML(c, cur[i], prev[i], i); }).join('') + '</div>';
-      // منحنى آخر 6 أشهر
       var months = [], m0 = r[1].slice(0, 7);
       for (var i = 5; i >= 0; i--) { var mm = m0, k = i; while (k-- > 0) mm = addD(mm + '-01', -1).slice(0, 7); months.push(mm); }
       var series = months.map(function (mm) { var e = monthEnd(mm) > r[1] ? r[1] : monthEnd(mm); return { name: MONTHS[+mm.slice(5, 7) - 1], net: salesStats(mm + '-01', e, gf).net, coll: collections(mm + '-01', e, '', false, rv) }; });
-      h += '<div class="grid2"><div class="card"><h3>صافي المبيعات والتحصيل · آخر 6 أشهر</h3>' + chartSVG({ type: 'bar', x: 'name', y: ['net', 'coll'], yl: ['صافي المبيعات', 'التحصيل'] }, series) + '</div>';
+      h += '<div class="grid2"><div class="card"><h3>المبيعات والتحصيل · آخر 6 أشهر</h3>' + chartSVG({ type: 'bar', x: 'name', y: ['net', 'coll'], yl: ['صافي المبيعات', 'التحصيل'] }, series) + '</div>';
       var top = R.sales_cust.run({ from: r[0], to: r[1], top: 7, flt: gf }).rows;
-      h += '<div class="card"><h3>أعلى العملاء مبيعاً في الفترة</h3>' + (top.length ? chartSVG({ type: 'hbar', x: 'name', y: ['net'], yl: ['صافي المبيعات'] }, top) : '<p class="muted">لا مبيعات في الفترة</p>') + '</div></div>';
-      h += '<div class="card"><h3>تقارير سريعة</h3><div class="chips">' + [['exec_summary', 'الملخص التنفيذي'], ['sales_item', 'المبيعات حسب الصنف'], ['sales_cust', 'المبيعات حسب العميل'], ['collections_daily', 'التحصيل اليومي'],
-        ['recv_aging', 'أعمار الديون'], ['stock_balance', 'أرصدة المخزون'], ['boxes', 'الصناديق والبنوك'], ['income', 'قائمة الدخل']].map(function (x) { return '<button class="chip" data-open="' + x[0] + '"' + (R[x[0]].params.indexOf('period') >= 0 ? ' data-per="' + esc(F.dashPer) + '"' : '') + '>' + x[1] + '</button>'; }).join('') +
-        '<button class="chip" data-gosub="daily">التقرير اليومي للإدارة</button></div></div>';
+      h += '<div class="card"><h3>أعلى العملاء مبيعاً</h3>' + (top.length ? chartSVG({ type: 'hbar', x: 'name', y: ['net'], yl: ['صافي المبيعات'] }, top) : '<p class="muted">لا مبيعات في الفترة</p>') + '</div></div>';
+      h += '<div class="card"><h3>تقارير سريعة</h3><div class="quick-reps">' + [['exec_summary', 'الملخص التنفيذي'], ['sales_item', 'المبيعات حسب الصنف'], ['sales_cust', 'المبيعات حسب العميل'], ['collections_daily', 'التحصيل اليومي'],
+        ['recv_aging', 'أعمار الديون'], ['stock_balance', 'أرصدة المخزون'], ['boxes', 'الصناديق والبنوك'], ['income', 'قائمة الدخل']].map(function (x) { return '<button class="qr" data-qopen="' + x[0] + '">' + x[1] + '</button>'; }).join('') +
+        '<button class="qr" data-gosub="daily">التقرير اليومي للإدارة</button></div></div>';
       return h;
     }
+    function dashReportParams(id) {
+      var ps = dashPs(), r = dashRange(), def = R[id], o = {};
+      if (def.params.indexOf('period') >= 0) Object.assign(o, { preset: isCmp(ps.preset) && false ? 'custom' : ps.preset, year: ps.year || null, month: ps.month || null, from: r[0], to: r[1] }); else o.asof = r[1];
+      if (def.params.indexOf('flt') >= 0) o.flt = F.gflt || null;
+      return o;
+    }
     function bindDash(m) {
-      qa('[data-dper]', m).forEach(function (b) { b.onclick = function () { F.dashPer = b.dataset.dper; A.render(); }; });
-      var df = q('#dfrom', m), dt = q('#dto', m);
-      if (df) df.onchange = dt.onchange = function () { F.dashFrom = df.value; F.dashTo = dt.value; A.render(); };
-      qa('[data-crep]', m).forEach(function (b) { b.onclick = function () { var r = dashRange(), def = R[b.dataset.crep]; openReport(b.dataset.crep, Object.assign(def.params.indexOf('period') >= 0 ? { preset: F.dashPer, from: r[0], to: r[1] } : { asof: r[1] }, def.params.indexOf('flt') >= 0 ? { flt: F.gflt || null } : {})); }; });
+      bindPeriod(m, 'dash', dashPs, function (ps) { F.dash = ps; A.render(); }, true);
+      qa('[data-crep]', m).forEach(function (b) { b.onclick = function () { openReport(b.dataset.crep, dashReportParams(b.dataset.crep)); }; });
+      qa('[data-qopen]', m).forEach(function (b) { b.onclick = function () { openReport(b.dataset.qopen, dashReportParams(b.dataset.qopen)); }; });
       qa('[data-gosub]', m).forEach(function (b) { b.onclick = function () { go(b.dataset.gosub); }; });
       var cu = q('[data-custom]', m);
       if (cu) cu.onclick = function () { F.setTab = 'cards'; go('settings'); };
@@ -220,23 +312,23 @@
     function dailyHTML() {
       var D = dailyData(), errs = [];
       D.def.rows.forEach(function (r, i) { D.vals.forEach(function (v) { if (v[i].err && errs.indexOf(r.name) < 0) errs.push(r.name); }); });
-      var h = '<div class="card"><div class="row fin-head" style="align-items:flex-end"><div class="grow"><h2 style="margin:0">' + esc(D.def.title || 'التقرير اليومي للإدارة') + '</h2><div class="small muted">كل الأرقام محسوبة من بيانات سراج بالمعادلات المحددة لكل سطر</div></div>' +
-        '<button class="btn sm" data-dxls>Excel</button><button class="btn sm" data-dprt>' + ICON.print + ' طباعة / PDF</button>' + (canEdit() ? '<button class="btn sm ghost" data-dcustom>تخصيص الأسطر</button>' : '') + '</div>' +
-        '<div class="row fin-params"><label class="field fin-param"><span class="lbl">التاريخ</span><input type="date" class="input num" id="ddate" value="' + D.date + '"></label>' +
-        '<label class="field fin-param"><span class="lbl">الأعمدة</span><select class="input" id="dmode"><option value="day"' + (F.dailyMode !== 'days7' ? ' selected' : '') + '>اليوم المحدد</option><option value="days7"' + (F.dailyMode === 'days7' ? ' selected' : '') + '>آخر 7 أيام (عمود لكل يوم)</option></select></label>' +
-        '<label class="chk fin-param" style="align-self:center"><input type="checkbox" id="dmtd"' + (F.dailyMtd ? ' checked' : '') + '> إضافة عمود «من بداية الشهر»</label>' +
-        '<div class="fin-param" style="flex:0 0 auto"><button class="btn sm ghost" data-dprev>→ اليوم السابق</button> <button class="btn sm ghost" data-dnext>اليوم التالي ←</button></div></div>' +
+      var h = '<div class="card head-card"><div class="hc-top"><div class="grow"><h2>' + esc(D.def.title || 'التقرير اليومي للإدارة') + '</h2></div><div class="rh-act">' +
+        '<button class="btn sm" data-dxls aria-label="Excel">' + ICON_XLS + '<span class="bt-txt">Excel</span></button><button class="btn sm" data-dprt aria-label="طباعة">' + ICON.print + '<span class="bt-txt">طباعة / PDF</span></button>' + (canEdit() ? '<button class="btn sm ghost" data-dcustom aria-label="تخصيص الأسطر">' + ICON_EDIT + '<span class="bt-txt">تخصيص</span></button>' : '') + '</div></div>' +
+        '<div class="day-nav"><button class="iconbtn" data-dprev aria-label="اليوم السابق" title="اليوم السابق"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></button><label class="day-date">' + ICON_CAL + '<input type="date" class="input num" id="ddate" value="' + D.date + '"></label><button class="iconbtn" data-dnext aria-label="اليوم التالي" title="اليوم التالي"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg></button>' +
+        '<span class="day-lbl">' + esc(DOW[new Date(d2t(D.date)).getUTCDay()] + ' ' + rangeText(D.date, D.date)) + '</span></div>' +
+        '<div class="seg" role="group" aria-label="الأعمدة"><button class="seg-b' + (F.dailyMode !== 'days7' ? ' on' : '') + '" data-dmode="day">يوم واحد</button><button class="seg-b' + (F.dailyMode === 'days7' ? ' on' : '') + '" data-dmode="days7">آخر 7 أيام</button>' +
+        '<button class="seg-b' + (F.dailyMtd ? ' on' : '') + '" data-dmtd>+ من بداية الشهر</button></div>' +
         fltPanelHTML(DASH_DIMS, F.dflt, 'daily') +
         (errs.length ? '<div class="msg err" style="margin-top:8px">أسطر فيها خطأ: ' + esc(errs.join('، ')) + (canEdit() ? '. صحّحها من «تخصيص الأسطر».' : '') + '</div>' : '') + '</div>';
       h += '<div class="card scroll-x"><div class="daily-wrap">' + dailyTable(D, 'daily') + '</div>' +
-        '<p class="small muted" style="margin:10px 0 0">الكميات والأرصدة (المخزون والمديونية والحسابات) في نهاية اليوم، والمبيعات والتحصيل لليوم نفسه. عمود «من بداية الشهر» يجمع حركة الشهر حتى التاريخ.</p></div>';
+        '<p class="small muted" style="margin:10px 0 0">الأرصدة والمخزون في نهاية اليوم، والمبيعات والتحصيل لليوم نفسه.</p></div>';
       return h;
     }
     function bindDaily(m) {
       var setD = function (d) { F.dailyDate = d; A.render(); };
       q('#ddate', m).onchange = function () { if (this.value) setD(this.value); };
-      q('#dmode', m).onchange = function () { F.dailyMode = this.value; A.render(); };
-      q('#dmtd', m).onchange = function () { F.dailyMtd = this.checked; A.render(); };
+      qa('[data-dmode]', m).forEach(function (b) { b.onclick = function () { F.dailyMode = b.dataset.dmode; A.render(); }; });
+      q('[data-dmtd]', m).onclick = function () { F.dailyMtd = !F.dailyMtd; A.render(); };
       q('[data-dprev]', m).onclick = function () { setD(addD(F.dailyDate || F.D.maxDate || today(), -1)); };
       q('[data-dnext]', m).onclick = function () { setD(addD(F.dailyDate || F.D.maxDate || today(), 1)); };
       bindFltPanel(m, 'daily', DASH_DIMS, function () { return F.dflt; }, function (f) { F.dflt = f; A.render(); });
@@ -334,7 +426,7 @@
     /* ---------- فهرس التقارير ---------- */
     function catalogHTML() {
       var n = Object.keys(R).length;
-      var h = '<div class="card"><input class="input" id="rq" placeholder="ابحث في ' + n + ' تقريراً: مبيعات، صنف، عميل، ميزانية، مخزون…" value="' + esc(F.rq || '') + '"><div class="chips" style="margin-top:8px">' +
+      var h = '<div class="card"><input class="input" id="rq" placeholder="ابحث في ' + n + ' تقريراً: مبيعات، صنف، عميل، ميزانية، مخزون…" value="' + esc(F.rq || '') + '"><div class="chips cat-jump" style="margin-top:8px">' +
         CATS.map(function (c) { return '<button class="chip" data-jump="' + c[0] + '">' + c[1] + '</button>'; }).join('') + '</div></div>';
       CATS.forEach(function (c) {
         var list = c[0] === 'mine' ? F.reports.map(function (r) { return { id: 'c:' + r.id, name: r.name, desc: r.def.kind === 'formula' ? 'تقرير بالمعادلات' : (DS[r.def.ds] || {}).name || '', by: r.by }; })
@@ -364,7 +456,9 @@
       var base = { preset: 'month', from: t.slice(0, 7) + '-01', to: t, asof: t, gran: 'day', level: 3, top: 0, rby: 'cust', vby: 'none', box: 'all', nonzero: 'nz', measure: 'value', idle: 30, boxkind: 'all', etype: 'all', flt: null };
       var saved = (st.finParams || {})[id] || {};
       var p = Object.assign(base, saved, params || {});
-      if (params && params.from && params.preset && params.preset !== 'custom') { p.from = params.from; p.to = params.to; }
+      if (params && params.preset) { p.year = params.year || null; p.month = params.month || null; }
+      var dd = def ? { params: def.def.kind === 'formula' ? ['period'] : ['period'] } : R[id];
+      if (isCmp(p.preset) && dd.params.indexOf('period') < 0) p.preset = 'month';
       F.cur = { id: id, custom: def, p: p };
       go('reports');
       window.scrollTo(0, 0);
@@ -373,8 +467,51 @@
     function curDef() { var c = F.cur; return c.custom ? { name: c.custom.name, desc: c.custom.def.kind === 'formula' ? 'تقرير بالحساب المبسّط' : (DS[c.custom.def.ds] || {}).name, params: c.custom.def.kind === 'formula' ? ['period', 'flt'] : ['period'], fdims: DASH_DIMS } : R[c.id]; }
     function runCur() {
       var c = F.cur, p = c.p;
-      if (p.preset && p.preset !== 'custom') { var r = presetRange(p.preset); p.from = r[0]; p.to = r[1]; }
-      return c.custom ? runCustom(c.custom.def, p) : R[c.id].run(p);
+      if (p.preset && p.preset !== 'custom') { var r = presetRange(p.preset, p.from, p.to, p.year, p.month); p.from = r[0]; p.to = r[1]; }
+      var fn = function (pp) { return c.custom ? runCustom(c.custom.def, pp) : R[c.id].run(pp); };
+      if (isCmp(p.preset) && curDef().params.indexOf('period') >= 0) return runCompare(fn, p);
+      return fn(p);
+    }
+    // مقارنة الأرباع أو الأشهر: يُشغَّل التقرير لكل فترة، ويُعرض رقم واحد يختاره المستخدم في عمود لكل فترة
+    var CMP_PREF = ['net', 'tot', 'v', 'a', 'sales', 'val', 'inn', 'pur', 'qty', 'q', 'dr', 'n'];
+    var CMP_NOSUM = /^(close|bal|open|avg|avgp|margin|share|rp|cr|ch|cover|lim|cost|p|min|max|spread|daily|age)$/;
+    function runCompare(fn, p) {
+      var pcs = comparePeriods(p.preset, p.year);
+      if (!pcs.length) return { cols: [C('m', '')], rows: [], empty: 'لا توجد فترات للمقارنة في هذه السنة' };
+      var res = pcs.map(function (c) { return fn(Object.assign({}, p, { preset: 'custom', from: c.from, to: c.to })); });
+      var base = res.filter(function (r) { return r && r.cols && r.cols.length > 1 && !r.empty; })[0];
+      if (!base) return res[0];
+      var nums = base.cols.filter(function (c) { return isNum(c); });
+      if (!nums.length) return { cols: [C('m', '')], rows: [], empty: 'هذا التقرير لا يحتوي أرقاماً للمقارنة' };
+      var mk = nums.filter(function (c) { return c.k === p.cmpcol; })[0] || CMP_PREF.map(function (k) { return nums.filter(function (c) { return c.k === k; })[0]; }).filter(Boolean)[0] || nums[0];
+      var firstNum = base.cols.indexOf(nums[0]), keyCols = base.cols.slice(0, Math.max(1, Math.min(2, firstNum))).filter(function (c) { return !isNum(c); });
+      var rows = [], idx = {};
+      res.forEach(function (r, j) {
+        (r.rows || []).forEach(function (row) {
+          var key = keyCols.map(function (c) { return plain(row[c.k]); }).join('|');
+          var o = idx[key];
+          if (!o) { o = idx[key] = { _lvl: row._lvl, _b: row._b, _hl: row._hl, _acc: row._acc, _fmt: row._fmt }; keyCols.forEach(function (c) { o[c.k] = row[c.k]; }); rows.push(o); }
+          var v = row[mk.k]; if (typeof v === 'number') o['p' + j] = (o['p' + j] || 0) + v;
+        });
+      });
+      var sumOk = mk.t !== 'pct' && !CMP_NOSUM.test(mk.k);
+      rows.forEach(function (o) {
+        if (sumOk) o.tot = pcs.reduce(function (sm, c, j) { return sm + (o['p' + j] || 0); }, 0);
+        var n = pcs.length; if (n > 1 && typeof o['p' + (n - 1)] === 'number' && o['p' + (n - 2)]) o.chg = (o['p' + (n - 1)] - o['p' + (n - 2)]) / Math.abs(o['p' + (n - 2)]) * 100;
+      });
+      var cols = keyCols.concat(pcs.map(function (c, j) { return C('p' + j, c.l, mk.t); }));
+      if (sumOk) cols.push(C('tot', 'الإجمالي', mk.t));
+      if (pcs.length > 1) cols.push(C('chg', 'تغيّر آخر فترة', 'pct'));
+      var total = null;
+      if (res.some(function (r) { return r.total && typeof r.total[mk.k] === 'number'; })) {
+        total = { name: 'الإجمالي' };
+        pcs.forEach(function (c, j) { var t = res[j].total; total['p' + j] = t && typeof t[mk.k] === 'number' ? t[mk.k] : null; });
+        if (sumOk) total.tot = pcs.reduce(function (sm, c, j) { return sm + (total['p' + j] || 0); }, 0);
+        var n2 = pcs.length; if (n2 > 1 && total['p' + (n2 - 2)]) total.chg = (total['p' + (n2 - 1)] - total['p' + (n2 - 2)]) / Math.abs(total['p' + (n2 - 2)]) * 100;
+      }
+      var chartRows = pcs.map(function (c, j) { return { name: c.l, v: total ? total['p' + j] || 0 : rows.reduce(function (sm, o) { return sm + (o._b ? 0 : o['p' + j] || 0); }, 0) }; });
+      return { cols: cols, rows: rows, total: total, cmp: { cols: nums.map(function (c) { return [c.k, c.l]; }), mk: mk.k },
+        chart: { type: 'bar', x: 'name', y: ['v'], yl: [mk.l], rowsOverride: chartRows }, note: 'المقارنة حسب: ' + mk.l + (base.note ? ' · ' + plain(base.note) : '') };
     }
 
     /* ---------- التصفية (عملاء، أصناف، مخازن…) ---------- */
@@ -403,7 +540,8 @@
       f = fObj(f);
       var applied = dims.filter(function (d) { var v = f[DIM[d][0]]; return v && v.length; });
       applied = applied.filter(function (d, i) { return applied.map(function (x) { return DIM[x][0]; }).indexOf(DIM[d][0]) === i; });
-      return '<div class="fp" data-fp="' + key + '"><div class="fp-head"><span class="fp-t">' + ICON_FILTER + ' تصفية</span>' + dims.map(function (d) {
+      var open = applied.length || (F.fpOpen && F.fpOpen[key]);
+      return '<details class="fp" data-fp="' + key + '"' + (open ? ' open' : '') + '><summary class="fp-sum"><span class="fp-t">' + ICON_FILTER + ' تصفية</span>' + (applied.length ? '<span class="fp-cnt">' + fCount(f) + ' محدد</span>' : '<span class="small muted">عميل، صنف، مخزن… (اختياري)</span>') + '<i class="car">▾</i></summary><div class="fp-head">' + dims.map(function (d) {
         var n = (f[DIM[d][0]] || []).length;
         return '<button class="chip fp-add' + (n ? ' on' : '') + (/^x/.test(d) ? ' fp-x' : '') + '" data-fadd="' + key + '|' + d + '">' + (/^x/.test(d) ? '− ' : '+ ') + esc(DIM[d][2]) + (n ? ' <span class="fp-n">' + n + '</span>' : '') + '</button>';
       }).join('') + '</div>' +
@@ -413,9 +551,10 @@
             return '<span class="fp-tag' + (/^x/.test(k) ? ' x' : '') + '">' + esc(fltName(k, x)) + '<button aria-label="إزالة" data-frm="' + key + '|' + k + '|' + i + '">×</button></span>';
           }).join('') + '</div>';
         }).join('') + '<button class="btn sm ghost fp-clear" data-fclr="' + key + '">✕ إلغاء كل التصفية</button></div>'
-          : '<div class="fp-none small muted">بدون تصفية: يُعرض الكل. اضغط «+ صنف» أو «+ عميل» لتحديد ما تريد.</div>') + '</div>';
+          : '<div class="fp-none small muted">بدون تصفية: يُعرض الكل.</div>') + '</details>';
     }
     function bindFltPanel(m, key, dims, getF, setF) {
+      var dt = q('[data-fp="' + key + '"]', m); if (dt) dt.addEventListener('toggle', function () { F.fpOpen = F.fpOpen || {}; F.fpOpen[key] = dt.open; });
       qa('[data-fadd^="' + key + '|"]', m).forEach(function (b) {
         b.onclick = function () {
           var d = b.dataset.fadd.split('|')[1], k = DIM[d][0], f = Object.assign({}, fObj(getF()));
@@ -433,12 +572,10 @@
     function paramsHTML(def, p) {
       var h = '';
       var has = function (k) { return def.params.indexOf(k) >= 0; };
-      if (has('period')) {
-        h += '<div class="chips">' + PRESETS.map(function (pp) { return '<button class="chip' + (p.preset === pp[0] ? ' on' : '') + '" data-pp="' + pp[0] + '">' + pp[1] + '</button>'; }).join('') + '</div>';
-        if (p.preset === 'custom') h += '<div class="row"><label class="small">من <input type="date" class="input num" data-pk="from" value="' + p.from + '"></label><label class="small">إلى <input type="date" class="input num" data-pk="to" value="' + p.to + '"></label></div>';
-      }
+      if (has('period')) h += periodHTML(p, 'rep');
       var sel = function (k, label, opts) { return '<label class="field fin-param"><span class="lbl">' + label + '</span><select class="input" data-pk="' + k + '">' + opts.map(function (o) { return '<option value="' + esc(o[0]) + '"' + (String(p[k]) === String(o[0]) ? ' selected' : '') + '>' + esc(o[1]) + '</option>'; }).join('') + '</select></label>'; };
       var row = '';
+      if (isCmp(p.preset) && F.cur && F.cur.res && F.cur.res.cmp) { if (!p.cmpcol || !F.cur.res.cmp.cols.some(function (c) { return c[0] === p.cmpcol; })) p.cmpcol = F.cur.res.cmp.mk; row += sel('cmpcol', 'الرقم المقارن', F.cur.res.cmp.cols); }
       if (has('asof')) row += '<label class="field fin-param"><span class="lbl">في تاريخ</span><input type="date" class="input num" data-pk="asof" value="' + p.asof + '"></label>';
       if (has('asof2')) row += '<label class="field fin-param"><span class="lbl">مقارنة بتاريخ</span><input type="date" class="input num" data-pk="asof2" value="' + esc(p.asof2 || addD(p.asof.slice(0, 4) + '-01-01', -1)) + '"></label>';
       if (has('gran')) row += sel('gran', 'التجميع', GRAN);
@@ -454,7 +591,7 @@
       if (has('box')) row += sel('box', 'الصندوق/البنك', [['all', 'كل الصناديق والبنوك (ملخص)']].concat(activeBoxes().map(function (b) { return [b.acc, b.name]; })));
       if (has('search')) row += '<label class="field fin-param"><span class="lbl">بحث</span><input class="input" data-pk="search" value="' + esc(p.search || '') + '" placeholder="رقم أو اسم"></label>';
       if (has('account')) row += '<div class="field fin-param" style="flex:2"><span class="lbl">الحساب</span><button class="input" data-accpick style="text-align:start">' + (p.account ? esc(acc(p.account) ? acc(p.account).code + ' · ' + acc(p.account).name : '—') : 'اختر الحساب…') + '</button></div>';
-      if (row) h += '<div class="row fin-params">' + row + '</div>';
+      if (row) h += '<div class="fin-params">' + row + '</div>';
       if (has('flt')) h += fltPanelHTML(fdimsFor(def), p.flt, 'rep');
       return h;
     }
@@ -466,10 +603,10 @@
       try { res = runCur(); } catch (e) { res = { cols: [], rows: [], empty: 'تعذّر إعداد التقرير: ' + e.message }; if (window.console) console.error(e); }
       c.res = res;
       var p = c.p;
-      var h = '<div class="card"><div class="row fin-head"><button class="btn sm ghost" data-back>→ التقارير</button><div class="grow"><h2 style="margin:0">' + esc(res.title || def.name) + '</h2><div class="small muted">' + esc(def.desc || '') + '</div></div>' +
-        '<button class="btn sm" data-xls>Excel</button><button class="btn sm" data-prt>' + ICON.print + ' طباعة / PDF</button>' + (c.custom && canEdit() ? '<button class="btn sm ghost" data-edit>تعديل</button>' : '') + '</div>' +
-        '<div style="margin-top:10px">' + paramsHTML(def, p) + '</div>' +
-        '<div class="small muted" style="margin-top:6px">' + (def.params.indexOf('asof') >= 0 ? 'في ' + N(p.asof) : def.params.indexOf('period') >= 0 ? perLabel(p.from, p.to) : '') + (res.note ? ' · ' + esc(plain(res.note)) : '') + '</div></div>';
+      var h = '<div class="card head-card"><div class="hc-top"><button class="iconbtn hc-back" data-back aria-label="رجوع إلى التقارير">→</button><div class="grow"><h2>' + esc(res.title || def.name) + '</h2><div class="small muted hc-desc">' + esc(def.desc || '') + '</div></div>' +
+        '<div class="rh-act"><button class="btn sm" data-xls aria-label="Excel">' + ICON_XLS + '<span class="bt-txt">Excel</span></button><button class="btn sm" data-prt aria-label="طباعة">' + ICON.print + '<span class="bt-txt">طباعة</span></button>' + (c.custom && canEdit() ? '<button class="btn sm ghost" data-edit aria-label="تعديل">' + ICON_EDIT + '<span class="bt-txt">تعديل</span></button>' : '') + '</div></div>' +
+        paramsHTML(def, p) +
+        (res.note ? '<div class="small muted rep-note">' + esc(plain(res.note)) + '</div>' : '') + '</div>';
       if (res.empty) return h + '<div class="card empty">' + esc(res.empty) + '</div>';
       if (res.chart && (res.chart.rowsOverride || res.rows.length > 1)) h += '<div class="card">' + chartSVG(res.chart, res.rows) + '</div>';
       h += '<div class="card scroll-x fin-table">' + tableHTML(res) + '</div>';
@@ -508,7 +645,7 @@
       var c = F.cur, p = c.p, def = curDef();
       var save = function () { st.finParams = st.finParams || {}; st.finParams[c.id] = Object.assign({}, p); try { localStorage.setItem('rk.finParams', JSON.stringify(st.finParams)); } catch (e) {} };
       q('[data-back]', m).onclick = function () { F.cur = null; A.render(); };
-      qa('[data-pp]', m).forEach(function (b) { b.onclick = function () { p.preset = b.dataset.pp; save(); A.render(); }; });
+      bindPeriod(m, 'rep', function () { return p; }, function (ps) { Object.assign(p, ps); save(); A.render(); }, def.params.indexOf('period') >= 0);
       qa('[data-pk]', m).forEach(function (el) {
         el.addEventListener('change', function () { p[el.dataset.pk] = el.value; if (el.dataset.pk === 'from' || el.dataset.pk === 'to') p.preset = 'custom'; save(); A.render(); });
       });
@@ -525,7 +662,7 @@
     }
 
     /* ---------- التصدير والطباعة ---------- */
-    function periodText(p, def) { return def.params.indexOf('asof') >= 0 ? 'في ' + p.asof : def.params.indexOf('period') >= 0 ? (p.from === p.to ? p.from : 'من ' + p.from + ' إلى ' + p.to) : ''; }
+    function periodText(p, def) { return def.params.indexOf('asof') >= 0 ? 'في ' + p.asof : def.params.indexOf('period') >= 0 ? (isCmp(p.preset) ? presetName(p.preset, p.year) + ' · ' : '') + (p.from === p.to ? p.from : 'من ' + p.from + ' إلى ' + p.to) : ''; }
     function plain(s) { return String(s || '').replace(/<[^>]+>/g, ''); }
     function exportXLSX(res, name, p) {
       A.withXLSX().then(function (X) {
