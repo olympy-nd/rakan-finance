@@ -193,8 +193,10 @@
     q('[data-more]').onclick = function () {
       var rest = tabs.filter(function (t) { return !BMAIN[t[0]]; });
       sheet('المزيد', '<div class="more-list">' + rest.map(function (t) { return '<button class="item tap more-it' + (st.tab === t[0] ? ' sel' : '') + '" data-tab="' + t[0] + '"><b>' + esc(t[1]) + '</b></button>'; }).join('') +
+        (window.RKInstall && RKInstall.can() ? '<button class="item tap more-it" data-minst><b>تثبيت التطبيق على الجهاز</b></button>' : '') +
         '<button class="item tap more-it" data-mpin>' + ICON.key + '<b>تغيير الرقم السري</b></button><button class="item tap more-it" data-mlo>' + ICON.out + '<b>خروج</b></button></div>', function (s) {
         qa('[data-tab]', s.el).forEach(function (b) { b.onclick = function () { s.close(); go(b.dataset.tab); }; });
+        var mi = q('[data-minst]', s.el); if (mi) mi.onclick = function () { s.close(); RKInstall.show(); };
         q('[data-mpin]', s.el).onclick = function () { s.close(); pinSheet(); };
         q('[data-mlo]', s.el).onclick = function () { s.close(); q('#lo').click(); };
       });
