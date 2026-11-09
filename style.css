@@ -298,3 +298,38 @@ video.scan { width: 100%; border-radius: 14px; background: #000; max-height: 50v
   .chart.hb .cl { font-size: 17px; } .chart.hb .cv { font-size: 15px; }
 }
 button.item { text-align: start; width: 100%; font: inherit; color: inherit; cursor: pointer; }
+
+/* ---------- التقرير اليومي ---------- */
+.daily-wrap { display: flex; justify-content: center; }
+table.daily { border-collapse: collapse; font-family: var(--font); min-width: 420px; direction: ltr; }
+table.daily th, table.daily td { border: 1px solid #A6A6A6; padding: 7px 14px; }
+table.daily .dh-s, table.daily .dh-d { background: #ED7D31; color: #fff; font-weight: 800; font-size: 15px; text-align: center; }
+table.daily .dl { background: #1F3864; color: #fff; font-weight: 700; text-align: left; white-space: nowrap; font-size: 14px; }
+table.daily .dv { text-align: center; font-variant-numeric: tabular-nums; font-size: 15px; white-space: nowrap; background: var(--card); color: var(--ink); }
+table.daily tr.dsep th { background: #0C4CA2; color: #fff; text-align: left; font-weight: 800; }
+.derr { color: var(--err); font-weight: 700; }
+.p-daily table.daily { margin: 4mm auto; min-width: 120mm; }
+.p-daily table.daily .dv { background: #fff; color: #000; }
+.p-daily table.daily th, .p-daily table.daily td { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+/* ---------- التصفية ومحرر المعادلات ---------- */
+.fin-flt { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 10px; }
+.fin-settabs { margin-bottom: 12px; }
+.fe-list .fe-row { align-items: center; }
+.fe-row.fe-sep { background: var(--tint); }
+.fe-code { direction: rtl; unicode-bidi: plaintext; background: var(--tint); border-radius: 6px; padding: 1px 6px; font-size: 12.5px; }
+.fe-btns { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
+.fe-f { font-family: ui-monospace, Consolas, var(--font); font-size: 15px; unicode-bidi: plaintext; }
+.fe-ops { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.fe-ops .chip { padding: 4px 10px; }
+.fe-prev { margin-top: 6px; min-height: 22px; }
+.fe-prev b { font-size: 18px; color: var(--blue-deep); }
+.fe-help summary, .fn-grp summary { cursor: pointer; font-weight: 700; padding: 6px 0; }
+.fn-list { display: grid; gap: 4px; }
+.fn-it { text-align: start; background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; cursor: pointer; font: inherit; color: inherit; }
+.fn-it:hover { border-color: var(--blue); }
+.fn-it b { display: block; font-size: 13.5px; color: var(--blue-deep); unicode-bidi: plaintext; }
+.fn-it span { font-size: 12.5px; color: var(--muted); }
+.danger-t { color: var(--err); }
+button.kpi { text-align: start; font: inherit; cursor: pointer; width: 100%; }
+button.kpi:hover { border-color: var(--blue); }
+code { unicode-bidi: plaintext; }

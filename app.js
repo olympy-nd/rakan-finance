@@ -63,7 +63,7 @@
     if (window.XLSX) return Promise.resolve(window.XLSX);
     return new Promise(function (res, rej) {
       var sc = document.createElement('script');
-      sc.src = 'xlsx.full.min.js';
+      sc.src = 'xlsx.style.min.js';
       sc.onload = function () { res(window.XLSX); };
       sc.onerror = function () { rej(new Error('تعذّر تحميل مكتبة Excel. تأكد من الإنترنت')); };
       document.head.appendChild(sc);
@@ -165,8 +165,8 @@
 
   /* ===================== الهيكل ===================== */
   function tabsFor(u) {
-    var t = [['dash', 'لوحة المؤشرات'], ['reports', 'التقارير']];
-    if (u.can_edit) t.push(['builder', 'تقرير مخصص'], ['settings', 'الصناديق والإعدادات']);
+    var t = [['dash', 'لوحة المؤشرات'], ['daily', 'التقرير اليومي'], ['reports', 'التقارير']];
+    if (u.can_edit) t.push(['builder', 'تقرير مخصص'], ['settings', 'الإعدادات']);
     if (u.role === 'manager') t.push(['users', 'المستخدمون'], ['audit', 'سجل التدقيق']);
     return t;
   }
@@ -233,7 +233,7 @@
   var ROLE_HELP = { manager: 'كل الصلاحيات، وإدارة المستخدمين، وسجل التدقيق. يُطلب رمز من بريده عند الدخول من جهاز جديد.',
     accountant: 'كل التقارير، وتعريف الصناديق والبنوك، وحفظ التقارير المخصصة.', viewer: 'يرى لوحة المؤشرات والتقارير فقط، دون تعديل.' };
   VIEWS.users = {
-    load: function () { return call('users_list').then(function (r) { st.users = r.users; }); },
+    load: function () { return call('users_list').then(function (r) { st.users = r.users; st.codesToMgr = !!r.codes_to_manager; }); },
     html: function () {
       if (!st.users) return '<div class="card loading"><span class="spin"></span> جارٍ التحميل…</div>';
       return '<div class="sec-title"><h2>مستخدمو المنظومة المالية</h2><button class="btn primary" data-new>+ مستخدم جديد</button></div>' +
@@ -241,9 +241,14 @@
         st.users.map(function (u) {
           return '<button class="item tap" data-u="' + esc(u.id) + '"><div class="main"><b>' + esc(u.name) + (u.active ? '' : ' <span class="badge">موقوف</span>') + '</b><div class="meta"><span class="ltr">' + esc(u.username) +
             '</span><span class="badge">' + esc(ROLE_AR[u.role] || u.role) + '</span>' + (u.email ? '<span>' + esc(u.email) + '</span>' : '') + '<span>آخر ظهور: ' + (u.last_seen ? N(String(u.last_seen).slice(0, 16)) : '—') + '</span></div></div></button>';
-        }).join('') + '</div>';
+        }).join('') + '</div>' +
+        '<div class="card" style="margin-top:14px"><h3>رمز التحقق عند الدخول من جهاز جديد</h3>' +
+        '<p class="small" style="margin:0 0 8px">يُرسل الرمز إلى البريد المكتوب في حساب المستخدم نفسه (بريده الشخصي)، ويصله من حساب Google المالك للمنظومة. المستخدم الذي ليس له بريد يدخل بالرقم السري فقط.</p>' +
+        '<label class="chk"><input type="checkbox" id="c2m"' + (st.codesToMgr ? ' checked' : '') + '> من ليس له بريد: أرسل رمز دخوله إلى بريد المدير، ويعطيه المدير الرمز</label></div>';
     },
     bind: function (m) {
+      var c2 = q('#c2m', m);
+      if (c2) c2.onchange = function () { c2.disabled = true; call('sec_save', { codes_to_manager: c2.checked }).then(function (r) { st.codesToMgr = r.codes_to_manager; c2.disabled = false; toast('حُفظ'); }).catch(function (e) { c2.checked = !c2.checked; c2.disabled = false; toast(e.message, true); }); };
       var nb = q('[data-new]', m);
       if (nb) nb.onclick = function () { userForm(null); };
       qa('[data-u]', m).forEach(function (b) { b.onclick = function () { userForm(st.users.filter(function (u) { return u.id === b.dataset.u; })[0]); }; });
