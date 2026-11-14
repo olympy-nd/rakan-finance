@@ -516,3 +516,8 @@ details.fp .fp-head { border-top: 1px solid var(--line); padding-top: 10px; }
   .day-lbl { flex-basis: 100%; text-align: center; }
 }
 @media (max-width: 760px) { .cat-jump { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; } .cat-jump .chip { flex-shrink: 0; padding: 7px 12px; font-size: 13.5px; } }
+/* اختيار الفرع (عند قراءة أكثر من قاعدة سراج) */
+.br-bar { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; flex-wrap: wrap; }
+.br-bar .br-l { font-weight: 700; color: var(--muted, #5b6b82); font-size: 14px; }
+.br-bar .seg { flex: 1 1 auto; }
+@media (max-width: 600px) { .br-bar .br-l { display: none; } .br-bar .seg-b { font-size: 13px; padding: 8px 8px; } }

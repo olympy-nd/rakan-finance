@@ -91,7 +91,7 @@
       F.loading = (F.rows ? Promise.resolve() : Promise.all([S.get('fin:rows'), S.get('fin:rev'), S.get('fin:meta'), S.get('fin:aux')]).then(function (v) {
         F.rows = v[0] || {}; F.rev = v[1] || 0; F.meta = v[2] || null;
         if (v[3]) { F.boxes = v[3].boxes || []; F.reports = v[3].reports || []; F.config = v[3].config || {}; }
-        if (Object.keys(F.rows).length) build();
+        if (Object.keys(F.rows).length) rebuild();
       })).then(function () {
         if (!navigator.onLine) throw new Error('لا يوجد اتصال بالإنترنت');
         return pull(force).then(function () { return Promise.all([call('fin_boxes'), call('fin_reports'), call('fin_config').catch(function () { return { config: F.config }; })]); }).then(function (r) {
@@ -120,7 +120,7 @@
         });
       };
       return step().then(function () {
-        if (changed || !F.D || force) { if (Object.keys(F.rows).length) build(); else F.D = null; return Promise.all([S.set('fin:rows', F.rows), S.set('fin:rev', F.rev), S.set('fin:meta', F.meta)]); }
+        if (changed || !F.D || force) { if (Object.keys(F.rows).length) rebuild(); else { F.D = null; F.Dby = {}; } return Promise.all([S.set('fin:rows', F.rows), S.set('fin:rev', F.rev), S.set('fin:meta', F.meta)]); }
         return S.set('fin:meta', F.meta);
       });
     }
@@ -132,11 +132,40 @@
     // أثر كل نوع فاتورة على كمية المخزن (المناقلة: من مخزن إلى آخر)
     var STOCK_SIGN = {}; STOCK_SIGN[OPEN_STOCK] = 1; STOCK_SIGN[PUR] = 1; STOCK_SIGN[PRET] = -1; STOCK_SIGN[SALE] = -1; STOCK_SIGN[SRET] = 1; STOCK_SIGN[ISSUE] = -1;
 
-    function build() {
+    /* ---------- الفروع: كل قاعدة سراج لها نموذج بيانات مستقل، والموحّد يجمعها ----------
+     * F.br: '*' موحّد، أو رمز الفرع ('' للقاعدة الرئيسية)، أو 'cmp' مقارنة الفروع (تُبنى الأعمدة من نماذج الفروع). */
+    function branches() { var b = F.meta && F.meta.branches; return b && b.length ? b : [{ code: '', name: 'الإدارة العامة' }]; }
+    function multiBr() { return branches().length > 1; }
+    function brName(code) { var b = branches().filter(function (x) { return x.code === code; })[0]; return code === '*' ? 'كل الفروع (موحّد)' : code === 'cmp' ? 'مقارنة الفروع' : b ? b.name : code; }
+    function viewBr() {
+      if (!multiBr()) return '*';
+      var b = F.br === undefined ? (function () { try { return localStorage.getItem('fin:br'); } catch (e) { return null; } })() : F.br;
+      if (b === null || b === undefined) b = '*';
+      if (b !== '*' && b !== 'cmp' && !branches().some(function (x) { return x.code === b; })) b = '*';
+      return (F.br = b);
+    }
+    function setBr(b) { F.br = b; try { localStorage.setItem('fin:br', b); } catch (e) {} useBr(b === 'cmp' ? '*' : b); }
+    // يجعل نموذج فرع معيّن هو الحالي (F.D وذاكرته المؤقتة)، ويبنيه عند أول طلب فقط
+    function useBr(code) {
+      code = multiBr() ? code : '*';
+      F.Dby = F.Dby || {}; F.Dcache = F.Dcache || {};
+      if (!F.Dby[code]) F.Dby[code] = build(code);
+      F.D = F.Dby[code]; F.cache = F.Dcache[code] || (F.Dcache[code] = {}); F.curBr = code;
+      return F.D;
+    }
+    function rebuild() { F.Dby = {}; F.Dcache = {}; useBr(viewBr() === 'cmp' ? '*' : viewBr()); }
+    function resetCache() { F.Dcache = {}; F.cache = F.Dcache[F.curBr || '*'] = {}; }
+    // يشغّل دالة على نموذج فرع ثم يعيد النموذج الحالي كما كان
+    function withBr(code, fn) { var prev = F.curBr || '*'; useBr(code); try { return fn(); } finally { useBr(prev); } }
+
+    function build(code) {
       var T = { acc: {}, bt: {}, it: {}, cu: {}, ag: {}, us: {}, st: {}, item: {}, jl: [], inv: {}, invl: [] };
+      var all = code === undefined || code === '*';
       Object.keys(F.rows).forEach(function (k) {
         var v = F.rows[k], d;
         try { d = JSON.parse(v[1]); } catch (e) { return; }
+        if (!all && (d.br || '') !== code) return;
+        d.br = d.br || '';
         if (v[0] === 'jl' || v[0] === 'invl') T[v[0]].push(d); else if (T[v[0]]) T[v[0]][d.id] = d;
       });
       // الحسابات: الشجرة والمسار والطبيعة
@@ -211,13 +240,15 @@
         }
         onHand[it] = (onHand[it] || 0) + m.q;
       });
-      F.D = { T: T, byAcc: byAcc, byEntry: byEntry, moves: moves, costHist: costHist,
+      var D = { T: T, br: all ? '*' : code, byAcc: byAcc, byEntry: byEntry, moves: moves, costHist: costHist,
         accList: Object.keys(T.acc).map(function (k) { return T.acc[k]; }).sort(function (x, y) { return String(x.po || x.code).localeCompare(String(y.po || y.code)); }),
         maxDate: T.jl.reduce(function (m, l) { return l.d > m ? l.d : m; }, '') };
-      F.D.invs = Object.keys(T.inv).map(function (k) { return T.inv[k]; });
-      F.D.byCode = {}; F.D.accList.forEach(function (a) { F.D.byCode[a.code] = a; });
-      F.D.custAccs = {}; F.D.invs.forEach(function (v) { if (v.c === SALE || v.c === SRET) F.D.custAccs[v.ck] = v.name; });
-      F.cache = {};
+      D.invs = Object.keys(T.inv).map(function (k) { return T.inv[k]; });
+      // رموز الحسابات تختلف بين القواعد وقد تتكرر، فنحفظ كل الحسابات التي تحمل الرمز
+      D.byCode = {}; D.byCodeAll = {};
+      D.accList.forEach(function (a) { if (!D.byCode[a.code] || !a.br) D.byCode[a.code] = a; (D.byCodeAll[a.code] = D.byCodeAll[a.code] || []).push(a); });
+      D.custAccs = {}; D.invs.forEach(function (v) { if (v.c === SALE || v.c === SRET) D.custAccs[v.ck] = v.name; });
+      return D;
     }
     function cmpLine(x, y) { return x.d < y.d ? -1 : x.d > y.d ? 1 : (Number(x.e) - Number(y.e)) || (Number(x.so) - Number(y.so)); }
 
@@ -231,13 +262,12 @@
       return out;
     }
     // رموز حسابات مفصولة بفواصل ← كل الحسابات تحتها (الحساب الرئيسي يشمل فروعه)
-    function byCodes(codes) {
-      var key = 'c:' + codes;
+    function byCodes(codes, brOnly) {
+      var key = 'c:' + codes + (brOnly === undefined ? '' : '@' + brOnly);
       if (F.cache[key]) return F.cache[key];
       var ids = [];
       String(codes || '').split(/[,،\s]+/).map(function (c) { return c.trim(); }).filter(String).forEach(function (c) {
-        var a = F.D.byCode[c];
-        if (a) ids = ids.concat(descend(a.id));
+        (F.D.byCodeAll[c] || []).forEach(function (a) { if (brOnly === undefined || a.br === brOnly) ids = ids.concat(descend(a.id)); });
       });
       return (F.cache[key] = uniq(ids));
     }
@@ -264,9 +294,23 @@
       return r;
     }
     function yearStart() { return (F.meta && F.meta.settings && F.meta.settings.year_start) || today().slice(0, 4) + '-01-01'; }
-    function recvIds() { return leavesOf(byCodes((F.meta && F.meta.settings && F.meta.settings.recv) || '1601')); }
-    function payIds() { return leavesOf(byCodes((F.meta && F.meta.settings && F.meta.settings.pay) || '261')); }
-    function activeBoxes(kind) { return F.boxes.filter(function (b) { return b.active && (!kind || b.kind === kind || b.name.indexOf(kind) >= 0); }); }
+    // حسابات العملاء والموردين: لكل فرع حساباته (دليل حسابات مستقل). الفرع الذي لم تُحدَّد له يأخذ رموز القاعدة الرئيسية
+    function grpCodes(k, code) {
+      var s = (F.meta && F.meta.settings) || {}, def = s[k] || (k === 'recv' ? '1601' : '261');
+      return code ? ((s.br && s.br[code] && s.br[code][k]) || def) : def;
+    }
+    function grpIds(k) {
+      var key = 'grp:' + k;
+      if (F.cache[key]) return F.cache[key];
+      var ids = [];
+      if (!multiBr()) ids = byCodes(grpCodes(k, ''));
+      else branches().forEach(function (b) { if (F.D.br === '*' || F.D.br === b.code) ids = ids.concat(byCodes(grpCodes(k, b.code), b.code)); });
+      return (F.cache[key] = leavesOf(uniq(ids)));
+    }
+    function recvIds() { return grpIds('recv'); }
+    function payIds() { return grpIds('pay'); }
+    // صناديق الفرع المعروض فقط (حساب الصندوق موجود في نموذجه)
+    function activeBoxes(kind) { return F.boxes.filter(function (b) { return b.active && (!kind || b.kind === kind || b.name.indexOf(kind) >= 0) && (!multiBr() || !!T().acc[b.acc]); }); }
     function boxIds(kind) { return activeBoxes(kind).map(function (b) { return b.acc; }); }
     function counterpart(l, ids) {
       var others = (F.D.byEntry[l.e] || []).filter(function (x) { return ids.indexOf(x.a) < 0 && (l.dr ? x.cr : x.dr); });
@@ -1488,6 +1532,8 @@
           if (!F.D && F.rows && !Object.keys(F.rows).length && !F.loading && F.meta) return '<div class="card empty"><p>لم تصل بيانات مالية من الوكيل بعد.</p><p class="small muted">بعد إعداد الوكيل على جهاز سراج بمفتاح المنظومة المالية سيرسل القيود والفواتير تلقائياً خلال دقائق.</p><button class="btn primary" data-frefresh>' + ICON.refresh + ' تحقق الآن</button></div>';
           if (!F.D) return '<div class="card loading"><span class="spin"></span> <span id="finprog">' + esc(F.progress || 'جارٍ تحميل البيانات المالية… أول مرة قد تستغرق دقيقة') + '</span></div>';
           h += syncLine();
+          if (sub === 'dash' || sub === 'daily' || sub === 'reports') h += brBarHTML();
+          else if (multiBr()) useBr('*');   // الإعدادات والمنشئ تعمل على كل البيانات
           try {
             if (sub === 'dash') h += dashHTML();
             else if (sub === 'daily') h += dailyHTML();
@@ -1501,6 +1547,7 @@
           var rf = q('[data-frefresh]', m);
           if (rf) rf.onclick = function () { busy(rf, true); load(true).then(function () { toast('حُدّثت البيانات المالية'); A.render(); }).catch(function (e) { busy(rf, false); toast(e.message, true); A.render(); }); };
           if (!F.D) return;
+          qa('[data-brv]', m).forEach(function (b) { b.onclick = function () { setBr(b.dataset.brv); A.render(); }; });
           qa('[data-open]', m).forEach(function (b) { b.addEventListener('click', function () { openReport(b.dataset.open, b.dataset.per ? { preset: b.dataset.per, from: F.lastRange && F.lastRange[0], to: F.lastRange && F.lastRange[1] } : null); }); });
           if (sub === 'dash') bindDash(m);
           else if (sub === 'daily') bindDaily(m);
@@ -1511,6 +1558,18 @@
       };
     }
     SUBS.forEach(function (k) { A.VIEWS[k] = view(k); });
+
+    /* ---------- اختيار الفرع (يظهر فقط إذا كان الوكيل يقرأ أكثر من قاعدة) ---------- */
+    function brBarHTML() {
+      if (!multiBr()) return '';
+      var v = viewBr();
+      useBr(v === 'cmp' ? '*' : v);
+      var opts = [{ code: '*', name: 'موحّد' }].concat(branches()).concat([{ code: 'cmp', name: 'مقارنة الفروع' }]);
+      return '<div class="br-bar" role="group" aria-label="الفرع"><span class="br-l">الفرع</span><div class="seg">' + opts.map(function (o) {
+        return '<button class="seg-b' + (v === o.code ? ' on' : '') + '" data-brv="' + esc(o.code) + '">' + esc(o.name) + '</button>';
+      }).join('') + '</div></div>';
+    }
+    function brNote() { return multiBr() ? brName(viewBr()) : ''; }
 
     function syncLine() {
       var m = F.meta || {}, ck = m.check || {};
@@ -1620,6 +1679,14 @@
       F.lastRange = r;
       var h = '<div class="card head-card"><div class="hc-top"><h2>لوحة المؤشرات</h2>' + (canEdit() ? '<button class="btn sm ghost" data-custom>' + ICON_EDIT + '<span class="bt-txt">تخصيص البطاقات</span></button>' : '') + '</div>' +
         periodHTML(ps, 'dash', { prev: true }) + fltPanelHTML(DASH_DIMS, gf, 'dash') + '</div>';
+      if (viewBr() === 'cmp') {
+        var bs = branches(), bv = bs.map(function (b) { return withBr(b.code, function () { return evalList(list, r[0], r[1], gf); }); }), tv = evalList(list, r[0], r[1], gf);
+        h += '<div class="card scroll-x fin-table"><h3>مقارنة الفروع · ' + esc(rangeText(r[0], r[1])) + '</h3><table class="tbl fin"><thead><tr><th>المؤشر</th>' + bs.map(function (b) { return '<th class="n">' + esc(b.name) + '</th>'; }).join('') + '<th class="n">الموحّد</th></tr></thead><tbody>' +
+          list.map(function (c, i) { var cell = function (v) { return '<td class="n">' + (v[i].err ? '—' : fmtVal(v[i].v, c.fmt || 'money0')) + '</td>'; }; return '<tr><td>' + esc(c.name) + '</td>' + bv.map(cell).join('') + cell(tv).replace('<td class="n">', '<td class="n"><b>').replace('</td>', '</b></td>') + '</tr>'; }).join('') + '</tbody></table>' +
+          '<p class="small muted" style="margin:8px 0 0">كل فرع من قاعدة بياناته في سراج. الموحّد يجمع الفروع كلها.</p></div>';
+        if (list.length) h += '<div class="card"><h3>' + esc(list[0].name) + '</h3>' + chartSVG({ type: 'bar', x: 'name', y: ['v'], yl: [list[0].name] }, bs.map(function (b, j) { return { name: b.name, v: bv[j][0].err ? 0 : bv[j][0].v }; })) + '</div>';
+        return h;
+      }
       if (cmp) {
         var pcs = comparePeriods(ps.preset, ps.year), vals = pcs.map(function (c) { return evalList(list, c.from, c.to, gf); });
         h += '<div class="card scroll-x fin-table"><h3>' + esc(presetName(ps.preset, ps.year)) + '</h3><table class="tbl fin"><thead><tr><th>المؤشر</th>' + pcs.map(function (c) { return '<th class="n">' + esc(c.l) + '</th>'; }).join('') + '</tr></thead><tbody>' +
@@ -1688,6 +1755,14 @@
         '<button class="seg-b' + (F.dailyMtd ? ' on' : '') + '" data-dmtd>+ من بداية الشهر</button></div>' +
         fltPanelHTML(DASH_DIMS, F.dflt, 'daily') +
         (errs.length ? '<div class="msg err" style="margin-top:8px">أسطر فيها خطأ: ' + esc(errs.join('، ')) + (canEdit() ? '. صحّحها من «تخصيص الأسطر».' : '') + '</div>' : '') + '</div>';
+      if (viewBr() === 'cmp') {
+        branches().forEach(function (b) {
+          h += '<div class="card scroll-x"><h3>' + esc(b.name) + '</h3><div class="daily-wrap">' + withBr(b.code, function () { return dailyTable(dailyData(), 'daily'); }) + '</div></div>';
+        });
+        h += '<div class="card scroll-x"><h3>الموحّد (كل الفروع)</h3><div class="daily-wrap">' + dailyTable(D, 'daily') + '</div>' +
+          '<p class="small muted" style="margin:10px 0 0">الأرصدة والمخزون في نهاية اليوم، والمبيعات والتحصيل لليوم نفسه.</p></div>';
+        return h;
+      }
       h += '<div class="card scroll-x"><div class="daily-wrap">' + dailyTable(D, 'daily') + '</div>' +
         '<p class="small muted" style="margin:10px 0 0">الأرصدة والمخزون في نهاية اليوم، والمبيعات والتحصيل لليوم نفسه.</p></div>';
       return h;
@@ -1837,16 +1912,22 @@
       var c = F.cur, p = c.p;
       if (p.preset && p.preset !== 'custom') { var r = presetRange(p.preset, p.from, p.to, p.year, p.month); p.from = r[0]; p.to = r[1]; }
       var fn = function (pp) { return c.custom ? runCustom(c.custom.def, pp) : R[c.id].run(pp); };
-      if (isCmp(p.preset) && curDef().params.indexOf('period') >= 0) return runCompare(fn, p);
-      return fn(p);
+      if (multiBr() && viewBr() === 'cmp') {
+        var bs = branches(), pcsB = bs.map(function (b) { return { l: b.name, code: b.code }; });
+        return runCompare(function (pp, pc) { return withBr(pc.code, function () { return isCmp(pp.preset) && curDef().params.indexOf('period') >= 0 ? runCompare(fn, pp) : fn(pp); }); }, p, pcsB);
+      }
+      var out = isCmp(p.preset) && curDef().params.indexOf('period') >= 0 ? runCompare(fn, p) : fn(p);
+      if (multiBr() && out && !out.empty) out.note = brNote() + (out.note ? ' · ' + plain(out.note) : '');
+      return out;
     }
     // مقارنة الأرباع أو الأشهر: يُشغَّل التقرير لكل فترة، ويُعرض رقم واحد يختاره المستخدم في عمود لكل فترة
     var CMP_PREF = ['net', 'tot', 'v', 'a', 'sales', 'val', 'inn', 'pur', 'qty', 'q', 'dr', 'n'];
     var CMP_NOSUM = /^(close|bal|open|avg|avgp|margin|share|rp|cr|ch|cover|lim|cost|p|min|max|spread|daily|age)$/;
-    function runCompare(fn, p) {
-      var pcs = comparePeriods(p.preset, p.year);
+    // pcsIn: أعمدة جاهزة (الفروع)؛ بدونها تكون الأعمدة فترات (أرباع أو أشهر)
+    function runCompare(fn, p, pcsIn) {
+      var pcs = pcsIn || comparePeriods(p.preset, p.year);
       if (!pcs.length) return { cols: [C('m', '')], rows: [], empty: 'لا توجد فترات للمقارنة في هذه السنة' };
-      var res = pcs.map(function (c) { return fn(Object.assign({}, p, { preset: 'custom', from: c.from, to: c.to })); });
+      var res = pcs.map(function (c) { return pcsIn ? fn(p, c) : fn(Object.assign({}, p, { preset: 'custom', from: c.from, to: c.to })); });
       var base = res.filter(function (r) { return r && r.cols && r.cols.length > 1 && !r.empty; })[0];
       if (!base) return res[0];
       var nums = base.cols.filter(function (c) { return isNum(c); });
@@ -1869,7 +1950,7 @@
       });
       var cols = keyCols.concat(pcs.map(function (c, j) { return C('p' + j, c.l, mk.t); }));
       if (sumOk) cols.push(C('tot', 'الإجمالي', mk.t));
-      if (pcs.length > 1) cols.push(C('chg', 'تغيّر آخر فترة', 'pct'));
+      if (pcs.length > 1 && !pcsIn) cols.push(C('chg', 'تغيّر آخر فترة', 'pct'));
       var total = null;
       if (res.some(function (r) { return r.total && typeof r.total[mk.k] === 'number'; })) {
         total = { name: 'الإجمالي' };
@@ -1879,7 +1960,7 @@
       }
       var chartRows = pcs.map(function (c, j) { return { name: c.l, v: total ? total['p' + j] || 0 : rows.reduce(function (sm, o) { return sm + (o._b ? 0 : o['p' + j] || 0); }, 0) }; });
       return { cols: cols, rows: rows, total: total, cmp: { cols: nums.map(function (c) { return [c.k, c.l]; }), mk: mk.k },
-        chart: { type: 'bar', x: 'name', y: ['v'], yl: [mk.l], rowsOverride: chartRows }, note: 'المقارنة حسب: ' + mk.l + (base.note ? ' · ' + plain(base.note) : '') };
+        chart: { type: 'bar', x: 'name', y: ['v'], yl: [mk.l], rowsOverride: chartRows }, note: (pcsIn ? 'مقارنة الفروع حسب: ' : 'المقارنة حسب: ') + mk.l + (base.note ? ' · ' + plain(base.note) : '') };
     }
 
     /* ---------- التصفية (عملاء، أصناف، مخازن…) ---------- */
@@ -2453,16 +2534,20 @@
           '<div class="row" style="margin-top:10px"><button class="btn" data-dadd>+ سطر</button><button class="btn ghost" data-dsep>+ عنوان قسم</button><span class="grow"></span><button class="btn ghost" data-dreset>استعادة الافتراضي</button><button class="btn accent" data-dsave' + (F.dirtyKeys && F.dirtyKeys.daily ? '' : ' disabled') + '>حفظ التغييرات</button></div></div>' +
           '<div class="card"><h3>ملاحظة عن Sell-Out</h3><p class="small" style="margin:0">«Total Sell-Out» افتراضياً = الكمية المباعة لكل العملاء. لحصره في عملاء أو أصناف أو مخزن معين: اضغط «تعديل» على السطر، ثم «كل العملاء» أو «كل الأصناف» واختر ما تريد.</p></div>';
       } else if (tab === 'groups') {
-        h += '<div class="card"><h2>مجموعات الحسابات</h2><div class="form">' +
-          '<div class="field"><span class="lbl">حسابات العملاء (للمديونيات وأعمار الديون والتحصيل)</span><button class="input" data-grp="recv" style="text-align:start">' + esc(grpLabel(s.recv || '1601')) + '</button><span class="small muted">' + fk(recvIds().length) + ' حساب عميل</span></div>' +
-          '<div class="field"><span class="lbl">حسابات الموردين</span><button class="input" data-grp="pay" style="text-align:start">' + esc(grpLabel(s.pay || '261')) + '</button><span class="small muted">' + fk(payIds().length) + ' حساب مورد</span></div>' +
+        var grpField = function (k, code) {
+          var codes = multiBr() ? grpCodes(k, code) : (s[k] || (k === 'recv' ? '1601' : '261'));
+          var n = multiBr() ? leavesOf(byCodes(codes, code)).length : (k === 'recv' ? recvIds() : payIds()).length;
+          return '<div class="field"><span class="lbl">' + (k === 'recv' ? 'حسابات العملاء (للمديونيات وأعمار الديون والتحصيل)' : 'حسابات الموردين') + '</span><button class="input" data-grp="' + k + '" data-gbr="' + esc(multiBr() ? code : '') + '" style="text-align:start">' + esc(grpLabel(codes, multiBr() ? code : undefined)) + '</button><span class="small muted">' + fk(n) + (k === 'recv' ? ' حساب عميل' : ' حساب مورد') + '</span></div>';
+        };
+        h += '<div class="card"><h2>مجموعات الحسابات</h2>' + (multiBr() ? '<p class="small muted" style="margin:0 0 10px">لكل فرع دليل حسابات مستقل في سراج، فحدّد حسابات العملاء والموردين لكل فرع.</p>' : '') + '<div class="form">' +
+          (multiBr() ? branches().map(function (b) { return '<h3 style="margin:6px 0 0">' + esc(b.name) + '</h3>' + grpField('recv', b.code) + grpField('pay', b.code); }).join('') : grpField('recv', '') + grpField('pay', '')) +
           '<div class="field"><label class="lbl" for="fys">بداية السنة المالية</label><input type="date" class="input num" id="fys" value="' + esc(s.year_start || '2026-01-01') + '" style="max-width:200px"></div></div></div>';
       } else {
         h += '<div class="card"><h2>البيانات على هذا الجهاز</h2><p class="small" style="margin:0">' + fk(Object.keys(F.rows || {}).length) + ' سجل · آخر مزامنة ' + esc((F.meta && F.meta.last) || '—') + '</p><p class="small muted">تُحفظ البيانات المالية على هذا الجهاز لتعمل التقارير بسرعة وبلا إنترنت، وتُمسح عند الخروج من التطبيق.</p><button class="btn sm ghost" data-open="data_check">فحص سلامة البيانات</button></div>';
       }
       return h;
     }
-    function grpLabel(codes) { return String(codes).split(',').map(function (c) { var a = F.D.byCode[c]; return a ? c + ' · ' + a.name : c; }).join('، '); }
+    function grpLabel(codes, br) { return String(codes).split(',').map(function (c) { var a = (F.D.byCodeAll[c] || []).filter(function (x) { return br === undefined || x.br === br; })[0]; return a ? c + ' · ' + a.name : c + (br !== undefined ? ' (غير موجود في هذا الفرع)' : ''); }).join('، '); }
     function markDirty(k, on) { F.dirtyKeys = F.dirtyKeys || {}; F.dirtyKeys[k] = on; F.dirty = Object.keys(F.dirtyKeys).some(function (x) { return F.dirtyKeys[x]; }); }
     function saveConfig(k, value, btn) {
       if (btn) busy(btn, true);
@@ -2516,16 +2601,16 @@
       } else if (tab === 'groups') {
         qa('[data-grp]', m).forEach(function (b) {
           b.onclick = function () {
-            var k = b.dataset.grp, cur = String(((F.meta && F.meta.settings) || {})[k] || (k === 'recv' ? '1601' : '261')).split(',');
-            pickAccount({ multi: true, value: cur, title: k === 'recv' ? 'حسابات العملاء' : 'حسابات الموردين', hint: 'اختر الحسابات الرئيسية التي تحتها العملاء أو الموردون. كل الحسابات الفرعية تحتها تُحسب تلقائياً.', filter: function (a) { return !a.leaf || a.lvl <= 4; } })
+            var k = b.dataset.grp, gb = b.dataset.gbr || '', cur = String(multiBr() ? grpCodes(k, gb) : (((F.meta && F.meta.settings) || {})[k] || (k === 'recv' ? '1601' : '261'))).split(',');
+            pickAccount({ multi: true, value: cur, title: (k === 'recv' ? 'حسابات العملاء' : 'حسابات الموردين') + (multiBr() ? ' · ' + brName(gb) : ''), hint: 'اختر الحسابات الرئيسية التي تحتها العملاء أو الموردون. كل الحسابات الفرعية تحتها تُحسب تلقائياً.', filter: function (a) { return (!multiBr() || a.br === gb) && (!a.leaf || a.lvl <= 4); } })
               .then(function (codes) {
                 if (!codes || !codes.length) return;
                 var body = {}; body[k] = codes.join(',');
-                call('fin_settings_save', { settings: body }).then(function (r) { F.meta.settings = r.settings; F.cache = {}; S.set('fin:meta', F.meta); toast('حُفظت'); A.render(); }).catch(function (e) { toast(e.message, true); });
+                call('fin_settings_save', { settings: body, br: multiBr() ? gb : '' }).then(function (r) { F.meta.settings = r.settings; resetCache(); S.set('fin:meta', F.meta); toast('حُفظت'); A.render(); }).catch(function (e) { toast(e.message, true); });
               });
           };
         });
-        q('#fys', m).onchange = function () { call('fin_settings_save', { settings: { year_start: this.value } }).then(function (r) { F.meta.settings = r.settings; F.cache = {}; S.set('fin:meta', F.meta); toast('حُفظت'); A.render(); }).catch(function (e) { toast(e.message, true); }); };
+        q('#fys', m).onchange = function () { call('fin_settings_save', { settings: { year_start: this.value } }).then(function (r) { F.meta.settings = r.settings; resetCache(); S.set('fin:meta', F.meta); toast('حُفظت'); A.render(); }).catch(function (e) { toast(e.message, true); }); };
       }
     }
     function boxForm(b) {
@@ -2553,11 +2638,11 @@
     }
 
     // عند الخروج: مسح البيانات المالية من الجهاز
-    A.onLogout(function () { F.rows = null; F.D = null; F.rev = 0; F.meta = null; F.cur = null; F.edit = null; F.dirtyKeys = null; F.dirty = false; return Promise.all([S.del('fin:rows'), S.del('fin:rev'), S.del('fin:meta'), S.del('fin:aux')]); });
+    A.onLogout(function () { F.rows = null; F.D = null; F.Dby = null; F.Dcache = null; F.br = undefined; F.rev = 0; F.meta = null; F.cur = null; F.edit = null; F.dirtyKeys = null; F.dirty = false; return Promise.all([S.del('fin:rows'), S.del('fin:rev'), S.del('fin:meta'), S.del('fin:aux')]); });
     try { st.finParams = JSON.parse(localStorage.getItem('rk.finParams') || '{}'); } catch (e) { st.finParams = {}; }
 
     // للاختبارات: الوصول للمحرّك
-    window.__rkfin = { F: F, R: R, runCustom: runCustom, build: build, balance: balance, salesStats: salesStats, evalFormula: evalFormula, tryFormula: tryFormula, evalList: evalList,
+    window.__rkfin = { F: F, R: R, runCustom: runCustom, build: rebuild, buildOne: build, useBr: useBr, setBr: setBr, withBr: withBr, branches: branches, recvIds: recvIds, runCur: runCur, balance: balance, salesStats: salesStats, evalFormula: evalFormula, tryFormula: tryFormula, evalList: evalList,
       stockTotals: stockTotals, collections: collections, termsToF: termsToF, fToTerms: fToTerms, itemText: function (x) { return itemText(x); }, fltOptions: function (d) { return fltOptions(d); }, dailyData: function () { return dailyData(); }, cards: cards, dailyDef: dailyDef };
   };
 })();
