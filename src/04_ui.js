@@ -35,6 +35,7 @@
     };
     function runCustom(def, p) {
       if (def.kind === 'formula') return runFormulaReport(def, p);
+      if (def.kind === 'ready') { var rb = R[def.base]; if (!rb) return { cols: [C('m', '')], rows: [], empty: 'التقرير الأساسي غير موجود' }; return rb.run(Object.assign({}, def.p || {}, p)); }
       if (def.kind === 'pair') return runPair(def, p);
       if (def.kind === 'free') return runFree(def, p);
       var ds = DS[def.ds];
@@ -462,27 +463,31 @@
       var t = today();
       var base = { preset: 'month', from: t.slice(0, 7) + '-01', to: t, asof: t, gran: 'day', level: 3, top: 0, rby: 'cust', vby: 'none', box: 'all', nonzero: 'nz', measure: 'value', idle: 30, boxkind: 'all', etype: 'all', flt: null };
       var saved = (st.finParams || {})[id] || {};
-      var p = Object.assign(base, saved, params || {});
+      if (def) (def.def.kind === 'ready' && R[def.def.base] ? R[def.def.base].sel || [] : []).forEach(function (x) { base[x[0]] = x[2][0][0]; });
+      else (R[id].sel || []).forEach(function (x) { base[x[0]] = x[2][0][0]; });
+      var p = Object.assign(base, def && def.def.p ? def.def.p : {}, saved, params || {});
+      if (def && !saved.view && def.def.view) p.view = JSON.parse(JSON.stringify(def.def.view));
       if (params && params.preset) { p.year = params.year || null; p.month = params.month || null; }
-      var dd = def ? { params: def.def.kind === 'formula' ? ['period'] : ['period'] } : R[id];
+      var dd = def ? (def.def.kind === 'ready' && R[def.def.base] ? R[def.def.base] : { params: ['period'] }) : R[id];
       if (isCmp(p.preset) && dd.params.indexOf('period') < 0) p.preset = 'month';
       F.cur = { id: id, custom: def, p: p };
       go('reports');
       window.scrollTo(0, 0);
     }
 
-    function curDef() { var c = F.cur; return c.custom ? { name: c.custom.name, desc: customDesc(c.custom.def), params: c.custom.def.kind === 'formula' ? ['period', 'flt'] : ['period'], fdims: DASH_DIMS } : R[c.id]; }
+    function curDef() { var c = F.cur; if (c.custom && c.custom.def.kind === 'ready' && R[c.custom.def.base]) return Object.assign({}, R[c.custom.def.base], { name: c.custom.name, desc: customDesc(c.custom.def) }); return c.custom ? { name: c.custom.name, desc: customDesc(c.custom.def), params: c.custom.def.kind === 'formula' ? ['period', 'flt'] : ['period'], fdims: DASH_DIMS } : R[c.id]; }
     function runCur() {
       var c = F.cur, p = c.p;
       if (p.preset && p.preset !== 'custom') { var r = presetRange(p.preset, p.from, p.to, p.year, p.month); p.from = r[0]; p.to = r[1]; }
       var fn = function (pp) { return c.custom ? runCustom(c.custom.def, pp) : R[c.id].run(pp); };
       if (multiBr() && viewBr() === 'cmp') {
         var bs = branches(), pcsB = bs.map(function (b) { return { l: b.name, code: b.code }; });
-        return runCompare(function (pp, pc) { return withBr(pc.code, function () { return isCmp(pp.preset) && curDef().params.indexOf('period') >= 0 ? runCompare(fn, pp) : fn(pp); }); }, p, pcsB);
+        var oc = runCompare(function (pp, pc) { return withBr(pc.code, function () { return isCmp(pp.preset) && curDef().params.indexOf('period') >= 0 ? runCompare(fn, pp) : fn(pp); }); }, p, pcsB);
+        c.rawCols = oc && oc.cols; return applyView(oc, p.view);
       }
       var out = isCmp(p.preset) && curDef().params.indexOf('period') >= 0 ? runCompare(fn, p) : fn(p);
       if (multiBr() && out && !out.empty) out.note = brNote() + (out.note ? ' · ' + plain(out.note) : '');
-      return out;
+      c.rawCols = out && out.cols; return applyView(out, p.view);
     }
     // مقارنة الأرباع أو الأشهر: يُشغَّل التقرير لكل فترة، ويُعرض رقم واحد يختاره المستخدم في عمود لكل فترة
     var CMP_PREF = ['net', 'tot', 'v', 'a', 'sales', 'val', 'inn', 'pur', 'qty', 'q', 'dr', 'n'];
@@ -602,6 +607,7 @@
       if (has('etype')) row += sel('etype', 'نوع القيد', [['all', 'الكل'], ['r', 'سندات القبض'], ['p', 'سندات الدفع'], ['j', 'قيود يومية'], ['i', 'قيود الفواتير'], ['o', 'افتتاحي']]);
       if (has('boxkind')) row += sel('boxkind', 'النوع', [['all', 'الصناديق والبنوك'], ['صندوق', 'الصناديق فقط'], ['بنك', 'البنوك فقط']]);
       if (has('box')) row += sel('box', 'الصندوق/البنك', [['all', 'كل الصناديق والبنوك (ملخص)']].concat(activeBoxes().map(function (b) { return [b.acc, b.name]; })));
+      (def.sel || []).forEach(function (x) { row += sel(x[0], x[1], x[2]); });
       if (has('search')) row += '<label class="field fin-param"><span class="lbl">بحث</span><input class="input" data-pk="search" value="' + esc(p.search || '') + '" placeholder="رقم أو اسم"></label>';
       if (has('account')) row += '<div class="field fin-param" style="flex:2"><span class="lbl">الحساب</span><button class="input" data-accpick style="text-align:start">' + (p.account ? esc(acc(p.account) ? acc(p.account).code + ' · ' + acc(p.account).name : '—') : 'اختر الحساب…') + '</button></div>';
       if (row) h += '<div class="fin-params">' + row + '</div>';
@@ -618,10 +624,11 @@
       var p = c.p;
       var h = '<div class="card head-card"><div class="hc-top"><button class="iconbtn hc-back" data-back aria-label="رجوع إلى التقارير">→</button><div class="grow"><h2>' + esc(res.title || def.name) + '</h2><div class="small muted hc-desc">' + esc(res.subtitle || def.desc || '') + '</div></div>' +
         '<div class="rh-act"><button class="btn sm" data-xls aria-label="Excel">' + ICON_XLS + '<span class="bt-txt">Excel</span></button><button class="btn sm" data-prt aria-label="طباعة">' + ICON.print + '<span class="bt-txt">طباعة</span></button>' + (c.custom && canEdit() ? '<button class="btn sm ' + (c.custom.tmp ? 'accent' : 'ghost') + '" data-edit aria-label="تعديل">' + ICON_EDIT + '<span class="bt-txt">' + (c.custom.tmp ? 'رجوع للتعديل والحفظ' : 'تعديل') + '</span></button>' : '') + '</div></div>' +
-        paramsHTML(def, p) +
+        paramsHTML(def, p) + (res.empty && !hasView(p.view) ? '' : viewPanelHTML(res, p)) +
         (res.note ? '<div class="small muted rep-note">' + esc(plain(res.note)) + '</div>' : '') + '</div>';
       if (res.empty) return h + '<div class="card empty">' + esc(res.empty) + '</div>';
       if (res.chart && (res.chart.rowsOverride || res.rows.length > 1)) h += '<div class="card">' + chartSVG(res.chart, res.rows) + '</div>';
+      if (!res.rows.length && hasView(p.view)) return h + '<div class="card empty">لا توجد أسطر تطابق شروط التخصيص. عدّل الشروط أو اضغط «إلغاء كل التعديلات».</div>';
       h += '<div class="card scroll-x fin-table">' + tableHTML(res) + '</div>';
       return h;
     }
@@ -670,6 +677,7 @@
       qa('tr[data-box]', m).forEach(function (tr) { tr.onclick = function () { p.box = tr.dataset.box; save(); A.render(); }; });
       q('[data-xls]', m).onclick = function () { exportXLSX(c.res, def.name, p); };
       q('[data-prt]', m).onclick = function () { printReport(c.res, def.name, p); };
+      bindViewPanel(m, save);
       var ed = q('[data-edit]', m);
       if (ed) ed.onclick = function () { F.custom = JSON.parse(JSON.stringify(c.custom)); F.preview = true; go('builder'); };
     }

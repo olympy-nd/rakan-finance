@@ -250,6 +250,7 @@
       return fd[0] + ' ' + op + (c.op === 'empty' || c.op === 'nempty' || c.op === 'ne0' ? '' : ' «' + v + '»');
     }
     function customDesc(def) {
+      if (def.kind === 'ready') return 'نسخة مخصصة من: ' + ((R[def.base] || {}).name || '');
       if (def.kind === 'formula') return 'بنود ومعادلات';
       if (def.kind === 'pair') return 'حساب مقابل حساب' + ((def.b || []).length ? '' : ' (كل الحسابات المقابلة)') + (def.kw ? ' · كلمات في البيان' : '');
       if (def.kind === 'free') return (def.mode === 'sum' ? 'ملخص' : 'قائمة تفصيلية') + ' من ' + ((SRC[def.src] || {}).name || '');

@@ -3,6 +3,7 @@
     var ST_TYPES = [
       ['pair', 'حساب مقابل حساب', 'حركة حساب مع حساب آخر محدد، ويمكن حصرها بكلمات موجودة في البيان. مثال: الصندوق مقابل المصروفات، أو العملاء مقابل البنك.', '<path d="M4 7h13l-3-3M20 17H7l3 3"/>'],
       ['free', 'تقرير حر من الصفر', 'اختر مصدر البيانات (القيود أو الفواتير أو الأصناف)، ثم الأعمدة والشروط والتجميع كما تريد.', '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 10v10"/>'],
+      ['ready', 'تخصيص تقرير جاهز', 'اختر أياً من التقارير الجاهزة، وعدّل فترته وتصفيته، وأضف شروطاً على أعمدته، وأخفِ ما لا تحتاج، ثم احفظه باسمك.', '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13 7l4 4"/>'],
       ['formula', 'بنود ومعادلات', 'أسطر تختار لكل منها ما يُحسب (مبيعات، رصيد حساب، تحصيل…) وتربط بينها بـ + − × ÷، بعمود لكل شهر أو أسبوع.', '<path d="M5 7h14M5 12h8M5 17h11"/><path d="M17 14l4 4M21 14l-4 4"/>']
     ];
     var ST_TPL = [
@@ -25,6 +26,7 @@
     function builderHTML() {
       var d = F.custom;
       if (d && d.def && d.def.ds && !d.def.kind) return legacyBuilderHTML();
+      if (d && d.def && d.def.kind === 'ready') return '<div class="card"><h2>' + esc(d.name) + '</h2><p class="muted">' + esc(customDesc(d.def)) + '. يُعدَّل هذا النوع من شاشة التقرير نفسه: افتحه ثم اضغط «تخصيص التقرير».</p><div class="row"><button class="btn primary" data-ropen>فتح التقرير للتعديل</button><button class="btn ghost" data-rnew>تقرير جديد</button></div></div>';
       if (!d || !d.def || !d.def.kind) return studioStartHTML();
       var df = d.def, typ = ST_TYPES.filter(function (t) { return t[0] === df.kind; })[0];
       var h = '<div class="studio"><div class="st-form">';
@@ -136,8 +138,9 @@
     function bindBuilder(m) {
       var d = F.custom;
       if (d && d.def && d.def.ds && !d.def.kind) return legacyBindBuilder(m);
+      if (d && d.def && d.def.kind === 'ready') { q('[data-ropen]', m).onclick = function () { var id = d.id; F.custom = null; F.vpOpen = true; openReport('c:' + id); }; q('[data-rnew]', m).onclick = function () { F.custom = null; A.render(); }; return; }
       if (!d || !d.def || !d.def.kind) {
-        qa('[data-sttype]', m).forEach(function (b) { b.onclick = function () { var k = b.dataset.sttype; F.custom = { name: '', cat: 'تقاريري', def: ST_TPL.filter(function (t) { return t[0] === (k === 'free' ? 'kw' : k); })[0][3]() }; if (k === 'free') F.custom.def = { kind: 'free', src: '', mode: 'list', cols: [], conds: [] }; A.render(); window.scrollTo(0, 0); }; });
+        qa('[data-sttype]', m).forEach(function (b) { b.onclick = function () { var k = b.dataset.sttype; if (k === 'ready') { pickReady(); return; } F.custom = { name: '', cat: 'تقاريري', def: ST_TPL.filter(function (t) { return t[0] === (k === 'free' ? 'kw' : k); })[0][3]() }; if (k === 'free') F.custom.def = { kind: 'free', src: '', mode: 'list', cols: [], conds: [] }; A.render(); window.scrollTo(0, 0); }; });
         qa('[data-sttpl]', m).forEach(function (b) { b.onclick = function () { var t = ST_TPL.filter(function (x) { return x[0] === b.dataset.sttpl; })[0]; F.custom = { name: t[0] === 'pair' ? '' : t[1], cat: 'تقاريري', def: t[3]() }; A.render(); window.scrollTo(0, 0); }; });
         qa('[data-stedit]', m).forEach(function (b) { b.onclick = function () { var r = F.reports.filter(function (x) { return x.id === b.dataset.stedit; })[0]; if (r) { F.custom = JSON.parse(JSON.stringify(r)); A.render(); window.scrollTo(0, 0); } }; });
         return;
@@ -270,5 +273,18 @@
       qa('[data-jump]', m).forEach(function (b) { b.onclick = function () { F.rcat = b.dataset.jump; inp.value = ''; F.rq = ''; A.render(); }; });
       qa('[data-newrep]', m).forEach(function (b) { b.onclick = function () { F.custom = null; go('builder'); }; });
       var np = q('[data-newpair]', m); if (np) np.onclick = function () { F.custom = { name: '', cat: 'تقاريري', def: ST_TPL[0][3]() }; go('builder'); };
-      qa('[data-redit]', m).forEach(function (b) { b.onclick = function () { var r = F.reports.filter(function (x) { return x.id === b.dataset.redit; })[0]; if (r) { F.custom = JSON.parse(JSON.stringify(r)); go('builder'); } }; });
+      qa('[data-redit]', m).forEach(function (b) { b.onclick = function () { var r = F.reports.filter(function (x) { return x.id === b.dataset.redit; })[0]; if (!r) return; if (r.def.kind === 'ready') { F.vpOpen = true; openReport('c:' + r.id); return; } F.custom = JSON.parse(JSON.stringify(r)); go('builder'); }; });
+    }
+
+    function pickReady() {
+      var list = Object.keys(R).map(function (k) { return { id: k, name: R[k].name, desc: R[k].desc, cat: (CATS.filter(function (c) { return c[0] === R[k].cat; })[0] || [0, ''])[1] }; });
+      sheet('اختر التقرير الذي تريد تخصيصه', '<input class="input" id="rpq" placeholder="ابحث باسم التقرير…"><div class="list rp-list" id="rpl"></div>', function (s) {
+        var inp = q('#rpq', s.el), box = q('#rpl', s.el);
+        var draw = function () {
+          var t = normAr(inp.value);
+          box.innerHTML = list.filter(function (r) { return !t || normAr(r.name + ' ' + r.desc + ' ' + r.cat).indexOf(t) >= 0; }).map(function (r) { return '<button class="item tap" data-rp="' + r.id + '"><div class="main"><b>' + esc(r.name) + '</b><div class="meta"><span class="badge">' + esc(r.cat) + '</span><span>' + esc(r.desc) + '</span></div></div></button>'; }).join('') || '<p class="muted">لا نتائج</p>';
+          qa('[data-rp]', box).forEach(function (b) { b.onclick = function () { s.close(); F.vpOpen = true; openReport(b.dataset.rp); }; });
+        };
+        inp.oninput = draw; draw(); setTimeout(function () { inp.focus(); }, 50);
+      });
     }

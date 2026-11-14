@@ -1447,6 +1447,7 @@
     };
     function runCustom(def, p) {
       if (def.kind === 'formula') return runFormulaReport(def, p);
+      if (def.kind === 'ready') { var rb = R[def.base]; if (!rb) return { cols: [C('m', '')], rows: [], empty: 'التقرير الأساسي غير موجود' }; return rb.run(Object.assign({}, def.p || {}, p)); }
       if (def.kind === 'pair') return runPair(def, p);
       if (def.kind === 'free') return runFree(def, p);
       var ds = DS[def.ds];
@@ -1874,27 +1875,31 @@
       var t = today();
       var base = { preset: 'month', from: t.slice(0, 7) + '-01', to: t, asof: t, gran: 'day', level: 3, top: 0, rby: 'cust', vby: 'none', box: 'all', nonzero: 'nz', measure: 'value', idle: 30, boxkind: 'all', etype: 'all', flt: null };
       var saved = (st.finParams || {})[id] || {};
-      var p = Object.assign(base, saved, params || {});
+      if (def) (def.def.kind === 'ready' && R[def.def.base] ? R[def.def.base].sel || [] : []).forEach(function (x) { base[x[0]] = x[2][0][0]; });
+      else (R[id].sel || []).forEach(function (x) { base[x[0]] = x[2][0][0]; });
+      var p = Object.assign(base, def && def.def.p ? def.def.p : {}, saved, params || {});
+      if (def && !saved.view && def.def.view) p.view = JSON.parse(JSON.stringify(def.def.view));
       if (params && params.preset) { p.year = params.year || null; p.month = params.month || null; }
-      var dd = def ? { params: def.def.kind === 'formula' ? ['period'] : ['period'] } : R[id];
+      var dd = def ? (def.def.kind === 'ready' && R[def.def.base] ? R[def.def.base] : { params: ['period'] }) : R[id];
       if (isCmp(p.preset) && dd.params.indexOf('period') < 0) p.preset = 'month';
       F.cur = { id: id, custom: def, p: p };
       go('reports');
       window.scrollTo(0, 0);
     }
 
-    function curDef() { var c = F.cur; return c.custom ? { name: c.custom.name, desc: customDesc(c.custom.def), params: c.custom.def.kind === 'formula' ? ['period', 'flt'] : ['period'], fdims: DASH_DIMS } : R[c.id]; }
+    function curDef() { var c = F.cur; if (c.custom && c.custom.def.kind === 'ready' && R[c.custom.def.base]) return Object.assign({}, R[c.custom.def.base], { name: c.custom.name, desc: customDesc(c.custom.def) }); return c.custom ? { name: c.custom.name, desc: customDesc(c.custom.def), params: c.custom.def.kind === 'formula' ? ['period', 'flt'] : ['period'], fdims: DASH_DIMS } : R[c.id]; }
     function runCur() {
       var c = F.cur, p = c.p;
       if (p.preset && p.preset !== 'custom') { var r = presetRange(p.preset, p.from, p.to, p.year, p.month); p.from = r[0]; p.to = r[1]; }
       var fn = function (pp) { return c.custom ? runCustom(c.custom.def, pp) : R[c.id].run(pp); };
       if (multiBr() && viewBr() === 'cmp') {
         var bs = branches(), pcsB = bs.map(function (b) { return { l: b.name, code: b.code }; });
-        return runCompare(function (pp, pc) { return withBr(pc.code, function () { return isCmp(pp.preset) && curDef().params.indexOf('period') >= 0 ? runCompare(fn, pp) : fn(pp); }); }, p, pcsB);
+        var oc = runCompare(function (pp, pc) { return withBr(pc.code, function () { return isCmp(pp.preset) && curDef().params.indexOf('period') >= 0 ? runCompare(fn, pp) : fn(pp); }); }, p, pcsB);
+        c.rawCols = oc && oc.cols; return applyView(oc, p.view);
       }
       var out = isCmp(p.preset) && curDef().params.indexOf('period') >= 0 ? runCompare(fn, p) : fn(p);
       if (multiBr() && out && !out.empty) out.note = brNote() + (out.note ? ' · ' + plain(out.note) : '');
-      return out;
+      c.rawCols = out && out.cols; return applyView(out, p.view);
     }
     // مقارنة الأرباع أو الأشهر: يُشغَّل التقرير لكل فترة، ويُعرض رقم واحد يختاره المستخدم في عمود لكل فترة
     var CMP_PREF = ['net', 'tot', 'v', 'a', 'sales', 'val', 'inn', 'pur', 'qty', 'q', 'dr', 'n'];
@@ -2014,6 +2019,7 @@
       if (has('etype')) row += sel('etype', 'نوع القيد', [['all', 'الكل'], ['r', 'سندات القبض'], ['p', 'سندات الدفع'], ['j', 'قيود يومية'], ['i', 'قيود الفواتير'], ['o', 'افتتاحي']]);
       if (has('boxkind')) row += sel('boxkind', 'النوع', [['all', 'الصناديق والبنوك'], ['صندوق', 'الصناديق فقط'], ['بنك', 'البنوك فقط']]);
       if (has('box')) row += sel('box', 'الصندوق/البنك', [['all', 'كل الصناديق والبنوك (ملخص)']].concat(activeBoxes().map(function (b) { return [b.acc, b.name]; })));
+      (def.sel || []).forEach(function (x) { row += sel(x[0], x[1], x[2]); });
       if (has('search')) row += '<label class="field fin-param"><span class="lbl">بحث</span><input class="input" data-pk="search" value="' + esc(p.search || '') + '" placeholder="رقم أو اسم"></label>';
       if (has('account')) row += '<div class="field fin-param" style="flex:2"><span class="lbl">الحساب</span><button class="input" data-accpick style="text-align:start">' + (p.account ? esc(acc(p.account) ? acc(p.account).code + ' · ' + acc(p.account).name : '—') : 'اختر الحساب…') + '</button></div>';
       if (row) h += '<div class="fin-params">' + row + '</div>';
@@ -2030,10 +2036,11 @@
       var p = c.p;
       var h = '<div class="card head-card"><div class="hc-top"><button class="iconbtn hc-back" data-back aria-label="رجوع إلى التقارير">→</button><div class="grow"><h2>' + esc(res.title || def.name) + '</h2><div class="small muted hc-desc">' + esc(res.subtitle || def.desc || '') + '</div></div>' +
         '<div class="rh-act"><button class="btn sm" data-xls aria-label="Excel">' + ICON_XLS + '<span class="bt-txt">Excel</span></button><button class="btn sm" data-prt aria-label="طباعة">' + ICON.print + '<span class="bt-txt">طباعة</span></button>' + (c.custom && canEdit() ? '<button class="btn sm ' + (c.custom.tmp ? 'accent' : 'ghost') + '" data-edit aria-label="تعديل">' + ICON_EDIT + '<span class="bt-txt">' + (c.custom.tmp ? 'رجوع للتعديل والحفظ' : 'تعديل') + '</span></button>' : '') + '</div></div>' +
-        paramsHTML(def, p) +
+        paramsHTML(def, p) + (res.empty && !hasView(p.view) ? '' : viewPanelHTML(res, p)) +
         (res.note ? '<div class="small muted rep-note">' + esc(plain(res.note)) + '</div>' : '') + '</div>';
       if (res.empty) return h + '<div class="card empty">' + esc(res.empty) + '</div>';
       if (res.chart && (res.chart.rowsOverride || res.rows.length > 1)) h += '<div class="card">' + chartSVG(res.chart, res.rows) + '</div>';
+      if (!res.rows.length && hasView(p.view)) return h + '<div class="card empty">لا توجد أسطر تطابق شروط التخصيص. عدّل الشروط أو اضغط «إلغاء كل التعديلات».</div>';
       h += '<div class="card scroll-x fin-table">' + tableHTML(res) + '</div>';
       return h;
     }
@@ -2082,6 +2089,7 @@
       qa('tr[data-box]', m).forEach(function (tr) { tr.onclick = function () { p.box = tr.dataset.box; save(); A.render(); }; });
       q('[data-xls]', m).onclick = function () { exportXLSX(c.res, def.name, p); };
       q('[data-prt]', m).onclick = function () { printReport(c.res, def.name, p); };
+      bindViewPanel(m, save);
       var ed = q('[data-edit]', m);
       if (ed) ed.onclick = function () { F.custom = JSON.parse(JSON.stringify(c.custom)); F.preview = true; go('builder'); };
     }
@@ -2866,6 +2874,7 @@
       return fd[0] + ' ' + op + (c.op === 'empty' || c.op === 'nempty' || c.op === 'ne0' ? '' : ' «' + v + '»');
     }
     function customDesc(def) {
+      if (def.kind === 'ready') return 'نسخة مخصصة من: ' + ((R[def.base] || {}).name || '');
       if (def.kind === 'formula') return 'بنود ومعادلات';
       if (def.kind === 'pair') return 'حساب مقابل حساب' + ((def.b || []).length ? '' : ' (كل الحسابات المقابلة)') + (def.kw ? ' · كلمات في البيان' : '');
       if (def.kind === 'free') return (def.mode === 'sum' ? 'ملخص' : 'قائمة تفصيلية') + ' من ' + ((SRC[def.src] || {}).name || '');
@@ -2877,6 +2886,7 @@
     var ST_TYPES = [
       ['pair', 'حساب مقابل حساب', 'حركة حساب مع حساب آخر محدد، ويمكن حصرها بكلمات موجودة في البيان. مثال: الصندوق مقابل المصروفات، أو العملاء مقابل البنك.', '<path d="M4 7h13l-3-3M20 17H7l3 3"/>'],
       ['free', 'تقرير حر من الصفر', 'اختر مصدر البيانات (القيود أو الفواتير أو الأصناف)، ثم الأعمدة والشروط والتجميع كما تريد.', '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 10v10"/>'],
+      ['ready', 'تخصيص تقرير جاهز', 'اختر أياً من التقارير الجاهزة، وعدّل فترته وتصفيته، وأضف شروطاً على أعمدته، وأخفِ ما لا تحتاج، ثم احفظه باسمك.', '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13 7l4 4"/>'],
       ['formula', 'بنود ومعادلات', 'أسطر تختار لكل منها ما يُحسب (مبيعات، رصيد حساب، تحصيل…) وتربط بينها بـ + − × ÷، بعمود لكل شهر أو أسبوع.', '<path d="M5 7h14M5 12h8M5 17h11"/><path d="M17 14l4 4M21 14l-4 4"/>']
     ];
     var ST_TPL = [
@@ -2899,6 +2909,7 @@
     function builderHTML() {
       var d = F.custom;
       if (d && d.def && d.def.ds && !d.def.kind) return legacyBuilderHTML();
+      if (d && d.def && d.def.kind === 'ready') return '<div class="card"><h2>' + esc(d.name) + '</h2><p class="muted">' + esc(customDesc(d.def)) + '. يُعدَّل هذا النوع من شاشة التقرير نفسه: افتحه ثم اضغط «تخصيص التقرير».</p><div class="row"><button class="btn primary" data-ropen>فتح التقرير للتعديل</button><button class="btn ghost" data-rnew>تقرير جديد</button></div></div>';
       if (!d || !d.def || !d.def.kind) return studioStartHTML();
       var df = d.def, typ = ST_TYPES.filter(function (t) { return t[0] === df.kind; })[0];
       var h = '<div class="studio"><div class="st-form">';
@@ -3010,8 +3021,9 @@
     function bindBuilder(m) {
       var d = F.custom;
       if (d && d.def && d.def.ds && !d.def.kind) return legacyBindBuilder(m);
+      if (d && d.def && d.def.kind === 'ready') { q('[data-ropen]', m).onclick = function () { var id = d.id; F.custom = null; F.vpOpen = true; openReport('c:' + id); }; q('[data-rnew]', m).onclick = function () { F.custom = null; A.render(); }; return; }
       if (!d || !d.def || !d.def.kind) {
-        qa('[data-sttype]', m).forEach(function (b) { b.onclick = function () { var k = b.dataset.sttype; F.custom = { name: '', cat: 'تقاريري', def: ST_TPL.filter(function (t) { return t[0] === (k === 'free' ? 'kw' : k); })[0][3]() }; if (k === 'free') F.custom.def = { kind: 'free', src: '', mode: 'list', cols: [], conds: [] }; A.render(); window.scrollTo(0, 0); }; });
+        qa('[data-sttype]', m).forEach(function (b) { b.onclick = function () { var k = b.dataset.sttype; if (k === 'ready') { pickReady(); return; } F.custom = { name: '', cat: 'تقاريري', def: ST_TPL.filter(function (t) { return t[0] === (k === 'free' ? 'kw' : k); })[0][3]() }; if (k === 'free') F.custom.def = { kind: 'free', src: '', mode: 'list', cols: [], conds: [] }; A.render(); window.scrollTo(0, 0); }; });
         qa('[data-sttpl]', m).forEach(function (b) { b.onclick = function () { var t = ST_TPL.filter(function (x) { return x[0] === b.dataset.sttpl; })[0]; F.custom = { name: t[0] === 'pair' ? '' : t[1], cat: 'تقاريري', def: t[3]() }; A.render(); window.scrollTo(0, 0); }; });
         qa('[data-stedit]', m).forEach(function (b) { b.onclick = function () { var r = F.reports.filter(function (x) { return x.id === b.dataset.stedit; })[0]; if (r) { F.custom = JSON.parse(JSON.stringify(r)); A.render(); window.scrollTo(0, 0); } }; });
         return;
@@ -3144,7 +3156,573 @@
       qa('[data-jump]', m).forEach(function (b) { b.onclick = function () { F.rcat = b.dataset.jump; inp.value = ''; F.rq = ''; A.render(); }; });
       qa('[data-newrep]', m).forEach(function (b) { b.onclick = function () { F.custom = null; go('builder'); }; });
       var np = q('[data-newpair]', m); if (np) np.onclick = function () { F.custom = { name: '', cat: 'تقاريري', def: ST_TPL[0][3]() }; go('builder'); };
-      qa('[data-redit]', m).forEach(function (b) { b.onclick = function () { var r = F.reports.filter(function (x) { return x.id === b.dataset.redit; })[0]; if (r) { F.custom = JSON.parse(JSON.stringify(r)); go('builder'); } }; });
+      qa('[data-redit]', m).forEach(function (b) { b.onclick = function () { var r = F.reports.filter(function (x) { return x.id === b.dataset.redit; })[0]; if (!r) return; if (r.def.kind === 'ready') { F.vpOpen = true; openReport('c:' + r.id); return; } F.custom = JSON.parse(JSON.stringify(r)); go('builder'); }; });
+    }
+
+    function pickReady() {
+      var list = Object.keys(R).map(function (k) { return { id: k, name: R[k].name, desc: R[k].desc, cat: (CATS.filter(function (c) { return c[0] === R[k].cat; })[0] || [0, ''])[1] }; });
+      sheet('اختر التقرير الذي تريد تخصيصه', '<input class="input" id="rpq" placeholder="ابحث باسم التقرير…"><div class="list rp-list" id="rpl"></div>', function (s) {
+        var inp = q('#rpq', s.el), box = q('#rpl', s.el);
+        var draw = function () {
+          var t = normAr(inp.value);
+          box.innerHTML = list.filter(function (r) { return !t || normAr(r.name + ' ' + r.desc + ' ' + r.cat).indexOf(t) >= 0; }).map(function (r) { return '<button class="item tap" data-rp="' + r.id + '"><div class="main"><b>' + esc(r.name) + '</b><div class="meta"><span class="badge">' + esc(r.cat) + '</span><span>' + esc(r.desc) + '</span></div></div></button>'; }).join('') || '<p class="muted">لا نتائج</p>';
+          qa('[data-rp]', box).forEach(function (b) { b.onclick = function () { s.close(); F.vpOpen = true; openReport(b.dataset.rp); }; });
+        };
+        inp.oninput = draw; draw(); setTimeout(function () { inp.focus(); }, 50);
+      });
+    }
+
+    /* ===================== تقارير إضافية: تنفيذية، محاسبية، مبيعات، أصناف، عملاء، تحليلية وإحصائية ===================== */
+    (function () {
+      var ai = CATS.map(function (c) { return c[0]; }).indexOf('purch');
+      CATS.splice(ai, 0, ['items', 'الأصناف'], ['analytics', 'تحليلية وإحصائية']);
+    })();
+    var SALE_F = ['cust', 'item', 'st', 'ag', 'u', 'xcust', 'xitem'];
+    function monthsOf(p) {
+      var out = [], m = p.from.slice(0, 7), end = p.to.slice(0, 7);
+      while (m <= end) { out.push({ m: m, a: m + '-01' < p.from ? p.from : m + '-01', b: monthEnd(m) > p.to ? p.to : monthEnd(m), label: monthLabel(m) }); m = addD(monthEnd(m), 1).slice(0, 7); }
+      return out;
+    }
+    function prevRange(from, to) { var n = days(from, to) + 1; return [addD(from, -n), addD(from, -1)]; }
+    // تجميع أسطر المبيع حسب الفاتورة (فتعمل تصفية الصنف والمخزن)
+    function invAgg(from, to, f) {
+      var g = {};
+      facts('s', from, to, f).forEach(function (x) {
+        var r = g[x.v.id] || (g[x.v.id] = { v: x.v, s: x.s, val: 0, qty: 0, lines: 0, profit: 0, items: {} });
+        r.val += x.val; r.qty += x.qty; r.lines++; r.profit += x.profit; r.items[x.l.item] = 1;
+      });
+      return Object.keys(g).map(function (k) { return g[k]; });
+    }
+    function plIds(rc) { var k = 'pl:' + rc; if (F.cache[k]) return F.cache[k]; var ids = []; F.D.accList.forEach(function (a) { if (a.lvl === 1 && a.rootCode === rc) ids = ids.concat(descend(a.id)); }); return (F.cache[k] = uniq(ids)); }
+    function plTotals(from, to) { var r = balance(plIds('4'), from, to), e = balance(plIds('3'), from, to); var rev = r.cr - r.dr, exp = e.dr - e.cr; return { rev: rev, exp: exp, net: rev - exp }; }
+    function median(a) { if (!a.length) return 0; var s = a.slice().sort(function (x, y) { return x - y; }), h = Math.floor(s.length / 2); return s.length % 2 ? s[h] : (s[h - 1] + s[h]) / 2; }
+    function stdev(a) { if (a.length < 2) return 0; var m = sum(a, function (x) { return x; }) / a.length; return Math.sqrt(sum(a, function (x) { return (x - m) * (x - m); }) / (a.length - 1)); }
+    function scoreOf(v, sorted) { if (!sorted.length) return 1; var i = 0; while (i < sorted.length && sorted[i] < v) i++; return Math.min(5, 1 + Math.floor(i / sorted.length * 5)); }
+    function custAccName(k) { return custName(k); }
+    function emptyR(msg) { return { cols: [C('m', '')], rows: [], empty: msg }; }
+
+    /* ---------- تنفيذية ---------- */
+    R.exec_scorecard = { cat: 'exec', name: 'بطاقة الأداء مقابل الفترة السابقة', desc: 'أهم 14 مؤشراً للفترة مقارنة بالفترة السابقة بنفس الطول، مع نسبة التغير', params: ['period', 'flt'], fdims: SALE_F,
+      run: function (p) {
+        var pr = prevRange(p.from, p.to), rv = recvFor(p.flt), sf = mergeF(p.flt, null, ['item', 'xitem', 'st']);
+        var calc = function (a, b) {
+          var s = salesStats(a, b, p.flt), pl = plTotals(a, b), iv = invAgg(a, b, p.flt).filter(function (x) { return x.s > 0; });
+          return { net: s.net, profit: s.profit, margin: pct(s.profit, s.net), n: s.n, avg: s.n ? s.sales / s.n : 0, cust: s.cust, qty: s.nqty, rp: pct(s.ret, s.sales),
+            lines: iv.length ? sum(iv, 'lines') / iv.length : 0, coll: collections(a, b, '', false, rv), purch: s.purch - s.pret, exp: pl.exp, np: pl.net, debt: balance(rv, null, b).close, stock: stockTotals(b, null, sf).val };
+        };
+        var c = calc(p.from, p.to), o = calc(pr[0], pr[1]);
+        var M = [['net', 'صافي المبيعات', 'money'], ['profit', 'مجمل الربح', 'money'], ['margin', 'هامش الربح %', 'pct'], ['n', 'عدد فواتير المبيع', 'int'], ['avg', 'متوسط قيمة الفاتورة', 'money'],
+          ['lines', 'متوسط الأصناف في الفاتورة', 'qty'], ['cust', 'العملاء المشترون', 'int'], ['qty', 'صافي الكمية المباعة', 'qty'], ['rp', 'نسبة المرتجعات %', 'pct'], ['coll', 'التحصيل', 'money'],
+          ['purch', 'صافي المشتريات', 'money'], ['exp', 'المصروفات (حسابات 3)', 'money'], ['np', 'صافي الربح (الإيرادات − المصروفات)', 'money'], ['debt', 'المديونية آخر الفترة', 'money'], ['stock', 'المخزون آخر الفترة', 'money']];
+        var rows = M.map(function (m) { var d = c[m[0]] - o[m[0]]; return { name: m[1], cur: c[m[0]], prev: o[m[0]], ch: d, chp: m[2] === 'pct' ? null : (o[m[0]] ? d / Math.abs(o[m[0]]) * 100 : null), _fmt: m[2] === 'pct' ? 'p' : m[2] === 'int' ? 'n' : m[2] === 'qty' ? 'q' : null }; });
+        rows.forEach(function (r) { if (r.chp === null) r.chp = ''; });
+        return withNote({ cols: [C('name', 'المؤشر'), C('cur', 'الفترة الحالية', 'money'), C('prev', 'الفترة السابقة', 'money'), C('ch', 'التغير', 'money'), C('chp', 'التغير %', 'pct')], rows: rows,
+          note: 'الفترة السابقة: ' + pr[0] + ' إلى ' + pr[1] }, p);
+      } };
+    R.exec_pl_month = { cat: 'exec', name: 'الأرباح والخسائر الشهرية المختصرة', desc: 'لكل شهر: صافي المبيعات ومجمل الربح والإيرادات والمصروفات وصافي الربح وهامشه', params: ['period'],
+      run: function (p) {
+        var rows = monthsOf(p).map(function (x) { var s = salesStats(x.a, x.b), pl = plTotals(x.a, x.b); return { name: x.label, net: s.net, gp: s.profit, rev: pl.rev, exp: pl.exp, np: pl.net, npm: pct(pl.net, pl.rev) }; });
+        var cols = [C('name', 'الشهر'), C('net', 'صافي المبيعات', 'money'), C('gp', 'مجمل الربح', 'money'), C('rev', 'الإيرادات (حسابات 4)', 'money'), C('exp', 'المصروفات (حسابات 3)', 'money'), C('np', 'صافي الربح', 'money'), C('npm', 'هامش صافي الربح', 'pct')];
+        var t = sumRow(rows, cols); t.npm = pct(t.np, t.rev);
+        return { cols: cols, rows: rows, total: t, chart: { type: 'bar', x: 'name', y: ['rev', 'exp', 'np'], yl: ['الإيرادات', 'المصروفات', 'صافي الربح'] } };
+      } };
+    R.exec_cash = { cat: 'exec', name: 'الموقف النقدي الشهري', desc: 'رصيد الصناديق والبنوك أول كل شهر والداخل والخارج ورصيد آخر الشهر', params: ['period', 'boxkind'],
+      run: function (p) {
+        var ids = boxIds(p.boxkind === 'all' ? '' : p.boxkind);
+        if (!ids.length) return emptyR('عرّف الصناديق والبنوك أولاً من الإعدادات ← الصناديق والبنوك');
+        var rows = monthsOf(p).map(function (x) { var b = balance(ids, x.a, x.b); return { name: x.label, open: b.open, inn: b.dr, out: b.cr, net: b.dr - b.cr, close: b.close }; });
+        var cols = [C('name', 'الشهر'), C('open', 'رصيد أول الشهر', 'money'), C('inn', 'الداخل', 'money'), C('out', 'الخارج', 'money'), C('net', 'صافي الحركة', 'money'), C('close', 'رصيد آخر الشهر', 'money')];
+        var t = { name: 'الإجمالي', inn: sum(rows, 'inn'), out: sum(rows, 'out'), net: sum(rows, 'net'), open: rows.length ? rows[0].open : 0, close: rows.length ? rows[rows.length - 1].close : 0 };
+        return { cols: cols, rows: rows, total: t, chart: { type: 'line', x: 'name', y: ['close'], yl: ['الرصيد آخر الشهر'] } };
+      } };
+    R.exec_top = { cat: 'exec', name: 'الأعلى في كل شيء', desc: 'أعلى العملاء والأصناف ربحاً وقيمةً، وأعلى المناديب والمخازن، في صفحة واحدة', params: ['period', 'flt'], fdims: SALE_F,
+      run: function (p) {
+        var rows = [], add = function (title, list, k, n) {
+          var tot = sum(list, k); rows.push({ name: title, _b: true, _hl: true });
+          list.sort(function (a, b) { return b[k] - a[k]; }).slice(0, n || 10).forEach(function (r, i) { rows.push({ rank: i + 1, name: r.name, v: r[k], share: pct(r[k], tot), net: r.net, profit: r.profit }); });
+        };
+        add('أعلى العملاء مبيعاً', salesBy(p, function (x) { return x.v.ck; }, function (x) { return x.v.name; }), 'net');
+        add('أعلى الأصناف مبيعاً', salesBy(p, function (x) { return x.l.item; }, function (x) { return itemName(x.l.item); }), 'net');
+        add('أكثر الأصناف ربحاً', salesBy(p, function (x) { return x.l.item; }, function (x) { return itemName(x.l.item); }), 'profit');
+        add('أكثر العملاء ربحاً', salesBy(p, function (x) { return x.v.ck; }, function (x) { return x.v.name; }), 'profit');
+        add('المناديب', salesBy(p, function (x) { return x.v.ag || '0'; }, function (x) { return repName(x.v.ag); }), 'net', 5);
+        add('المخازن', salesBy(p, function (x) { return x.l.st; }, function (x) { return storeName(x.l.st); }), 'net', 5);
+        return withNote({ cols: [C('rank', '#', 'int'), C('name', 'الاسم'), C('v', 'القيمة', 'money'), C('share', 'الحصة من القسم', 'pct'), C('net', 'صافي المبيعات', 'money'), C('profit', 'مجمل الربح', 'money')], rows: rows }, p);
+      } };
+
+    /* ---------- محاسبية ---------- */
+    R.acct_unbalanced = { cat: 'acct', name: 'فحص توازن القيود', desc: 'القيود التي لا يتساوى مدينها ودائنها، أو فيها طرف واحد فقط', params: ['period'],
+      run: function (p) {
+        var rows = [];
+        entriesIn(p.from, p.to).forEach(function (l0) {
+          var ls = F.D.byEntry[l0.e], dr = sum(ls, 'dr'), cr = sum(ls, 'cr');
+          if (Math.abs(dr - cr) > 0.005 || ls.length < 2) rows.push({ d: l0.d, no: l0.no, type: l0.btn, desc: l0.ed || '', n: ls.length, dr: dr, cr: cr, diff: dr - cr, _acc: ls[0].a });
+        });
+        rows.sort(function (a, b) { return Math.abs(b.diff) - Math.abs(a.diff); });
+        var res = { cols: [C('d', 'التاريخ'), C('no', 'رقم القيد'), C('type', 'النوع'), C('desc', 'البيان'), C('n', 'عدد الأسطر', 'int'), C('dr', 'مدين', 'money'), C('cr', 'دائن', 'money'), C('diff', 'الفرق', 'money')], rows: rows };
+        if (!rows.length) res.empty = 'كل القيود في هذه الفترة متوازنة ✓';
+        return res;
+      } };
+    R.acct_large = { cat: 'acct', name: 'القيود الكبيرة', desc: 'القيود التي يتجاوز مبلغها حداً تختاره، حسب النوع، للمراجعة والتدقيق', params: ['period', 'etype'],
+      sel: [['min', 'المبلغ من', [[10000, '10,000'], [1000, '1,000'], [5000, '5,000'], [50000, '50,000'], [100000, '100,000'], [500000, '500,000']]]],
+      run: function (p) {
+        var min = Number(p.min) || 10000, et = p.etype || 'all', rows = [];
+        entriesIn(p.from, p.to, function (l) { return et === 'all' || l.k === et; }).forEach(function (l0) {
+          var ls = F.D.byEntry[l0.e], amt = entryTotal(ls);
+          if (amt >= min) rows.push({ d: l0.d, no: l0.no, type: l0.btn, desc: l0.ed || ls.map(function (x) { return x.ld; }).filter(String)[0] || '', accs: uniq(ls.map(function (x) { return accName(x.a); })).slice(0, 3).join('، '), n: ls.length, v: amt, user: userName(l0.u) });
+        });
+        rows.sort(function (a, b) { return b.v - a.v; });
+        var cols = [C('d', 'التاريخ'), C('no', 'رقم القيد'), C('type', 'النوع'), C('desc', 'البيان'), C('accs', 'الحسابات'), C('n', 'الأسطر', 'int'), C('v', 'المبلغ', 'money'), C('user', 'المستخدم')];
+        return { cols: cols, rows: rows, total: { d: 'الإجمالي (' + rows.length + ' قيد)', v: sum(rows, 'v') } };
+      } };
+    R.acct_change = { cat: 'acct', name: 'أكبر التغيرات في أرصدة الحسابات', desc: 'رصيد كل حساب أول الفترة وآخرها والتغير، مرتبة من الأكبر تغيراً', params: ['period', 'top'],
+      run: function (p) {
+        var rows = [];
+        F.D.accList.forEach(function (a) {
+          if (!a.leaf || !F.D.byAcc[a.id]) return;
+          var b = balance([a.id], p.from, p.to);
+          if (Math.abs(b.dr) + Math.abs(b.cr) < 0.0005) return;
+          rows.push({ code: a.code, name: a.name, open: b.open, dr: b.dr, cr: b.cr, close: b.close, ch: b.close - b.open, chp: b.open ? (b.close - b.open) / Math.abs(b.open) * 100 : '', _acc: a.id });
+        });
+        rows.sort(function (x, y) { return Math.abs(y.ch) - Math.abs(x.ch); });
+        var cols = [C('code', 'الرمز'), C('name', 'الحساب'), C('open', 'أول الفترة', 'money'), C('dr', 'مدين', 'money'), C('cr', 'دائن', 'money'), C('close', 'آخر الفترة', 'money'), C('ch', 'التغير', 'money'), C('chp', 'التغير %', 'pct')];
+        return topN({ cols: cols, rows: rows, chart: { type: 'hbar', x: 'name', y: ['ch'], yl: ['التغير'], limit: 15 } }, p);
+      } };
+    R.acct_idle = { cat: 'acct', name: 'حسابات بأرصدة دون حركة', desc: 'الحسابات التي عليها رصيد ولم تتحرك منذ مدة تختارها', params: ['asof', 'idle'],
+      run: function (p) {
+        var rows = [], lim = Number(p.idle) || 30;
+        F.D.accList.forEach(function (a) {
+          if (!a.leaf || !F.D.byAcc[a.id]) return;
+          var b = balance([a.id], null, p.asof);
+          if (Math.abs(b.close) < 0.005 || !b.last) return;
+          var dd = days(b.last, p.asof);
+          if (dd >= lim) rows.push({ code: a.code, name: a.name, bal: b.close, last: b.last, days: dd, _acc: a.id });
+        });
+        rows.sort(function (x, y) { return y.days - x.days || Math.abs(y.bal) - Math.abs(x.bal); });
+        return { cols: [C('code', 'الرمز'), C('name', 'الحساب'), C('bal', 'الرصيد', 'money'), C('last', 'آخر حركة'), C('days', 'أيام بلا حركة', 'int')], rows: rows, total: { code: 'الإجمالي', bal: sum(rows, 'bal') } };
+      } };
+    R.acct_counter = { cat: 'acct', name: 'الحسابات المقابلة لحساب', desc: 'مع أي الحسابات يتعامل حساب معيّن، وكم مديناً ودائناً مع كل منها', params: ['period', 'account'],
+      run: function (p) {
+        if (!p.account) return emptyR('اختر الحساب من الأعلى');
+        var a = acc(p.account), res = runPair({ kind: 'pair', a: [a.code], b: [], view: 'cp' }, p);
+        res.subtitle = 'الحسابات المقابلة لـ ' + a.name; return res;
+      } };
+    R.acct_users = { cat: 'acct', name: 'القيود حسب المستخدم ونوعها', desc: 'كم قيداً أدخل كل مستخدم من كل نوع وبأي مبالغ', params: ['period'],
+      run: function (p) {
+        var g = {}, types = {};
+        entriesIn(p.from, p.to).forEach(function (l0) {
+          var u = userName(l0.u), r = g[u] || (g[u] = { name: u, n: 0, v: 0 }), t = l0.btn;
+          r.n++; r.v += entryTotal(F.D.byEntry[l0.e]); r['t_' + t] = (r['t_' + t] || 0) + 1; types[t] = (types[t] || 0) + 1;
+        });
+        var tk = Object.keys(types).sort(function (a, b) { return types[b] - types[a]; }).slice(0, 8);
+        var rows = Object.keys(g).map(function (k) { return g[k]; }).sort(function (a, b) { return b.n - a.n; });
+        var cols = [C('name', 'المستخدم'), C('n', 'عدد القيود', 'int'), C('v', 'المبالغ', 'money')].concat(tk.map(function (t) { return C('t_' + t, t, 'int'); }));
+        return { cols: cols, rows: rows, total: sumRow(rows, cols), chart: { type: 'hbar', x: 'name', y: ['n'], yl: ['عدد القيود'] } };
+      } };
+
+    /* ---------- المبيعات ---------- */
+    R.sales_basket = { cat: 'sales', name: 'متوسط الفاتورة وحجم السلة', desc: 'لكل شهر: عدد الفواتير ومتوسط قيمتها وعدد أصنافها وكميتها، وفواتير كل عميل', params: ['period', 'flt'], fdims: SALE_F,
+      run: function (p) {
+        var rows = monthsOf(p).map(function (x) {
+          var iv = invAgg(x.a, x.b, p.flt).filter(function (r) { return r.s > 0; }), n = iv.length, cust = uniq(iv.map(function (r) { return r.v.ck; })).length, val = sum(iv, 'val');
+          return { name: x.label, n: n, val: val, avg: n ? val / n : 0, med: median(iv.map(function (r) { return r.val; })), lines: n ? sum(iv, 'lines') / n : 0, qty: n ? sum(iv, 'qty') / n : 0, cust: cust, ipc: cust ? n / cust : 0 };
+        });
+        var cols = [C('name', 'الشهر'), C('n', 'فواتير المبيع', 'int'), C('val', 'قيمة المبيع', 'money'), C('avg', 'متوسط الفاتورة', 'money'), C('med', 'الوسيط', 'money'), C('lines', 'أصناف/فاتورة', 'qty'), C('qty', 'كمية/فاتورة', 'qty'), C('cust', 'العملاء', 'int'), C('ipc', 'فواتير/عميل', 'qty')];
+        var all = invAgg(p.from, p.to, p.flt).filter(function (r) { return r.s > 0; }), n = all.length, nc = uniq(all.map(function (r) { return r.v.ck; })).length;
+        var t = { name: 'الفترة كاملة', n: n, val: sum(all, 'val'), avg: n ? sum(all, 'val') / n : 0, med: median(all.map(function (r) { return r.val; })), lines: n ? sum(all, 'lines') / n : 0, qty: n ? sum(all, 'qty') / n : 0, cust: nc, ipc: nc ? n / nc : 0 };
+        return withNote({ cols: cols, rows: rows, total: t, chart: { type: 'bar', x: 'name', y: ['avg'], yl: ['متوسط الفاتورة'] } }, p);
+      } };
+    R.sales_hour = { cat: 'sales', name: 'المبيعات حسب ساعة اليوم', desc: 'في أي ساعات تُسجَّل فواتير المبيع أكثر', params: ['period', 'flt'], fdims: SALE_F,
+      run: function (p) {
+        var g = {};
+        invAgg(p.from, p.to, p.flt).forEach(function (r) { var h = Number(String(r.v.dt || '').slice(11, 13)); if (isNaN(h)) return; var o = g[h] || (g[h] = { h: h, n: 0, net: 0 }); if (r.s > 0) o.n++; o.net += r.s * r.val; });
+        var rows = Object.keys(g).map(function (k) { var o = g[k]; o.name = ('0' + o.h).slice(-2) + ':00 - ' + ('0' + o.h).slice(-2) + ':59'; return o; }).sort(function (a, b) { return a.h - b.h; });
+        var tot = sum(rows, 'net'); rows.forEach(function (r) { r.share = pct(r.net, tot); r.avg = r.n ? r.net / r.n : 0; });
+        var cols = [C('name', 'الساعة'), C('n', 'فواتير المبيع', 'int'), C('net', 'صافي المبيعات', 'money'), C('avg', 'متوسط الفاتورة', 'money'), C('share', 'الحصة', 'pct')];
+        return withNote({ cols: cols, rows: rows, total: sumRow(rows, cols), chart: { type: 'bar', x: 'name', y: ['net'], yl: ['صافي المبيعات'] } }, p);
+      } };
+    R.sales_reps_card = { cat: 'sales', name: 'بطاقة أداء المناديب', desc: 'لكل مندوب: المبيعات والربح والهامش والفواتير والعملاء والأصناف ومتوسط الفاتورة والمرتجعات', params: ['period', 'flt'], fdims: SALE_F,
+      run: function (p) {
+        var g = {};
+        facts('s', p.from, p.to, p.flt).forEach(function (x) {
+          var k = x.v.ag || '0', r = g[k] || (g[k] = { name: repName(x.v.ag), sales: 0, ret: 0, profit: 0, inv: {}, cust: {}, items: {}, qty: 0 });
+          if (x.s > 0) { r.sales += x.val; r.inv[x.v.id] = 1; r.cust[x.v.ck] = 1; r.items[x.l.item] = 1; } else r.ret += x.val;
+          r.profit += x.s * x.profit; r.qty += x.s * x.qty;
+        });
+        var rows = Object.keys(g).map(function (k) { var r = g[k], n = Object.keys(r.inv).length; return { name: r.name, net: r.sales - r.ret, profit: r.profit, margin: pct(r.profit, r.sales - r.ret), n: n, cust: Object.keys(r.cust).length, items: Object.keys(r.items).length, avg: n ? r.sales / n : 0, qty: r.qty, rp: pct(r.ret, r.sales) }; });
+        var tot = sum(rows, 'net'); rows.forEach(function (r) { r.share = pct(r.net, tot); });
+        rows.sort(function (a, b) { return b.net - a.net; });
+        var cols = [C('name', 'المندوب'), C('net', 'صافي المبيعات', 'money'), C('share', 'الحصة', 'pct'), C('profit', 'مجمل الربح', 'money'), C('margin', 'الهامش', 'pct'), C('n', 'الفواتير', 'int'), C('cust', 'العملاء', 'int'), C('items', 'الأصناف', 'int'), C('avg', 'متوسط الفاتورة', 'money'), C('qty', 'الكمية', 'qty'), C('rp', 'المرتجعات %', 'pct')];
+        var t = sumRow(rows, cols); t.margin = pct(t.profit, t.net); t.share = 100;
+        return withNote({ cols: cols, rows: rows, total: t, chart: { type: 'hbar', x: 'name', y: ['net'], yl: ['صافي المبيعات'] } }, p);
+      } };
+    R.sales_low_margin = { cat: 'sales', name: 'المبيعات بهامش منخفض أو بخسارة', desc: 'أسطر المبيع التي ربحها أقل من نسبة تختارها، لاكتشاف البيع تحت التكلفة', params: ['period', 'flt'], fdims: SALE_F,
+      sel: [['thr', 'الهامش أقل من', [[5, '5%'], [0, '0% (بخسارة)'], [10, '10%'], [15, '15%'], [20, '20%']]]],
+      run: function (p) {
+        var thr = Number(p.thr), rows = [];
+        facts('s', p.from, p.to, p.flt).forEach(function (x) {
+          if (x.s < 0 || !x.cost || !x.val) return;
+          var m = pct(x.profit, x.val);
+          if (m < thr) rows.push({ d: x.d, no: x.v.no, cust: x.v.name, item: itemName(x.l.item), qty: x.qty, price: x.l.p, val: x.val, cost: x.cost, profit: x.profit, margin: m });
+        });
+        rows.sort(function (a, b) { return a.margin - b.margin; });
+        var cols = [C('d', 'التاريخ'), C('no', 'الفاتورة'), C('cust', 'العميل'), C('item', 'الصنف'), C('qty', 'الكمية', 'qty'), C('price', 'السعر', 'money'), C('val', 'القيمة', 'money'), C('cost', 'التكلفة', 'money'), C('profit', 'الربح', 'money'), C('margin', 'الهامش', 'pct')];
+        var t = sumRow(rows, cols); t.d = 'الإجمالي (' + rows.length + ' سطر)'; t.margin = pct(t.profit, t.val);
+        var res = withNote({ cols: cols, rows: rows, total: t }, p);
+        if (!rows.length) res.empty = 'لا توجد مبيعات بهامش أقل من ' + thr + '% في هذه الفترة ✓';
+        return res;
+      } };
+    R.sales_type = { cat: 'sales', name: 'المبيعات حسب نوع الفاتورة', desc: 'توزيع المبيعات على أنواع فواتير المبيع المعرّفة في سراج', params: ['period', 'flt'], fdims: SALE_F,
+      run: function (p) { return salesTable(p, 'نوع الفاتورة', function (x) { return x.v.t || '0'; }, function (x) { return (T().it[x.v.t] || {}).name || 'بدون'; }); } };
+    R.sales_mom = { cat: 'sales', name: 'نمو المبيعات شهراً بشهر', desc: 'صافي المبيعات والربح لكل شهر، والتغير عن الشهر السابق، والتراكمي، ومتوسط اليوم', params: ['period', 'flt'], fdims: SALE_F,
+      run: function (p) {
+        var prev = null, cum = 0;
+        var rows = monthsOf(p).map(function (x) {
+          var s = salesStats(x.a, x.b, p.flt); cum += s.net;
+          var r = { name: x.label, net: s.net, ch: prev === null ? '' : s.net - prev, chp: prev ? (s.net - prev) / Math.abs(prev) * 100 : '', profit: s.profit, margin: pct(s.profit, s.net), cum: cum, daily: s.net / (days(x.a, x.b) + 1) };
+          prev = s.net; return r;
+        });
+        var cols = [C('name', 'الشهر'), C('net', 'صافي المبيعات', 'money'), C('ch', 'التغير', 'money'), C('chp', 'التغير %', 'pct'), C('profit', 'مجمل الربح', 'money'), C('margin', 'الهامش', 'pct'), C('cum', 'التراكمي', 'money'), C('daily', 'متوسط اليوم', 'money')];
+        var t = { name: 'الإجمالي', net: cum, profit: sum(rows, 'profit') }; t.margin = pct(t.profit, t.net);
+        return withNote({ cols: cols, rows: rows, total: t, chart: { type: 'line', x: 'name', y: ['net', 'profit'], yl: ['صافي المبيعات', 'مجمل الربح'] } }, p);
+      } };
+
+    /* ---------- العملاء ---------- */
+    function custStats(p) {
+      var g = {};
+      invAgg(p.from, p.to, p.flt).forEach(function (r) {
+        var k = r.v.ck, o = g[k] || (g[k] = { k: k, name: r.v.name, n: 0, net: 0, profit: 0, first: r.v.d, last: '', dates: {} });
+        if (r.s > 0) { o.n++; o.dates[r.v.d] = 1; if (r.v.d > o.last) o.last = r.v.d; if (r.v.d < o.first) o.first = r.v.d; }
+        o.net += r.s * r.val; o.profit += r.s * r.profit;
+      });
+      return Object.keys(g).map(function (k) { return g[k]; }).filter(function (o) { return o.n > 0; });
+    }
+    R.cust_rfm = { cat: 'cust', name: 'تصنيف العملاء (RFM)', desc: 'كل عميل حسب حداثة آخر شراء وتكراره وقيمته: أبطال، مخلصون، واعدون، معرّضون للفقد، خاملون', params: ['period', 'flt'], fdims: SALE_F,
+      run: function (p) {
+        var list = custStats(p);
+        if (!list.length) return emptyR('لا توجد مبيعات في هذه الفترة');
+        list.forEach(function (o) { o.rec = days(o.last, p.to); });
+        var R_ = list.map(function (o) { return -o.rec; }).sort(function (a, b) { return a - b; }), F_ = list.map(function (o) { return o.n; }).sort(function (a, b) { return a - b; }), M_ = list.map(function (o) { return o.net; }).sort(function (a, b) { return a - b; });
+        var seg = function (r, f, m) { return r >= 4 && f >= 4 ? 'أبطال' : f >= 4 ? 'مخلصون' : r >= 4 && f <= 2 ? 'جدد وواعدون' : r === 3 ? 'يحتاجون انتباهاً' : r <= 2 && (f >= 3 || m >= 4) ? 'معرّضون للفقد' : 'خاملون'; };
+        list.forEach(function (o) { o.r = scoreOf(-o.rec, R_); o.f = scoreOf(o.n, F_); o.m = scoreOf(o.net, M_); o.score = '' + o.r + o.f + o.m; o.seg = seg(o.r, o.f, o.m); });
+        var order = ['أبطال', 'مخلصون', 'جدد وواعدون', 'يحتاجون انتباهاً', 'معرّضون للفقد', 'خاملون'];
+        list.sort(function (a, b) { return order.indexOf(a.seg) - order.indexOf(b.seg) || b.net - a.net; });
+        var rows = list.map(function (o) { return { name: o.name, seg: o.seg, rec: o.rec, n: o.n, net: o.net, last: o.last, score: o.score, _acc: acc(o.k) ? o.k : null }; });
+        var cols = [C('name', 'العميل'), C('seg', 'التصنيف'), C('rec', 'أيام منذ آخر شراء', 'int'), C('n', 'عدد الفواتير', 'int'), C('net', 'صافي المشتريات', 'money'), C('last', 'آخر شراء'), C('score', 'R-F-M')];
+        var bySeg = order.map(function (s) { var x = list.filter(function (o) { return o.seg === s; }); return { name: s, v: x.length, net: sum(x, 'net') }; }).filter(function (x) { return x.v; });
+        return withNote({ cols: cols, rows: rows, total: { name: 'الإجمالي (' + list.length + ' عميل)', n: sum(list, 'n'), net: sum(list, 'net') }, chart: { type: 'hbar', x: 'name', y: ['net'], yl: ['صافي المشتريات حسب التصنيف'], rowsOverride: bySeg },
+          note: 'كل مقياس من 1 إلى 5 مقارنة ببقية العملاء. التصنيفات: ' + bySeg.map(function (x) { return x.name + ' ' + x.v; }).join('، ') }, p);
+      } };
+    R.cust_abc = { cat: 'cust', name: 'تحليل ABC للعملاء (باريتو)', desc: 'ترتيب العملاء بالحصة التراكمية: فئة A تصنع 80% من المبيعات، B حتى 95%، والباقي C', params: ['period', 'flt'], fdims: SALE_F,
+      run: function (p) { return abcTable(salesBy(p, function (x) { return x.v.ck; }, function (x) { return x.v.name; }), 'العميل', 'net', p); } };
+    function abcTable(list, label, k, p) {
+      list = list.filter(function (r) { return r[k] > 0; }).sort(function (a, b) { return b[k] - a[k]; });
+      var tot = sum(list, k), cum = 0, cnt = { A: 0, B: 0, C: 0 }, val = { A: 0, B: 0, C: 0 };
+      list.forEach(function (r, i) { var before = cum; cum += r[k]; r.rank = i + 1; r.share = pct(r[k], tot); r.cum = pct(cum, tot); r.cls = pct(before, tot) < 80 ? 'A' : pct(before, tot) < 95 ? 'B' : 'C'; cnt[r.cls]++; val[r.cls] += r[k]; r._hl = r.cls === 'A'; });
+      var cols = [C('rank', '#', 'int'), C('name', label), C(k, k === 'qty' ? 'الكمية' : 'صافي المبيعات', k === 'qty' ? 'qty' : 'money'), C('profit', 'مجمل الربح', 'money'), C('share', 'الحصة', 'pct'), C('cum', 'الحصة التراكمية', 'pct'), C('cls', 'الفئة')];
+      var t = sumRow(list, cols); t.rank = ''; t.name = 'الإجمالي (' + list.length + ')';
+      return withNote({ cols: cols, rows: list, total: t, chart: { type: 'line', x: 'name', y: ['cum'], yl: ['الحصة التراكمية %'] },
+        note: ['A', 'B', 'C'].map(function (c) { return 'الفئة ' + c + ': ' + cnt[c] + ' (' + fp(pct(cnt[c], list.length)) + ' من العدد، ' + fp(pct(val[c], tot)) + ' من القيمة)'; }).join(' · ') }, p);
+    }
+    R.cust_freq = { cat: 'cust', name: 'تكرار الشراء لكل عميل', desc: 'عدد مرات الشراء وأيامه، ومتوسط الأيام بين كل شراء والذي يليه، وآخر شراء، ومتوسط الفاتورة', params: ['period', 'top', 'flt'], fdims: SALE_F,
+      run: function (p) {
+        var rows = custStats(p).map(function (o) {
+          var ds = Object.keys(o.dates).sort(), gap = ds.length > 1 ? days(ds[0], ds[ds.length - 1]) / (ds.length - 1) : '';
+          return { name: o.name, n: o.n, dd: ds.length, gap: gap, first: o.first, last: o.last, since: days(o.last, p.to), net: o.net, avg: o.n ? o.net / o.n : 0, _acc: acc(o.k) ? o.k : null };
+        }).sort(function (a, b) { return b.n - a.n || b.net - a.net; });
+        var cols = [C('name', 'العميل'), C('n', 'الفواتير', 'int'), C('dd', 'أيام الشراء', 'int'), C('gap', 'متوسط الأيام بين الشراءات', 'qty'), C('first', 'أول شراء'), C('last', 'آخر شراء'), C('since', 'منذ آخر شراء (يوم)', 'int'), C('net', 'صافي المشتريات', 'money'), C('avg', 'متوسط الفاتورة', 'money')];
+        return withNote(topN({ cols: cols, rows: rows, total: { name: 'الإجمالي', n: sum(rows, 'n'), net: sum(rows, 'net') } }, p), p);
+      } };
+    R.cust_base = { cat: 'cust', name: 'حركة قاعدة العملاء شهرياً', desc: 'لكل شهر: العملاء النشطون والجدد والعائدون والمتوقفون عن الشهر السابق', params: ['period', 'flt'], fdims: SALE_F,
+      run: function (p) {
+        var first = {};
+        F.D.invs.forEach(function (v) { if (v.c === SALE && invPass(v, parseFilter(p.flt)) && (!first[v.ck] || v.d < first[v.ck])) first[v.ck] = v.d; });
+        var prevSet = null, rows = monthsOf(p).map(function (x) {
+          var set = {}; invAgg(x.a, x.b, p.flt).forEach(function (r) { if (r.s > 0) set[r.v.ck] = 1; });
+          var ks = Object.keys(set), nw = ks.filter(function (k) { return first[k] >= x.a && first[k] <= x.b; }).length;
+          var ret = prevSet ? ks.filter(function (k) { return prevSet[k]; }).length : '', lost = prevSet ? Object.keys(prevSet).filter(function (k) { return !set[k]; }).length : '';
+          var r = { name: x.label, act: ks.length, nw: nw, ret: ret, back: prevSet ? ks.length - nw - ret : '', lost: lost, keep: prevSet && Object.keys(prevSet).length ? pct(ret, Object.keys(prevSet).length) : '' };
+          prevSet = set; return r;
+        });
+        var cols = [C('name', 'الشهر'), C('act', 'نشطون', 'int'), C('nw', 'جدد', 'int'), C('ret', 'استمروا من الشهر السابق', 'int'), C('back', 'عادوا بعد انقطاع', 'int'), C('lost', 'توقفوا', 'int'), C('keep', 'نسبة الاستمرار', 'pct')];
+        return withNote({ cols: cols, rows: rows, chart: { type: 'bar', x: 'name', y: ['act', 'nw', 'lost'], yl: ['نشطون', 'جدد', 'توقفوا'] } }, p);
+      } };
+    R.cust_cohort = { cat: 'cust', name: 'احتفاظ العملاء (مجموعات الشهر الأول)', desc: 'العملاء حسب شهر أول شراء، وكم منهم اشترى في كل شهر بعده (نسبة الاحتفاظ)', params: ['period', 'flt'], fdims: SALE_F,
+      run: function (p) {
+        var first = {}, active = {}, f = parseFilter(p.flt);
+        F.D.invs.forEach(function (v) { if (v.c !== SALE || !invPass(v, f) || v.d > p.to) return; var m = v.d.slice(0, 7); if (!first[v.ck] || m < first[v.ck]) first[v.ck] = m; (active[v.ck] = active[v.ck] || {})[m] = 1; });
+        var months = monthsOf(p).map(function (x) { return x.m; }), maxK = 0, rows = [];
+        months.forEach(function (m, i) {
+          var coh = Object.keys(first).filter(function (k) { return first[k] === m; });
+          if (!coh.length) return;
+          var r = { name: monthLabel(m), n: coh.length };
+          for (var k = 1; i + k < months.length; k++) { var mm = months[i + k]; r['m' + k] = pct(coh.filter(function (c) { return active[c][mm]; }).length, coh.length); if (k > maxK) maxK = k; }
+          rows.push(r);
+        });
+        var cols = [C('name', 'شهر أول شراء'), C('n', 'عملاء المجموعة', 'int')];
+        for (var k = 1; k <= Math.min(maxK, 12); k++) cols.push(C('m' + k, 'بعد ' + k + (k === 1 ? ' شهر' : ' أشهر'), 'pct'));
+        var res = withNote({ cols: cols, rows: rows }, p);
+        if (!rows.length) res.empty = 'لا يوجد عملاء جدد في هذه الفترة';
+        return res;
+      } };
+
+    /* ---------- الأصناف ---------- */
+    var ITEM_F = ['item', 'st', 'cust', 'ag', 'xitem', 'xcust'];
+    function itemsBy(p) { var l = salesBy(p, function (x) { return x.l.item; }, function (x) { return itemName(x.l.item); }); l.forEach(function (r) { r.unit = (T().item[r.k] || {}).mu || ''; }); return l; }
+    R.item_abc = { cat: 'items', name: 'تحليل ABC للأصناف', desc: 'الأصناف التي تصنع 80% من المبيعات (A) ثم حتى 95% (B) والباقي (C)، بالقيمة أو بالكمية', params: ['period', 'measure', 'flt'], fdims: ITEM_F,
+      run: function (p) { return abcTable(itemsBy(p), 'الصنف', p.measure === 'qty' ? 'qty' : 'net', p); } };
+    R.item_profit = { cat: 'items', name: 'ربحية الأصناف وترتيبها', desc: 'القيمة والتكلفة والربح والهامش وربح الوحدة وحصة كل صنف من الربح الكلي', params: ['period', 'top', 'flt'], fdims: ITEM_F,
+      run: function (p) {
+        var list = itemsBy(p), tp = sum(list, 'profit');
+        list.forEach(function (r) { r.pshare = pct(r.profit, tp); r.ppu = r.qty ? r.profit / r.qty : 0; });
+        list.sort(function (a, b) { return b.profit - a.profit; }); list.forEach(function (r, i) { r.rank = i + 1; });
+        var cols = [C('rank', '#', 'int'), C('name', 'الصنف'), C('qty', 'الكمية', 'qty'), C('unit', 'الوحدة'), C('net', 'صافي المبيعات', 'money'), C('cost', 'التكلفة', 'money'), C('profit', 'مجمل الربح', 'money'), C('margin', 'الهامش', 'pct'), C('ppu', 'ربح الوحدة', 'money'), C('pshare', 'من الربح الكلي', 'pct')];
+        var t = sumRow(list, cols); t.rank = ''; t.margin = pct(t.profit, t.net); t.pshare = 100;
+        return withNote(topN({ cols: cols, rows: list, total: t, chart: { type: 'hbar', x: 'name', y: ['profit'], yl: ['مجمل الربح'], limit: 12 } }, p), p);
+      } };
+    R.item_reach = { cat: 'items', name: 'انتشار الأصناف بين العملاء', desc: 'كم عميلاً يشتري كل صنف، ونسبة انتشاره بين العملاء النشطين، ومتوسط الكمية في الفاتورة', params: ['period', 'top', 'flt'], fdims: ITEM_F,
+      run: function (p) {
+        var g = {}, allC = {};
+        facts('s', p.from, p.to, p.flt).forEach(function (x) {
+          if (x.s < 0) return; allC[x.v.ck] = 1;
+          var r = g[x.l.item] || (g[x.l.item] = { name: itemName(x.l.item), cust: {}, inv: {}, qty: 0, val: 0 });
+          r.cust[x.v.ck] = 1; r.inv[x.v.id] = 1; r.qty += x.qty; r.val += x.val;
+        });
+        var nc = Object.keys(allC).length;
+        var rows = Object.keys(g).map(function (k) { var r = g[k], c = Object.keys(r.cust).length, n = Object.keys(r.inv).length; return { name: r.name, c: c, pen: pct(c, nc), n: n, qpi: n ? r.qty / n : 0, val: r.val, unit: (T().item[k] || {}).mu || '' }; })
+          .sort(function (a, b) { return b.c - a.c; });
+        var cols = [C('name', 'الصنف'), C('c', 'عدد العملاء', 'int'), C('pen', 'الانتشار', 'pct'), C('n', 'الفواتير', 'int'), C('qpi', 'متوسط الكمية/فاتورة', 'qty'), C('unit', 'الوحدة'), C('val', 'قيمة المبيع', 'money')];
+        return withNote(topN({ cols: cols, rows: rows, note: 'العملاء النشطون في الفترة: ' + nc, chart: { type: 'hbar', x: 'name', y: ['pen'], yl: ['الانتشار %'], limit: 15 } }, p), p);
+      } };
+    R.item_pairs = { cat: 'items', name: 'الأصناف التي تُباع معاً', desc: 'أكثر أزواج الأصناف ظهوراً في نفس الفاتورة، مع نسبة الثقة وقوة الارتباط (Lift)', params: ['period', 'top', 'flt'], fdims: ['cust', 'ag', 'st', 'xcust'],
+      run: function (p) {
+        var inv = {};
+        facts('s', p.from, p.to, p.flt).forEach(function (x) { if (x.s > 0) (inv[x.v.id] = inv[x.v.id] || {})[x.l.item] = 1; });
+        var ids = Object.keys(inv), N0 = ids.length, one = {}, two = {};
+        ids.forEach(function (i) {
+          var its = Object.keys(inv[i]).sort();
+          its.forEach(function (a) { one[a] = (one[a] || 0) + 1; });
+          if (its.length > 40) return;
+          for (var x = 0; x < its.length; x++) for (var y = x + 1; y < its.length; y++) { var k = its[x] + '|' + its[y]; two[k] = (two[k] || 0) + 1; }
+        });
+        var rows = Object.keys(two).filter(function (k) { return two[k] >= 2; }).map(function (k) {
+          var ab = k.split('|'), n = two[k], ca = n / one[ab[0]], cb = n / one[ab[1]];
+          return { a: itemName(ab[0]), b: itemName(ab[1]), n: n, sup: pct(n, N0), conf: Math.max(ca, cb) * 100, lift: N0 ? n * N0 / (one[ab[0]] * one[ab[1]]) : 0 };
+        }).sort(function (x, y) { return y.n - x.n || y.lift - x.lift; });
+        if (!p.top || Number(p.top) === 0) rows = rows.slice(0, 100);
+        var res = topN({ cols: [C('a', 'الصنف الأول'), C('b', 'الصنف الثاني'), C('n', 'فواتير فيها الاثنان', 'int'), C('sup', 'من كل الفواتير', 'pct'), C('conf', 'الثقة', 'pct'), C('lift', 'قوة الارتباط (Lift)', 'qty')], rows: rows,
+          note: 'الثقة: من الفواتير التي فيها أحد الصنفين، كم فيها الآخر. قوة الارتباط فوق 1 تعني أنهما يُشتريان معاً أكثر من الصدفة. فواتير المبيع: ' + N0 }, p);
+        if (!rows.length) res.empty = 'لا توجد أزواج متكررة في هذه الفترة';
+        return withNote(res, p);
+      } };
+    R.item_gifts = { cat: 'items', name: 'نسبة الهدايا لكل صنف', desc: 'الكمية المباعة والهدايا ونسبتها لكل صنف، لمراقبة العروض', params: ['period', 'flt'], fdims: ITEM_F,
+      run: function (p) {
+        var g = {};
+        facts('s', p.from, p.to, p.flt).forEach(function (x) { var r = g[x.l.item] || (g[x.l.item] = { name: itemName(x.l.item), qb: 0, gift: 0, val: 0, n: {} }); r.qb += x.s * x.l.qb; r.gift += x.s * x.gift; r.val += x.s * x.val; if (x.gift) r.n[x.v.id] = 1; });
+        var rows = Object.keys(g).map(function (k) { var r = g[k]; return { name: r.name, qb: r.qb, gift: r.gift, ratio: pct(r.gift, r.qb), n: Object.keys(r.n).length, val: r.val }; }).filter(function (r) { return r.gift; }).sort(function (a, b) { return b.ratio - a.ratio; });
+        var cols = [C('name', 'الصنف'), C('qb', 'الكمية المباعة (وحدة أساسية)', 'qty'), C('gift', 'الهدايا', 'qty'), C('ratio', 'نسبة الهدايا', 'pct'), C('n', 'فواتير فيها هدايا', 'int'), C('val', 'قيمة المبيع', 'money')];
+        var t = sumRow(rows, cols); t.ratio = pct(t.gift, t.qb);
+        var res = withNote({ cols: cols, rows: rows, total: t, chart: { type: 'hbar', x: 'name', y: ['ratio'], yl: ['نسبة الهدايا %'], limit: 15 } }, p);
+        if (!rows.length) res.empty = 'لا توجد هدايا في هذه الفترة';
+        return res;
+      } };
+    R.item_price_month = { cat: 'items', name: 'متوسط سعر البيع شهرياً', desc: 'متوسط سعر بيع الوحدة لكل صنف في كل شهر، لمتابعة تغيّر الأسعار', params: ['period', 'flt'], fdims: ITEM_F,
+      run: function (p) {
+        var g = {}, ms = {};
+        facts('s', p.from, p.to, p.flt).forEach(function (x) { if (x.s < 0 || !x.qty) return; var m = x.d.slice(0, 7), r = g[x.l.item] || (g[x.l.item] = { name: itemName(x.l.item), unit: (T().item[x.l.item] || {}).mu || '', v: {}, q: {}, tv: 0, tq: 0 }); r.v[m] = (r.v[m] || 0) + x.val; r.q[m] = (r.q[m] || 0) + x.qty; r.tv += x.val; r.tq += x.qty; ms[m] = 1; });
+        var mk = Object.keys(ms).sort();
+        var rows = Object.keys(g).map(function (k) { var r = g[k], o = { name: r.name, unit: r.unit, avg: r.tq ? r.tv / r.tq : 0 }; mk.forEach(function (m) { o['c_' + m] = r.q[m] ? r.v[m] / r.q[m] : ''; }); var f0 = mk.filter(function (m) { return r.q[m]; }); o.ch = f0.length > 1 ? pct(o['c_' + f0[f0.length - 1]] - o['c_' + f0[0]], o['c_' + f0[0]]) : ''; return o; })
+          .sort(function (a, b) { return String(a.name).localeCompare(String(b.name), 'ar'); });
+        var cols = [C('name', 'الصنف'), C('unit', 'الوحدة')].concat(mk.map(function (m) { return C('c_' + m, monthLabel(m), 'money'); })).concat([C('avg', 'متوسط الفترة', 'money'), C('ch', 'التغير من أول شهر لآخر شهر', 'pct')]);
+        return withNote({ cols: cols, rows: rows }, p);
+      } };
+    R.item_unsold = { cat: 'items', name: 'أصناف في المخزون لم تُبع', desc: 'الأصناف التي لها رصيد في المخزون ولم يُبع منها شيء في الفترة، مع قيمتها', params: ['period'],
+      run: function (p) {
+        var sold = {}; facts('s', p.from, p.to).forEach(function (x) { if (x.s > 0) sold[x.l.item] = 1; });
+        var b = stockAt(p.to), g = {};
+        Object.keys(b).forEach(function (k) { var it = k.split('|')[1], q = b[k]; if (Math.abs(q) < 1e-9 || sold[it]) return; var r = g[it] || (g[it] = { qb: 0 }); r.qb += q; });
+        var rows = Object.keys(g).filter(function (it) { return g[it].qb > 0; }).map(function (it) { var I = T().item[it] || { f: 1 }, q = g[it].qb; return { name: itemName(it), qty: q / (I.f || 1), unit: I.mu || '', val: q * costAt(it, p.to) }; }).sort(function (a, b) { return b.val - a.val; });
+        var res = { cols: [C('name', 'الصنف'), C('qty', 'الكمية في المخزون', 'qty'), C('unit', 'الوحدة'), C('val', 'القيمة بمتوسط التكلفة', 'money')], rows: rows, total: { name: 'الإجمالي (' + rows.length + ' صنف)', val: sum(rows, 'val') } };
+        if (!rows.length) res.empty = 'كل الأصناف التي في المخزون بيع منها شيء في هذه الفترة ✓';
+        return res;
+      } };
+
+    /* ---------- تحليلية وإحصائية ---------- */
+    R.an_daily_stats = { cat: 'analytics', name: 'إحصاءات المبيعات اليومية', desc: 'لكل شهر: أيام البيع، المتوسط اليومي، الوسيط، الانحراف المعياري، أعلى وأدنى يوم ومعامل التذبذب', params: ['period', 'flt'], fdims: SALE_F,
+      run: function (p) {
+        var rows = monthsOf(p).map(function (x) {
+          var d = {}; facts('s', x.a, x.b, p.flt).forEach(function (f0) { d[f0.d] = (d[f0.d] || 0) + f0.s * f0.val; });
+          var ks = Object.keys(d), v = ks.map(function (k) { return d[k]; }), mean = v.length ? sum(v, function (y) { return y; }) / v.length : 0, sd = stdev(v);
+          var best = ks.reduce(function (b, k) { return b === null || d[k] > d[b] ? k : b; }, null), worst = ks.reduce(function (b, k) { return b === null || d[k] < d[b] ? k : b; }, null);
+          return { name: x.label, n: ks.length, tot: sum(v, function (y) { return y; }), mean: mean, med: median(v), sd: sd, cv: mean ? sd / mean * 100 : 0, max: best ? d[best] : 0, best: best || '', min: worst ? d[worst] : 0, worst: worst || '' };
+        });
+        var cols = [C('name', 'الشهر'), C('n', 'أيام البيع', 'int'), C('tot', 'الإجمالي', 'money'), C('mean', 'المتوسط اليومي', 'money'), C('med', 'الوسيط', 'money'), C('sd', 'الانحراف المعياري', 'money'), C('cv', 'معامل التذبذب', 'pct'), C('max', 'أعلى يوم', 'money'), C('best', 'تاريخه'), C('min', 'أدنى يوم', 'money'), C('worst', 'تاريخه')];
+        return withNote({ cols: cols, rows: rows, note: 'معامل التذبذب = الانحراف المعياري ÷ المتوسط. كلما قلّ كانت المبيعات أكثر انتظاماً.', chart: { type: 'bar', x: 'name', y: ['mean', 'med'], yl: ['المتوسط اليومي', 'الوسيط'] } }, p);
+      } };
+    R.an_inv_dist = { cat: 'analytics', name: 'توزيع قيم الفواتير', desc: 'كم فاتورة في كل شريحة قيمة، وكم تمثّل من العدد ومن القيمة الكلية', params: ['period', 'flt'], fdims: SALE_F,
+      run: function (p) {
+        var B = [[0, 500], [500, 1000], [1000, 2500], [2500, 5000], [5000, 10000], [10000, 25000], [25000, 50000], [50000, 100000], [100000, Infinity]];
+        var iv = invAgg(p.from, p.to, p.flt).filter(function (r) { return r.s > 0; }), n = iv.length, tv = sum(iv, 'val');
+        var rows = B.map(function (b) { var x = iv.filter(function (r) { return r.val >= b[0] && r.val < b[1]; }), v = sum(x, 'val'); return { name: fk(b[0]) + (b[1] === Infinity ? ' فأكثر' : ' − ' + fk(b[1])), n: x.length, np: pct(x.length, n), v: v, vp: pct(v, tv), avg: x.length ? v / x.length : 0 }; }).filter(function (r) { return r.n; });
+        var cols = [C('name', 'شريحة قيمة الفاتورة (د.ل)'), C('n', 'عدد الفواتير', 'int'), C('np', 'من العدد', 'pct'), C('v', 'القيمة', 'money'), C('vp', 'من القيمة', 'pct'), C('avg', 'متوسط الشريحة', 'money')];
+        var vals = iv.map(function (r) { return r.val; });
+        return withNote({ cols: cols, rows: rows, total: { name: 'الإجمالي', n: n, np: 100, v: tv, vp: 100, avg: n ? tv / n : 0 }, chart: { type: 'bar', x: 'name', y: ['np', 'vp'], yl: ['% من العدد', '% من القيمة'] },
+          note: 'الوسيط ' + fm(median(vals)) + ' · الانحراف المعياري ' + fm(stdev(vals)) + ' · أكبر فاتورة ' + fm(vals.length ? Math.max.apply(null, vals) : 0) }, p);
+      } };
+    R.an_forecast = { cat: 'analytics', name: 'توقع المبيعات للأشهر القادمة', desc: 'اتجاه صافي المبيعات الشهري (انحدار خطي) ومتوسط متحرك لثلاثة أشهر، وتقدير الأشهر الثلاثة القادمة', params: ['period', 'flt'], fdims: SALE_F,
+      run: function (p) {
+        var ms = monthsOf(p), cur = today().slice(0, 7);
+        var full = ms.filter(function (x) { return x.m < cur || x.b === monthEnd(x.m); });
+        if (full.length < 3) return emptyR('يحتاج التوقع ثلاثة أشهر كاملة على الأقل. اختر فترة أطول (مثل «السنة»)');
+        var y = full.map(function (x) { return salesStats(x.m + '-01', monthEnd(x.m), p.flt).net; }), n = y.length, xs = y.map(function (v, i) { return i; });
+        var mx = (n - 1) / 2, my = sum(y, function (v) { return v; }) / n, sxy = 0, sxx = 0;
+        xs.forEach(function (x, i) { sxy += (x - mx) * (y[i] - my); sxx += (x - mx) * (x - mx); });
+        var b = sxx ? sxy / sxx : 0, a = my - b * mx, ssr = 0, sst = 0;
+        y.forEach(function (v, i) { ssr += Math.pow(v - (a + b * i), 2); sst += Math.pow(v - my, 2); });
+        var r2 = sst ? 1 - ssr / sst : 0, rows = [];
+        full.forEach(function (x, i) { rows.push({ name: x.label, act: y[i], fit: a + b * i, ma: i >= 2 ? (y[i] + y[i - 1] + y[i - 2]) / 3 : '', kind: 'فعلي' }); });
+        var m = full[full.length - 1].m, ma3 = (y[n - 1] + y[n - 2] + y[n - 3]) / 3;
+        for (var k = 1; k <= 3; k++) { m = addD(monthEnd(m), 1).slice(0, 7); var tr = Math.max(0, a + b * (n - 1 + k)); rows.push({ name: monthLabel(m), act: '', fit: tr, ma: ma3, fc: (tr + ma3) / 2, kind: 'تقدير', _hl: true }); }
+        return withNote({ cols: [C('name', 'الشهر'), C('kind', 'النوع'), C('act', 'المبيعات الفعلية', 'money'), C('fit', 'خط الاتجاه', 'money'), C('ma', 'المتوسط المتحرك 3 أشهر', 'money'), C('fc', 'التقدير المقترح', 'money')], rows: rows,
+          note: 'الاتجاه الشهري ' + (b >= 0 ? '+' : '') + fm(b) + ' د.ل في الشهر · دقة خط الاتجاه R² = ' + fq(r2) + ' (كلما اقتربت من 1 كان أدق). التقدير المقترح متوسط خط الاتجاه والمتوسط المتحرك، وهو تقدير إحصائي وليس وعداً.',
+          chart: { type: 'line', x: 'name', y: ['plot', 'fit'], yl: ['الفعلي ثم التقدير', 'خط الاتجاه'], rowsOverride: rows.map(function (r) { return { name: r.name, plot: r.act === '' ? r.fc : r.act, fit: r.fit }; }) } }, p);
+      } };
+    R.an_dso = { cat: 'analytics', name: 'دوران المديونية ومتوسط فترة التحصيل', desc: 'لكل شهر: المبيعات والتحصيل ونسبته ومديونية آخر الشهر ومتوسط فترة التحصيل (DSO) بالأيام', params: ['period', 'flt'], fdims: ['cust', 'xcust'],
+      run: function (p) {
+        var rv = recvFor(p.flt);
+        var rows = monthsOf(p).map(function (x) {
+          var s = salesStats(x.a, x.b, p.flt), c = collections(x.a, x.b, '', false, rv), d = balance(rv, null, x.b).close, dd = days(x.a, x.b) + 1;
+          return { name: x.label, net: s.net, coll: c, cr: pct(c, s.net), debt: d, dso: s.net > 0 ? d / (s.net / dd) : '', turn: d > 0 ? s.net / d : '' };
+        });
+        var cols = [C('name', 'الشهر'), C('net', 'صافي المبيعات', 'money'), C('coll', 'التحصيل', 'money'), C('cr', 'نسبة التحصيل للمبيعات', 'pct'), C('debt', 'المديونية آخر الشهر', 'money'), C('dso', 'متوسط فترة التحصيل (يوم)', 'qty'), C('turn', 'معدل الدوران', 'qty')];
+        var t = { name: 'الإجمالي', net: sum(rows, 'net'), coll: sum(rows, 'coll') }; t.cr = pct(t.coll, t.net);
+        return withNote({ cols: cols, rows: rows, total: t, note: 'متوسط فترة التحصيل = مديونية آخر الشهر ÷ متوسط المبيعات اليومية في الشهر.', chart: { type: 'line', x: 'name', y: ['dso'], yl: ['متوسط فترة التحصيل (يوم)'] } }, p);
+      } };
+    R.an_concentration = { cat: 'analytics', name: 'تركّز المبيعات', desc: 'حصة أعلى 1 و5 و10 و20 عميلاً وصنفاً ومندوباً من المبيعات، ومؤشر التركّز (HHI)', params: ['period', 'flt'], fdims: SALE_F,
+      run: function (p) {
+        var rows = [];
+        [['العملاء', function (x) { return x.v.ck; }], ['الأصناف', function (x) { return x.l.item; }], ['المناديب', function (x) { return x.v.ag || '0'; }], ['المخازن', function (x) { return x.l.st; }]].forEach(function (d) {
+          var l = salesBy(p, d[1], function () { return ''; }).filter(function (r) { return r.net > 0; }).sort(function (a, b) { return b.net - a.net; }), t = sum(l, 'net');
+          var top = function (n) { return pct(sum(l.slice(0, n), 'net'), t); }, hhi = sum(l, function (r) { var s = r.net / t * 100; return s * s; });
+          rows.push({ name: d[0], n: l.length, t1: top(1), t5: top(5), t10: top(10), t20: top(20), hhi: hhi, lvl: hhi > 2500 ? 'مرتفع' : hhi > 1500 ? 'متوسط' : 'منخفض' });
+        });
+        return withNote({ cols: [C('name', 'البُعد'), C('n', 'العدد', 'int'), C('t1', 'أعلى 1', 'pct'), C('t5', 'أعلى 5', 'pct'), C('t10', 'أعلى 10', 'pct'), C('t20', 'أعلى 20', 'pct'), C('hhi', 'مؤشر HHI', 'int'), C('lvl', 'درجة التركّز')], rows: rows,
+          note: 'مؤشر HHI: مجموع مربعات الحصص. فوق 2500 تركّز مرتفع (اعتماد كبير على قلة)، وتحت 1500 منخفض.' }, p);
+      } };
+    R.an_weekday_month = { cat: 'analytics', name: 'المبيعات حسب اليوم والشهر', desc: 'جدول: صف لكل يوم من أيام الأسبوع وعمود لكل شهر، لاكتشاف الأنماط الموسمية', params: ['period', 'flt'], fdims: SALE_F,
+      run: function (p) {
+        var g = {}, ms = {};
+        facts('s', p.from, p.to, p.flt).forEach(function (x) { var w = new Date(d2t(x.d)).getUTCDay(), m = x.d.slice(0, 7), r = g[w] || (g[w] = { w: w, name: DOW[w], tot: 0 }); r['c_' + m] = (r['c_' + m] || 0) + x.s * x.val; r.tot += x.s * x.val; ms[m] = 1; });
+        var mk = Object.keys(ms).sort(), order = [6, 0, 1, 2, 3, 4, 5];
+        var rows = order.filter(function (w) { return g[w]; }).map(function (w) { return g[w]; });
+        var cols = [C('name', 'اليوم')].concat(mk.map(function (m) { return C('c_' + m, monthLabel(m), 'money'); })).concat([C('tot', 'الإجمالي', 'money')]);
+        return withNote({ cols: cols, rows: rows, total: sumRow(rows, cols), chart: { type: 'bar', x: 'name', y: ['tot'], yl: ['الإجمالي'] } }, p);
+      } };
+
+    /* ===================== تخصيص أي تقرير: بحث، شروط على الأعمدة، إخفاء أعمدة، أعلى N، وحفظ نسخة مخصصة ===================== */
+    var VOPS_T = [['has', 'يحتوي'], ['nhas', 'لا يحتوي'], ['eq', 'يساوي']];
+    var VOPS_N = [['gt', 'أكبر من'], ['lt', 'أصغر من'], ['ge', '≥'], ['le', '≤'], ['eqn', 'يساوي'], ['ne0', 'غير صفر']];
+    function rowVal(r, k) { var v = r[k]; return v === undefined || v === null ? '' : v; }
+    function vCondPass(c, r, col) {
+      var v = rowVal(r, c.k);
+      if (col && isNum(col)) {
+        if (v === '') return c.op === 'ne0' ? false : c.op === 'lt' || c.op === 'le';
+        var x = Number(v) || 0, n = Number(c.v) || 0;
+        return c.op === 'gt' ? x > n : c.op === 'lt' ? x < n : c.op === 'ge' ? x >= n : c.op === 'le' ? x <= n : c.op === 'ne0' ? Math.abs(x) > 0.0005 : Math.abs(x - n) < 0.0005;
+      }
+      var t = normAr(plain(v)), ws = kwList(c.v);
+      if (!ws.length) return true;
+      if (c.op === 'eq') return ws.some(function (w) { return w === t; });
+      var any = ws.some(function (w) { return t.indexOf(w) >= 0; });
+      return c.op === 'nhas' ? !any : any;
+    }
+    function hasView(v) { return !!(v && ((v.q && v.q.trim()) || (v.rf || []).some(function (c) { return c.k && (c.v !== '' && c.v !== undefined || c.op === 'ne0'); }) || (v.hide || []).length || Number(v.lim))); }
+    function applyView(res, v) {
+      if (!res || res.empty || !res.cols || !hasView(v)) return res;
+      var colOf = {}; res.cols.forEach(function (c) { colOf[c.k] = c; });
+      var conds = (v.rf || []).filter(function (c) { return c.k && colOf[c.k] && (c.v !== '' && c.v !== undefined || c.op === 'ne0'); });
+      var qs = kwList(v.q || ''), before = res.rows.length;
+      var hier = res.rows.some(function (r) { return r._lvl; });
+      var keep = function (r) {
+        if (qs.length && !qs.every(function (w) { return res.cols.some(function (c) { return normAr(plain(rowVal(r, c.k))).indexOf(w) >= 0; }); })) return false;
+        return conds.every(function (c) { return vCondPass(c, r, colOf[c.k]); });
+      };
+      var rows = (qs.length || conds.length) ? res.rows.filter(function (r) { return (r._b && !hier && !qs.length && !conds.length) || keep(r); }) : res.rows.slice();
+      var lim = Number(v.lim) || 0;
+      if (lim && rows.length > lim) rows = rows.slice(0, lim);
+      var out = Object.assign({}, res, { rows: rows });
+      var filtered = rows.length !== before;
+      if (filtered && res.total && !hier) {
+        var t = Object.assign({}, res.total);
+        res.cols.forEach(function (c) { if (['money', 'money0', 'int', 'qty'].indexOf(c.t) >= 0 && typeof res.total[c.k] === 'number') t[c.k] = rows.reduce(function (s, r) { return r._b ? s : s + (Number(r[c.k]) || 0); }, 0); });
+        out.total = t;
+      } else if (filtered && hier) out.total = null;
+      var hide = (v.hide || []).filter(function (k) { return k !== res.cols[0].k; });
+      if (hide.length) out.cols = res.cols.filter(function (c) { return hide.indexOf(c.k) < 0; });
+      if (filtered) out.note = (res.note ? plain(res.note) + ' · ' : '') + 'بعد التخصيص: ' + rows.length + ' من ' + before + ' سطر';
+      if (out.chart && filtered && !out.chart.rowsOverride) out.chart = Object.assign({}, out.chart);
+      return out;
+    }
+    function viewPanelHTML(res, p) {
+      var v = p.view || {}, cols = (F.cur && F.cur.rawCols) || res.cols || [];
+      if (!cols.length) return '';
+      var n = (v.q ? 1 : 0) + (v.rf || []).filter(function (c) { return c.k; }).length + (v.hide || []).length + (Number(v.lim) ? 1 : 0);
+      var open = n || (F.vpOpen);
+      var copt = function (k) { return cols.map(function (c) { return '<option value="' + esc(c.k) + '"' + (c.k === k ? ' selected' : '') + '>' + esc(c.l) + '</option>'; }).join(''); };
+      return '<details class="fp vp" data-vp' + (open ? ' open' : '') + '><summary class="fp-sum"><span class="fp-t">' + ICON_FILTER + ' تخصيص التقرير</span>' + (n ? '<span class="fp-cnt">' + n + ' تعديل</span>' : '<span class="small muted">بحث، شروط، أعمدة، أعلى…</span>') + '</summary><div class="vp-b">' +
+        '<div class="vp-row"><input class="input" id="vq" value="' + esc(v.q || '') + '" placeholder="ابحث في نتائج هذا التقرير…" aria-label="بحث في النتائج">' +
+        '<select class="input vp-lim" id="vlim" aria-label="عدد الأسطر">' + [[0, 'كل الأسطر'], [10, 'أول 10'], [20, 'أول 20'], [50, 'أول 50'], [100, 'أول 100']].map(function (o) { return '<option value="' + o[0] + '"' + (Number(v.lim || 0) === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select></div>' +
+        '<div class="vp-h">الشروط على الأعمدة</div><div class="vp-conds">' + (v.rf || []).map(function (c, i) {
+          var col = cols.filter(function (x) { return x.k === c.k; })[0] || cols[0], num = isNum(col), ops = num ? VOPS_N : VOPS_T;
+          return '<div class="vp-cond"><select class="input" data-vk="' + i + '">' + copt(col.k) + '</select><select class="input" data-vo="' + i + '">' + ops.map(function (o) { return '<option value="' + o[0] + '"' + (o[0] === c.op ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select>' +
+            (c.op === 'ne0' ? '<span></span>' : '<input class="input" data-vv="' + i + '" value="' + esc(c.v === undefined ? '' : c.v) + '"' + (num ? ' type="number" inputmode="decimal"' : '') + ' placeholder="' + (num ? '0' : 'كلمة أو أكثر') + '">') +
+            '<button type="button" class="iconbtn" data-vx="' + i + '" aria-label="حذف">' + ICON.close + '</button></div>';
+        }).join('') + '</div><button type="button" class="btn sm" data-vadd>+ شرط</button>' +
+        '<div class="vp-h">الأعمدة الظاهرة</div><div class="st-pills">' + cols.map(function (c, i) { var on = (v.hide || []).indexOf(c.k) < 0; return '<button type="button" class="pill' + (on ? ' on' : '') + '" data-vcol="' + esc(c.k) + '"' + (i ? '' : ' disabled') + '>' + (on ? '✓ ' : '') + esc(c.l) + '</button>'; }).join('') + '</div>' +
+        '<div class="row vp-act">' + (n ? '<button type="button" class="btn sm ghost" data-vreset>إلغاء كل التعديلات</button>' : '') + '<span class="grow"></span>' +
+        (canEdit() ? (F.cur.custom && F.cur.custom.id ? '<button type="button" class="btn sm accent" data-vsave>حفظ التغييرات في التقرير</button>' : '') + '<button type="button" class="btn sm' + (F.cur.custom && F.cur.custom.id ? ' ghost' : ' accent') + '" data-vcopy>حفظ نسخة باسم جديد</button>' : '') + '</div></div></details>';
+    }
+    function bindViewPanel(m, save) {
+      var c = F.cur, p = c.p, v = p.view || (p.view = {}), cols = c.rawCols || [];
+      var dt = q('[data-vp]', m); if (!dt) return;
+      dt.addEventListener('toggle', function () { F.vpOpen = dt.open; });
+      var re = function () { save(); A.render(); };
+      var tq = null;
+      q('#vq', m).oninput = function () { v.q = this.value; clearTimeout(tq); tq = setTimeout(function () { save(); A.render(); var i = q('#vq'); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }, 500); };
+      q('#vlim', m).onchange = function () { v.lim = Number(this.value) || 0; re(); };
+      q('[data-vadd]', m).onclick = function () { v.rf = v.rf || []; var nums = cols.filter(function (x) { return isNum(x); }), nc = CMP_PREF.map(function (k) { return nums.filter(function (x) { return x.k === k; })[0]; }).filter(Boolean)[0] || nums[0] || cols[0]; v.rf.push({ k: nc.k, op: isNum(nc) ? 'gt' : 'has', v: '' }); F.vpOpen = true; re(); };
+      qa('[data-vk]', m).forEach(function (el) { el.onchange = function () { var cnd = v.rf[Number(el.dataset.vk)], col = cols.filter(function (x) { return x.k === el.value; })[0]; cnd.k = el.value; cnd.op = col && isNum(col) ? 'gt' : 'has'; cnd.v = ''; re(); }; });
+      qa('[data-vo]', m).forEach(function (el) { el.onchange = function () { v.rf[Number(el.dataset.vo)].op = el.value; re(); }; });
+      qa('[data-vv]', m).forEach(function (el) { el.onchange = function () { v.rf[Number(el.dataset.vv)].v = el.value; re(); }; el.onkeydown = function (e) { if (e.key === 'Enter') el.onchange(); }; });
+      qa('[data-vx]', m).forEach(function (b) { b.onclick = function () { v.rf.splice(Number(b.dataset.vx), 1); re(); }; });
+      qa('[data-vcol]', m).forEach(function (b) { b.onclick = function () { v.hide = v.hide || []; var k = b.dataset.vcol, i = v.hide.indexOf(k); if (i >= 0) v.hide.splice(i, 1); else v.hide.push(k); re(); }; });
+      var rs = q('[data-vreset]', m); if (rs) rs.onclick = function () { p.view = {}; re(); };
+      var defOf = function () {
+        var keepP = {}; Object.keys(p).forEach(function (k) { if (['view', 'from', 'to', 'year', 'month', 'cmpcol'].indexOf(k) < 0 || (p.preset === 'custom' && (k === 'from' || k === 'to'))) keepP[k] = p[k]; });
+        if (c.custom) { var d0 = cleanDef(c.custom.def); d0.view = JSON.parse(JSON.stringify(p.view || {})); if (d0.kind === 'ready') d0.p = keepP; else d0.p = { preset: p.preset, flt: p.flt || null }; return d0; }
+        return { kind: 'ready', base: c.id, p: keepP, view: JSON.parse(JSON.stringify(p.view || {})) };
+      };
+      var vs = q('[data-vsave]', m);
+      if (vs) vs.onclick = function () {
+        busy(vs, true);
+        call('fin_report_save', { report: { id: c.custom.id, name: c.custom.name, cat: c.custom.cat || 'تقاريري', def: defOf() } }).then(function (r) { F.reports = r.reports; var s2 = r.reports.filter(function (x) { return x.id === c.custom.id; })[0]; if (s2) c.custom = s2; toast('حُفظت التغييرات'); A.render(); })
+          .catch(function (e) { busy(vs, false); toast(e.message, true); });
+      };
+      var vc = q('[data-vcopy]', m);
+      if (vc) vc.onclick = function () {
+        var base = c.custom ? c.custom.name : (R[c.id] || {}).name;
+        sheet('حفظ نسخة مخصصة', '<p class="small muted" style="margin:0 0 8px">تُحفظ النسخة بالإعدادات الحالية (الفترة، التصفية، الشروط، الأعمدة) في «تقاريري» لكل المستخدمين، ويبقى التقرير الأصلي كما هو.</p>' +
+          '<div class="field"><label class="lbl" for="vcn">اسم التقرير</label><input id="vcn" class="input" value="' + esc(base + (c.custom ? ' (نسخة)' : ' - مخصص')) + '"></div><button class="btn primary big" data-vcok>حفظ</button>', function (s) {
+          var inp = q('#vcn', s.el); setTimeout(function () { inp.focus(); inp.select(); }, 50);
+          q('[data-vcok]', s.el).onclick = function () {
+            var name = inp.value.trim(); if (!name) { inp.focus(); return; }
+            var b = this; busy(b, true);
+            call('fin_report_save', { report: { name: name, cat: 'تقاريري', def: defOf() } }).then(function (r) {
+              F.reports = r.reports; s.close(); var saved = r.reports.filter(function (x) { return x.name === name; }).pop(); toast('حُفظ «' + name + '» في تقاريري'); if (saved) openReport('c:' + saved.id); else A.render();
+            }).catch(function (e) { busy(b, false); toast(e.message, true); });
+          };
+        });
+      };
     }
 
     // عند الخروج: مسح البيانات المالية من الجهاز
@@ -3152,7 +3730,7 @@
     try { st.finParams = JSON.parse(localStorage.getItem('rk.finParams') || '{}'); } catch (e) { st.finParams = {}; }
 
     // للاختبارات: الوصول للمحرّك
-    window.__rkfin = { F: F, R: R, runCustom: runCustom, runPair: runPair, runFree: runFree, SRC: SRC, normAr: normAr, build: rebuild, buildOne: build, useBr: useBr, setBr: setBr, withBr: withBr, branches: branches, recvIds: recvIds, runCur: runCur, balance: balance, salesStats: salesStats, evalFormula: evalFormula, tryFormula: tryFormula, evalList: evalList,
+    window.__rkfin = { F: F, R: R, runCustom: runCustom, runPair: runPair, runFree: runFree, applyView: applyView, CATS: CATS, SRC: SRC, normAr: normAr, build: rebuild, buildOne: build, useBr: useBr, setBr: setBr, withBr: withBr, branches: branches, recvIds: recvIds, runCur: runCur, balance: balance, salesStats: salesStats, evalFormula: evalFormula, tryFormula: tryFormula, evalList: evalList,
       stockTotals: stockTotals, collections: collections, termsToF: termsToF, fToTerms: fToTerms, itemText: function (x) { return itemText(x); }, fltOptions: function (d) { return fltOptions(d); }, dailyData: function () { return dailyData(); }, cards: cards, dailyDef: dailyDef };
   };
 })();
