@@ -91,7 +91,7 @@
       F.loading = (F.rows ? Promise.resolve() : Promise.all([S.get('fin:rows'), S.get('fin:rev'), S.get('fin:meta'), S.get('fin:aux')]).then(function (v) {
         F.rows = v[0] || {}; F.rev = v[1] || 0; F.meta = v[2] || null;
         if (v[3]) { F.boxes = v[3].boxes || []; F.reports = v[3].reports || []; F.config = v[3].config || {}; }
-        if (Object.keys(F.rows).length) build();
+        if (Object.keys(F.rows).length) rebuild();
       })).then(function () {
         if (!navigator.onLine) throw new Error('لا يوجد اتصال بالإنترنت');
         return pull(force).then(function () { return Promise.all([call('fin_boxes'), call('fin_reports'), call('fin_config').catch(function () { return { config: F.config }; })]); }).then(function (r) {
@@ -120,7 +120,7 @@
         });
       };
       return step().then(function () {
-        if (changed || !F.D || force) { if (Object.keys(F.rows).length) build(); else F.D = null; return Promise.all([S.set('fin:rows', F.rows), S.set('fin:rev', F.rev), S.set('fin:meta', F.meta)]); }
+        if (changed || !F.D || force) { if (Object.keys(F.rows).length) rebuild(); else { F.D = null; F.Dby = {}; } return Promise.all([S.set('fin:rows', F.rows), S.set('fin:rev', F.rev), S.set('fin:meta', F.meta)]); }
         return S.set('fin:meta', F.meta);
       });
     }
@@ -132,11 +132,40 @@
     // أثر كل نوع فاتورة على كمية المخزن (المناقلة: من مخزن إلى آخر)
     var STOCK_SIGN = {}; STOCK_SIGN[OPEN_STOCK] = 1; STOCK_SIGN[PUR] = 1; STOCK_SIGN[PRET] = -1; STOCK_SIGN[SALE] = -1; STOCK_SIGN[SRET] = 1; STOCK_SIGN[ISSUE] = -1;
 
-    function build() {
+    /* ---------- الفروع: كل قاعدة سراج لها نموذج بيانات مستقل، والموحّد يجمعها ----------
+     * F.br: '*' موحّد، أو رمز الفرع ('' للقاعدة الرئيسية)، أو 'cmp' مقارنة الفروع (تُبنى الأعمدة من نماذج الفروع). */
+    function branches() { var b = F.meta && F.meta.branches; return b && b.length ? b : [{ code: '', name: 'الإدارة العامة' }]; }
+    function multiBr() { return branches().length > 1; }
+    function brName(code) { var b = branches().filter(function (x) { return x.code === code; })[0]; return code === '*' ? 'كل الفروع (موحّد)' : code === 'cmp' ? 'مقارنة الفروع' : b ? b.name : code; }
+    function viewBr() {
+      if (!multiBr()) return '*';
+      var b = F.br === undefined ? (function () { try { return localStorage.getItem('fin:br'); } catch (e) { return null; } })() : F.br;
+      if (b === null || b === undefined) b = '*';
+      if (b !== '*' && b !== 'cmp' && !branches().some(function (x) { return x.code === b; })) b = '*';
+      return (F.br = b);
+    }
+    function setBr(b) { F.br = b; try { localStorage.setItem('fin:br', b); } catch (e) {} useBr(b === 'cmp' ? '*' : b); }
+    // يجعل نموذج فرع معيّن هو الحالي (F.D وذاكرته المؤقتة)، ويبنيه عند أول طلب فقط
+    function useBr(code) {
+      code = multiBr() ? code : '*';
+      F.Dby = F.Dby || {}; F.Dcache = F.Dcache || {};
+      if (!F.Dby[code]) F.Dby[code] = build(code);
+      F.D = F.Dby[code]; F.cache = F.Dcache[code] || (F.Dcache[code] = {}); F.curBr = code;
+      return F.D;
+    }
+    function rebuild() { F.Dby = {}; F.Dcache = {}; useBr(viewBr() === 'cmp' ? '*' : viewBr()); }
+    function resetCache() { F.Dcache = {}; F.cache = F.Dcache[F.curBr || '*'] = {}; }
+    // يشغّل دالة على نموذج فرع ثم يعيد النموذج الحالي كما كان
+    function withBr(code, fn) { var prev = F.curBr || '*'; useBr(code); try { return fn(); } finally { useBr(prev); } }
+
+    function build(code) {
       var T = { acc: {}, bt: {}, it: {}, cu: {}, ag: {}, us: {}, st: {}, item: {}, jl: [], inv: {}, invl: [] };
+      var all = code === undefined || code === '*';
       Object.keys(F.rows).forEach(function (k) {
         var v = F.rows[k], d;
         try { d = JSON.parse(v[1]); } catch (e) { return; }
+        if (!all && (d.br || '') !== code) return;
+        d.br = d.br || '';
         if (v[0] === 'jl' || v[0] === 'invl') T[v[0]].push(d); else if (T[v[0]]) T[v[0]][d.id] = d;
       });
       // الحسابات: الشجرة والمسار والطبيعة
@@ -211,13 +240,15 @@
         }
         onHand[it] = (onHand[it] || 0) + m.q;
       });
-      F.D = { T: T, byAcc: byAcc, byEntry: byEntry, moves: moves, costHist: costHist,
+      var D = { T: T, br: all ? '*' : code, byAcc: byAcc, byEntry: byEntry, moves: moves, costHist: costHist,
         accList: Object.keys(T.acc).map(function (k) { return T.acc[k]; }).sort(function (x, y) { return String(x.po || x.code).localeCompare(String(y.po || y.code)); }),
         maxDate: T.jl.reduce(function (m, l) { return l.d > m ? l.d : m; }, '') };
-      F.D.invs = Object.keys(T.inv).map(function (k) { return T.inv[k]; });
-      F.D.byCode = {}; F.D.accList.forEach(function (a) { F.D.byCode[a.code] = a; });
-      F.D.custAccs = {}; F.D.invs.forEach(function (v) { if (v.c === SALE || v.c === SRET) F.D.custAccs[v.ck] = v.name; });
-      F.cache = {};
+      D.invs = Object.keys(T.inv).map(function (k) { return T.inv[k]; });
+      // رموز الحسابات تختلف بين القواعد وقد تتكرر، فنحفظ كل الحسابات التي تحمل الرمز
+      D.byCode = {}; D.byCodeAll = {};
+      D.accList.forEach(function (a) { if (!D.byCode[a.code] || !a.br) D.byCode[a.code] = a; (D.byCodeAll[a.code] = D.byCodeAll[a.code] || []).push(a); });
+      D.custAccs = {}; D.invs.forEach(function (v) { if (v.c === SALE || v.c === SRET) D.custAccs[v.ck] = v.name; });
+      return D;
     }
     function cmpLine(x, y) { return x.d < y.d ? -1 : x.d > y.d ? 1 : (Number(x.e) - Number(y.e)) || (Number(x.so) - Number(y.so)); }
 
@@ -231,13 +262,12 @@
       return out;
     }
     // رموز حسابات مفصولة بفواصل ← كل الحسابات تحتها (الحساب الرئيسي يشمل فروعه)
-    function byCodes(codes) {
-      var key = 'c:' + codes;
+    function byCodes(codes, brOnly) {
+      var key = 'c:' + codes + (brOnly === undefined ? '' : '@' + brOnly);
       if (F.cache[key]) return F.cache[key];
       var ids = [];
       String(codes || '').split(/[,،\s]+/).map(function (c) { return c.trim(); }).filter(String).forEach(function (c) {
-        var a = F.D.byCode[c];
-        if (a) ids = ids.concat(descend(a.id));
+        (F.D.byCodeAll[c] || []).forEach(function (a) { if (brOnly === undefined || a.br === brOnly) ids = ids.concat(descend(a.id)); });
       });
       return (F.cache[key] = uniq(ids));
     }
@@ -264,9 +294,23 @@
       return r;
     }
     function yearStart() { return (F.meta && F.meta.settings && F.meta.settings.year_start) || today().slice(0, 4) + '-01-01'; }
-    function recvIds() { return leavesOf(byCodes((F.meta && F.meta.settings && F.meta.settings.recv) || '1601')); }
-    function payIds() { return leavesOf(byCodes((F.meta && F.meta.settings && F.meta.settings.pay) || '261')); }
-    function activeBoxes(kind) { return F.boxes.filter(function (b) { return b.active && (!kind || b.kind === kind || b.name.indexOf(kind) >= 0); }); }
+    // حسابات العملاء والموردين: لكل فرع حساباته (دليل حسابات مستقل). الفرع الذي لم تُحدَّد له يأخذ رموز القاعدة الرئيسية
+    function grpCodes(k, code) {
+      var s = (F.meta && F.meta.settings) || {}, def = s[k] || (k === 'recv' ? '1601' : '261');
+      return code ? ((s.br && s.br[code] && s.br[code][k]) || def) : def;
+    }
+    function grpIds(k) {
+      var key = 'grp:' + k;
+      if (F.cache[key]) return F.cache[key];
+      var ids = [];
+      if (!multiBr()) ids = byCodes(grpCodes(k, ''));
+      else branches().forEach(function (b) { if (F.D.br === '*' || F.D.br === b.code) ids = ids.concat(byCodes(grpCodes(k, b.code), b.code)); });
+      return (F.cache[key] = leavesOf(uniq(ids)));
+    }
+    function recvIds() { return grpIds('recv'); }
+    function payIds() { return grpIds('pay'); }
+    // صناديق الفرع المعروض فقط (حساب الصندوق موجود في نموذجه)
+    function activeBoxes(kind) { return F.boxes.filter(function (b) { return b.active && (!kind || b.kind === kind || b.name.indexOf(kind) >= 0) && (!multiBr() || !!T().acc[b.acc]); }); }
     function boxIds(kind) { return activeBoxes(kind).map(function (b) { return b.acc; }); }
     function counterpart(l, ids) {
       var others = (F.D.byEntry[l.e] || []).filter(function (x) { return ids.indexOf(x.a) < 0 && (l.dr ? x.cr : x.dr); });

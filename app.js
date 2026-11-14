@@ -170,44 +170,84 @@
   /* ===================== الهيكل ===================== */
   function tabsFor(u) {
     var t = [['dash', 'لوحة المؤشرات'], ['daily', 'التقرير اليومي'], ['reports', 'التقارير']];
-    if (u.can_edit) t.push(['builder', 'تقرير مخصص'], ['settings', 'الإعدادات']);
+    if (u.can_edit) t.push(['builder', 'إنشاء تقرير'], ['settings', 'الإعدادات']);
     if (u.role === 'manager') t.push(['users', 'المستخدمون'], ['audit', 'سجل التدقيق']);
     return t;
   }
+  var TAB_ICON = {
+    dash: '<rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/>',
+    daily: '<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4M7 13h4M7 17h7"/>',
+    reports: '<path d="M6 2h9l5 5v15H6z"/><path d="M14 2v6h6M9 13h7M9 17h7"/>',
+    builder: '<path d="M12 5v14M5 12h14"/><rect x="3" y="3" width="18" height="18" rx="4"/>',
+    settings: '<circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/>',
+    users: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 5a3.5 3.5 0 0 1 0 7M18 14.5a6 6 0 0 1 3.5 5.5"/>',
+    audit: '<path d="M6 3h9l4 4v14H6z"/><path d="M9 12h7M9 16h7M9 8h3"/>',
+    more: '<circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>'
+  };
+  function tabIcon(k) { return '<svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (TAB_ICON[k] || TAB_ICON.dash) + '</svg>'; }
+  var TAB_GROUP = { dash: 'المتابعة', daily: 'المتابعة', reports: 'التقارير', builder: 'التقارير', settings: 'الإدارة', users: 'الإدارة', audit: 'الإدارة' };
+  var TAB_SHORT = { dash: 'المؤشرات', daily: 'اليومي', builder: 'تقرير جديد', audit: 'السجل' };
+  var PAGE_SUB = { dash: 'أهم الأرقام لفترة تختارها', daily: 'تقرير الإدارة اليومي', reports: 'كل التقارير الجاهزة وتقاريرك', builder: 'صمّم تقريراً خاصاً بك من الصفر', settings: 'الصناديق والبطاقات ومجموعات الحسابات', users: 'من يدخل المنظومة وصلاحياته', audit: 'كل ما حدث في المنظومة' };
+  function isPhone() { return window.matchMedia('(max-width: 899px)').matches; }
 
-  function startApp() {
+  function startApp(keep) {
     var tabs = tabsFor(st.user);
     if (!st.tab || !tabs.some(function (t) { return t[0] === st.tab; })) st.tab = tabs[0][0];
-    $app.innerHTML = '<div class="strip"></div><header class="top"><div class="top-in"><img class="logo" src="logo.png" alt="راكان">' +
-      '<div class="who"><b>' + esc(st.user.name) + '</b><span>التقارير المالية · ' + esc(st.user.role_ar || '') + '</span></div>' +
-      '<span class="net" id="net"></span><button class="iconbtn" id="pinb" aria-label="تغيير الرقم السري" title="تغيير الرقم السري">' + ICON.key + '</button>' +
-      '<button class="iconbtn" id="lo" aria-label="خروج" title="خروج">' + ICON.out + '</button></div>' +
-      '<nav class="tabs" id="tabs">' + tabs.map(function (t) { return '<button class="tab" data-tab="' + t[0] + '">' + esc(t[1]) + '</button>'; }).join('') + '</nav>' +
-      '</header><main id="main"></main>' +
-      // شريط سفلي للهاتف: الأقسام الرئيسية + «المزيد»
-      '<nav class="bnav" id="bnav">' + tabs.filter(function (t) { return BMAIN[t[0]]; }).map(function (t) { return '<button class="bn" data-tab="' + t[0] + '">' + ICON[t[0]] + '<span>' + esc(BMAIN[t[0]]) + '</span></button>'; }).join('') +
-      '<button class="bn" data-more>' + ICON.more + '<span>المزيد</span></button></nav>';
+    var phone = isPhone(); st.phone = phone;
+    var nav, mainTabs = tabs.length > 5 ? tabs.slice(0, 4) : tabs;
+    st.moreTabs = tabs.slice(mainTabs.length);
+    if (!phone) {
+      var last = null;
+      nav = '<aside class="side"><div class="side-brand"><img class="logo" src="logo.png" alt="راكان"><span class="side-app">التقارير المالية</span></div><nav class="side-nav" id="tabs">' + tabs.map(function (t) {
+        var g = TAB_GROUP[t[0]] || '', head = g !== last ? '<div class="side-g">' + esc(g) + '</div>' : ''; last = g;
+        return head + '<button class="tab side-i" data-tab="' + t[0] + '">' + tabIcon(t[0]) + '<span>' + esc(t[1]) + '</span></button>';
+      }).join('') + '</nav><div class="side-user"><div class="av">' + esc(String(st.user.name || '').trim().charAt(0)) + '</div><div class="grow"><b>' + esc(st.user.name) + '</b><span>' + esc(st.user.role_ar || '') + '</span></div>' +
+        '<button class="iconbtn" id="pinb" aria-label="تغيير الرقم السري" title="تغيير الرقم السري">' + ICON.key + '</button></div></aside>';
+    } else {
+      nav = '<nav class="bnav" id="tabs">' + mainTabs.map(function (t) { return '<button class="tab bn-i" data-tab="' + t[0] + '">' + tabIcon(t[0]) + '<span>' + esc(TAB_SHORT[t[0]] || t[1]) + '</span></button>'; }).join('') +
+        '<button class="bn-i" data-more aria-label="المزيد">' + tabIcon('more') + '<span>المزيد</span></button></nav>';
+    }
+    $app.innerHTML = '<div class="strip"></div><div class="shell ' + (phone ? 'has-bnav' : 'has-side') + '">' + (phone ? '' : nav) +
+      '<div class="shell-b"><header class="top"><div class="top-in">' + (phone ? '<img class="logo" src="logo.png" alt="راكان">' : '') +
+      '<div class="who"><h1 id="ptitle"></h1><span id="psub"></span></div>' +
+      '<span class="net" id="net"></span><button class="iconbtn" id="lo" aria-label="خروج" title="خروج">' + ICON.out + '</button></div></header>' +
+      '<main id="main"></main></div>' + (phone ? nav : '') + '</div>';
     q('#lo').onclick = function () { confirmBox('خروج', 'هل تريد الخروج؟ تُمسح البيانات المالية من هذا الجهاز.', 'خروج').then(function (y) { if (y) logout(); }); };
-    q('#pinb').onclick = pinSheet;
+    var pb = q('#pinb'); if (pb) pb.onclick = pinSheet;
     qa('[data-tab]').forEach(function (b) { b.onclick = function () { go(b.dataset.tab); }; });
-    q('[data-more]').onclick = function () {
-      var rest = tabs.filter(function (t) { return !BMAIN[t[0]]; });
-      sheet('المزيد', '<div class="more-list">' + rest.map(function (t) { return '<button class="item tap more-it' + (st.tab === t[0] ? ' sel' : '') + '" data-tab="' + t[0] + '"><b>' + esc(t[1]) + '</b></button>'; }).join('') +
-        (window.RKInstall && RKInstall.can() ? '<button class="item tap more-it" data-minst><b>تثبيت التطبيق على الجهاز</b></button>' : '') +
-        '<button class="item tap more-it" data-mpin>' + ICON.key + '<b>تغيير الرقم السري</b></button><button class="item tap more-it" data-mlo>' + ICON.out + '<b>خروج</b></button></div>', function (s) {
+    var mb = q('[data-more]');
+    if (mb) mb.onclick = function () {
+      var last2 = null;
+      sheet('المزيد', '<div class="more-list">' + st.moreTabs.map(function (t) {
+        var g = TAB_GROUP[t[0]] || '', head = g !== last2 ? '<div class="side-g">' + esc(g) + '</div>' : ''; last2 = g;
+        return head + '<button class="tab more-i' + (st.tab === t[0] ? ' on' : '') + '" data-tab="' + t[0] + '">' + tabIcon(t[0]) + '<span>' + esc(t[1]) + '</span></button>';
+      }).join('') + '<div class="side-g">الحساب</div>' +
+        (window.RKInstall && RKInstall.can() ? '<button class="tab more-i" data-minst>' + tabIcon('dash') + '<span>تثبيت التطبيق على الجهاز</span></button>' : '') +
+        '<button class="tab more-i" data-mpin>' + ICON.key + '<span>تغيير الرقم السري</span></button><button class="tab more-i" data-mlo>' + ICON.out + '<span>خروج</span></button></div>', function (s) {
         qa('[data-tab]', s.el).forEach(function (b) { b.onclick = function () { s.close(); go(b.dataset.tab); }; });
         var mi = q('[data-minst]', s.el); if (mi) mi.onclick = function () { s.close(); RKInstall.show(); };
         q('[data-mpin]', s.el).onclick = function () { s.close(); pinSheet(); };
         q('[data-mlo]', s.el).onclick = function () { s.close(); q('#lo').click(); };
       });
     };
+    if (!startApp.bound) {
+      startApp.bound = true;
+      window.addEventListener('resize', function () { if (st.user && q('#main') && isPhone() !== st.phone) startApp(true); });
+    }
     netUI();
     render();
-    refresh(false);
+    if (!keep) refresh(false);
   }
 
-  var BMAIN = { dash: 'المؤشرات', daily: 'اليومي', reports: 'التقارير' };
   function go(tab) { st.tab = tab; render(); refresh(true); window.scrollTo(0, 0); }
+  function shellUI() {
+    if (!st.user) return;
+    var name = (tabsFor(st.user).filter(function (t) { return t[0] === st.tab; })[0] || [])[1] || '';
+    var t = q('#ptitle'), sub = q('#psub');
+    if (t) t.textContent = name;
+    if (sub) sub.textContent = st.phone ? '' : PAGE_SUB[st.tab] || '';
+    var mb = q('[data-more]'); if (mb) mb.classList.toggle('on', (st.moreTabs || []).some(function (x) { return x[0] === st.tab; }));
+  }
 
   function netUI() {
     var n = q('#net');
@@ -218,7 +258,7 @@
 
   function render() {
     qa('[data-tab]').forEach(function (b) { b.classList.toggle('on', b.dataset.tab === st.tab); });
-    var mb = q('[data-more]'); if (mb) mb.classList.toggle('on', !BMAIN[st.tab]);
+    shellUI();
     var m = q('#main'), v = VIEWS[st.tab];
     if (!m) return;
     try { if (v) m.innerHTML = v.html(); if (v && v.bind) v.bind(m); }
