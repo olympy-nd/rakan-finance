@@ -535,9 +535,9 @@
     /* ---------- التصفية (عملاء، أصناف، مخازن…) ---------- */
     // البُعد ← مفتاح التصفية، والعنوان، ونص زر الإضافة
     var DIM = { cust: ['cust', 'العملاء', 'عميل'], supp: ['cust', 'الموردون', 'مورد'], item: ['item', 'الأصناف', 'صنف'], st: ['st', 'المخازن', 'مخزن'], ag: ['ag', 'المناديب', 'مندوب'],
-      u: ['u', 'المستخدمون', 'مستخدم'], xcust: ['xcust', 'استثناء العملاء', 'استثناء عميل'], xitem: ['xitem', 'استثناء الأصناف', 'استثناء صنف'] };
+      cat: ['cat', 'فئات المناديب', 'فئة مندوب'], xcat: ['xcat', 'استثناء فئات', 'استثناء فئة'], u: ['u', 'المستخدمون', 'مستخدم'], xcust: ['xcust', 'استثناء العملاء', 'استثناء عميل'], xitem: ['xitem', 'استثناء الأصناف', 'استثناء صنف'] };
     var FDIMS = {}; Object.keys(DIM).forEach(function (k) { FDIMS[k] = DIM[k][1]; });
-    function fdimsFor(def) { return def.fdims || (def.cat === 'stock' ? ['item', 'st', 'xitem'] : def.cat === 'purch' ? ['supp', 'item', 'st', 'u'] : ['cust', 'item', 'st', 'ag', 'u', 'xcust', 'xitem']); }
+    function fdimsFor(def) { return def.fdims || (def.cat === 'stock' ? ['item', 'st', 'xitem'] : def.cat === 'purch' ? ['supp', 'item', 'st', 'u'] : ['cust', 'item', 'st', 'ag', 'cat', 'u', 'xcust', 'xitem']); }
     function fltOptions(dim) {
       var Tt = T(), out = [], seen = {};
       var addAcc = function (id, name) { if (seen[id] || !id) return; seen[id] = 1; var a = acc(id); out.push({ id: '@' + id, name: name || (a ? a.name : id), sub: a ? a.code : '' }); };
@@ -548,6 +548,7 @@
         Object.keys(Tt.item).forEach(function (id) { if (used[id]) out.push({ id: '@' + id, name: itemName(id), sub: String(Tt.item[id].code || '') }); });
       } else if (dim === 'st') Object.keys(Tt.st).forEach(function (id) { out.push({ id: '@' + id, name: storeName(id) }); });
       else if (dim === 'ag') Object.keys(Tt.ag).forEach(function (id) { out.push({ id: '@' + id, name: repName(id) }); });
+      else if (dim === 'cat' || dim === 'xcat') repCats().forEach(function (c) { out.push({ id: '@' + c, name: c }); });
       else if (dim === 'u') Object.keys(Tt.us).forEach(function (id) { out.push({ id: '@' + id, name: userName(id) }); });
       return out.sort(function (a, b) { return String(a.name).localeCompare(String(b.name), 'ar'); });
     }
@@ -600,6 +601,8 @@
       if (has('level')) row += sel('level', 'المستوى', [[1, 'المستوى 1'], [2, 'المستوى 2'], [3, 'المستوى 3'], [4, 'المستوى 4'], [5, 'المستوى 5'], [6, 'كل المستويات']]);
       if (has('top')) row += sel('top', 'العرض', [[0, 'الكل'], [10, 'أعلى 10'], [20, 'أعلى 20'], [50, 'أعلى 50'], [100, 'أعلى 100']]);
       if (has('measure')) row += sel('measure', 'القيمة', [['value', 'صافي المبيعات (د.ل)'], ['qty', 'الكمية']]);
+      if (has('rmeas')) row += sel('rmeas', 'القيمة', [['net', 'صافي المبيعات (د.ل)'], ['profit', 'مجمل الربح'], ['qty', 'الكمية'], ['n', 'عدد الفواتير']]);
+      if (has('rep')) { var rl = Object.keys(T().ag).map(function (k) { return [k, repName(k) + ' · ' + repCat(k)]; }).sort(function (a, b) { return a[1].localeCompare(b[1], 'ar'); }); if (!p.rep && rl.length) p.rep = rl[0][0]; row += sel('rep', 'المندوب', rl); }
       if (has('rby')) row += sel('rby', 'حسب', [['cust', 'العميل'], ['item', 'الصنف']]);
       if (has('vby')) row += sel('vby', 'العرض', [['none', 'كل سند (تفصيلي)'], ['box', 'مجمّع حسب الصندوق/البنك'], ['party', 'مجمّع حسب الطرف'], ['day', 'مجمّع حسب اليوم']]);
       if (has('nonzero')) row += sel('nonzero', 'الأرصدة', [['nz', 'غير الصفرية فقط'], ['all', 'الكل']]);
@@ -1062,7 +1065,7 @@
     }
 
     /* ---------- الإعدادات ---------- */
-    var SET_TABS = [['boxes', 'الصناديق والبنوك'], ['cards', 'بطاقات لوحة المؤشرات'], ['daily', 'التقرير اليومي'], ['groups', 'مجموعات الحسابات'], ['data', 'البيانات']];
+    var SET_TABS = [['boxes', 'الصناديق والبنوك'], ['cards', 'بطاقات لوحة المؤشرات'], ['daily', 'التقرير اليومي'], ['groups', 'مجموعات الحسابات'], ['reps', 'المندوبون وفئاتهم'], ['data', 'البيانات']];
     function boxSuggestions() {
       var defined = {}; F.boxes.forEach(function (b) { defined[b.acc] = 1; });
       return F.D.accList.filter(function (a) {
@@ -1105,6 +1108,8 @@
           listEditorHTML('daily', dd.rows, { from: d0, to: d0 }) +
           '<div class="row" style="margin-top:10px"><button class="btn" data-dadd>+ سطر</button><button class="btn ghost" data-dsep>+ عنوان قسم</button><span class="grow"></span><button class="btn ghost" data-dreset>استعادة الافتراضي</button><button class="btn accent" data-dsave' + (F.dirtyKeys && F.dirtyKeys.daily ? '' : ' disabled') + '>حفظ التغييرات</button></div></div>' +
           '<div class="card"><h3>ملاحظة عن Sell-Out</h3><p class="small" style="margin:0">«Total Sell-Out» افتراضياً = الكمية المباعة لكل العملاء. لحصره في عملاء أو أصناف أو مخزن معين: اضغط «تعديل» على السطر، ثم «كل العملاء» أو «كل الأصناف» واختر ما تريد.</p></div>';
+      } else if (tab === 'reps') {
+        h += repsSettingsHTML();
       } else if (tab === 'groups') {
         var grpField = function (k, code) {
           var codes = multiBr() ? grpCodes(k, code) : (s[k] || (k === 'recv' ? '1601' : '261'));
@@ -1170,6 +1175,8 @@
         q('[data-dsep]', m).onclick = function () { editItem({ name: '', f: '' }, 'row', { from: d0, to: d0 }).then(function (o) { if (o) { dd.rows.push(o); chd(); } }); };
         q('[data-dsave]', m).onclick = function () { saveConfig('daily', { title: dd.title, rows: dd.rows }, this); };
         q('[data-dreset]', m).onclick = function () { A.confirmBox('استعادة الافتراضي', 'استبدال أسطر التقرير اليومي بالأسطر الافتراضية (مثل نموذج الإدارة)؟', 'استعادة').then(function (y) { if (y) saveConfig('daily', null); }); };
+      } else if (tab === 'reps') {
+        bindRepsSettings(m);
       } else if (tab === 'groups') {
         qa('[data-grp]', m).forEach(function (b) {
           b.onclick = function () {

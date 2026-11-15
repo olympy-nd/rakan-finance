@@ -9,7 +9,6 @@
       while (m <= end) { out.push({ m: m, a: m + '-01' < p.from ? p.from : m + '-01', b: monthEnd(m) > p.to ? p.to : monthEnd(m), label: monthLabel(m) }); m = addD(monthEnd(m), 1).slice(0, 7); }
       return out;
     }
-    function prevRange(from, to) { var n = days(from, to) + 1; return [addD(from, -n), addD(from, -1)]; }
     // تجميع أسطر المبيع حسب الفاتورة (فتعمل تصفية الصنف والمخزن)
     function invAgg(from, to, f) {
       var g = {};
@@ -30,7 +29,7 @@
     /* ---------- تنفيذية ---------- */
     R.exec_scorecard = { cat: 'exec', name: 'بطاقة الأداء مقابل الفترة السابقة', desc: 'أهم 14 مؤشراً للفترة مقارنة بالفترة السابقة بنفس الطول، مع نسبة التغير', params: ['period', 'flt'], fdims: SALE_F,
       run: function (p) {
-        var pr = prevRange(p.from, p.to), rv = recvFor(p.flt), sf = mergeF(p.flt, null, ['item', 'xitem', 'st']);
+        var pr = prevRange(p.from, p.to, p.preset), rv = recvFor(p.flt), sf = mergeF(p.flt, null, ['item', 'xitem', 'st']);
         var calc = function (a, b) {
           var s = salesStats(a, b, p.flt), pl = plTotals(a, b), iv = invAgg(a, b, p.flt).filter(function (x) { return x.s > 0; });
           return { net: s.net, profit: s.profit, margin: pct(s.profit, s.net), n: s.n, avg: s.n ? s.sales / s.n : 0, cust: s.cust, qty: s.nqty, rp: pct(s.ret, s.sales),
@@ -40,7 +39,7 @@
         var M = [['net', 'صافي المبيعات', 'money'], ['profit', 'مجمل الربح', 'money'], ['margin', 'هامش الربح %', 'pct'], ['n', 'عدد فواتير المبيع', 'int'], ['avg', 'متوسط قيمة الفاتورة', 'money'],
           ['lines', 'متوسط الأصناف في الفاتورة', 'qty'], ['cust', 'العملاء المشترون', 'int'], ['qty', 'صافي الكمية المباعة', 'qty'], ['rp', 'نسبة المرتجعات %', 'pct'], ['coll', 'التحصيل', 'money'],
           ['purch', 'صافي المشتريات', 'money'], ['exp', 'المصروفات (حسابات 3)', 'money'], ['np', 'صافي الربح (الإيرادات − المصروفات)', 'money'], ['debt', 'المديونية آخر الفترة', 'money'], ['stock', 'المخزون آخر الفترة', 'money']];
-        var rows = M.map(function (m) { var d = c[m[0]] - o[m[0]]; return { name: m[1], cur: c[m[0]], prev: o[m[0]], ch: d, chp: m[2] === 'pct' ? null : (o[m[0]] ? d / Math.abs(o[m[0]]) * 100 : null), _fmt: m[2] === 'pct' ? 'p' : m[2] === 'int' ? 'n' : m[2] === 'qty' ? 'q' : null }; });
+        var rows = M.map(function (m) { var d = c[m[0]] - o[m[0]]; return { name: m[1], cur: c[m[0]], prev: o[m[0]], ch: d, chp: m[2] === 'pct' ? null : (o[m[0]] ? d / Math.abs(o[m[0]]) * 100 : null), _fmt: m[2] === 'pct' ? 'pct' : m[2] === 'int' ? 'int' : m[2] === 'qty' ? 'qty' : undefined }; });
         rows.forEach(function (r) { if (r.chp === null) r.chp = ''; });
         return withNote({ cols: [C('name', 'المؤشر'), C('cur', 'الفترة الحالية', 'money'), C('prev', 'الفترة السابقة', 'money'), C('ch', 'التغير', 'money'), C('chp', 'التغير %', 'pct')], rows: rows,
           note: 'الفترة السابقة: ' + pr[0] + ' إلى ' + pr[1] }, p);

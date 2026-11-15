@@ -22,7 +22,7 @@
     function custName(k) { var a = acc(k); return a ? a.name : (T().cu[k] || {}).name || F.D.custAccs[k] || k; }
     function itemName(id) { return (T().item[id] || {}).name || 'صنف ' + id; }
     function storeName(id) { return (T().st[id] || {}).name || (id ? 'مخزن ' + id : 'بدون'); }
-    function repName(id) { return (T().ag[id] || {}).name || 'بدون'; }
+    function repName(id) { return (T().ag[id] || {}).name || 'بدون مندوب'; }
     function userName(id) { return (T().us[id] || {}).name || 'غير معروف'; }
     function noteF(p) { var f = parseFilter(p.flt); if (!f) return ''; var parts = []; Object.keys(f).forEach(function (k) { if (f[k] && f[k].length) parts.push(FLT_LABEL[k] + ': ' + f[k].map(function (x) { return fltName(k, x); }).join('، ')); }); return parts.length ? 'التصفية: ' + parts.join(' · ') : ''; }
     var FLT_LABEL = { cust: 'العميل', item: 'الصنف', st: 'المخزن', ag: 'المندوب', u: 'المستخدم', xcust: 'بدون العميل', xitem: 'بدون الصنف', xst: 'بدون المخزن', type: 'النوع' };

@@ -248,7 +248,45 @@
       D.byCode = {}; D.byCodeAll = {};
       D.accList.forEach(function (a) { if (!D.byCode[a.code] || !a.br) D.byCode[a.code] = a; (D.byCodeAll[a.code] = D.byCodeAll[a.code] || []).push(a); });
       D.custAccs = {}; D.invs.forEach(function (v) { if (v.c === SALE || v.c === SRET) D.custAccs[v.ck] = v.name; });
+      resolveReps(T, D);
       return D;
+    }
+    /* ---------- المندوب: من الفاتورة، أو عميلها، أو المخزن، أو المستخدم (حسب الإعداد) ---------- */
+    function repSet() {
+      var r = F.meta && F.meta.settings && F.meta.settings.reps;
+      if (r) return r;
+      // الخادم القديم لا يحفظ إعدادات المناديب: نستعمل النسخة المحفوظة على هذا الجهاز
+      try { return JSON.parse(localStorage.getItem('rk.finReps') || 'null') || {}; } catch (e) { return {}; }
+    }
+    function resolveReps(T, D) {
+      var RS = repSet(), mode = RS.mode || 'auto', byStore = {}, byUser = {};
+      Object.keys(T.ag).forEach(function (id) { var g = T.ag[id]; if (g.st && g.st !== '0') byStore[g.st] = id; if (g.us && g.us !== '0') byUser[g.us] = id; });
+      Object.keys(RS.st || {}).forEach(function (k) { byStore[k] = RS.st[k]; });
+      Object.keys(RS.us || {}).forEach(function (k) { byUser[k] = RS.us[k]; });
+      var ok = function (x) { return x && x !== '0' && T.ag[x] ? x : ''; };
+      D.custRepAcc = {};
+      Object.keys(T.cu).forEach(function (k) { var c = T.cu[k]; if (ok(c.ag) && c.acc) D.custRepAcc[c.acc] = c.ag; });
+      D.invs.forEach(function (v) {
+        if (v.ag0 === undefined) v.ag0 = v.ag || '';
+        var inv = ok(v.ag0), cust = ok((T.cu[v.cu] || {}).ag) || ok(D.custRepAcc[v.acc]), st = ok(byStore[v.st]), us = ok(byUser[v.u]);
+        v.ag = (mode === 'inv' ? inv : mode === 'cust' ? cust || inv : mode === 'store' ? st || inv : mode === 'user' ? us || inv : inv || cust || st || us) || '0';
+      });
+      // مندوب العميل = مندوب آخر فاتورة مبيع له (لتوزيع الديون والتحصيل على المناديب)
+      D.repOfCust = {};
+      D.invs.slice().sort(function (a, b) { return a.d < b.d ? -1 : a.d > b.d ? 1 : 0; }).forEach(function (v) { if (v.c === SALE && v.ag !== '0') D.repOfCust[v.ck] = v.ag; });
+      Object.keys(D.custRepAcc).forEach(function (a) { if (!D.repOfCust[a]) D.repOfCust[a] = D.custRepAcc[a]; });
+      D.byUser = byUser;
+    }
+    function repCat(id) {
+      var RS = repSet(), m = RS.map && RS.map[id];
+      if (m && m.cat) return m.cat;
+      if (!id || id === '0') return 'بدون مندوب';
+      return (T().ag[id] || {}).grp || 'بدون فئة';
+    }
+    function repCats() {
+      var out = (repSet().cats || []).slice(), add = function (c) { if (c && out.indexOf(c) < 0) out.push(c); };
+      Object.keys(T().ag).forEach(function (id) { add(repCat(id)); });
+      return out;
     }
     function cmpLine(x, y) { return x.d < y.d ? -1 : x.d > y.d ? 1 : (Number(x.e) - Number(y.e)) || (Number(x.so) - Number(y.so)); }
 
@@ -330,7 +368,7 @@
     // التصفية: { cust:[مفاتيح العملاء], item:[], st:[], ag:[], u:[], xcust:[] } أو نص "عميل:1601001,1602; مخزن:الرئيسي; بدون_عميل:..."
     var FKEYS = { 'عميل': 'cust', 'عملاء': 'cust', cust: 'cust', 'صنف': 'item', 'أصناف': 'item', item: 'item', 'مخزن': 'st', store: 'st', st: 'st',
       'مندوب': 'ag', rep: 'ag', ag: 'ag', 'مستخدم': 'u', user: 'u', u: 'u', 'بدون_عميل': 'xcust', xcust: 'xcust', 'بدون_صنف': 'xitem', xitem: 'xitem',
-      'بدون_مخزن': 'xst', xst: 'xst', 'نوع': 'type', type: 'type' };
+      'بدون_مخزن': 'xst', xst: 'xst', 'نوع': 'type', type: 'type', 'فئة': 'cat', 'فئة_المندوب': 'cat', cat: 'cat', 'بدون_فئة': 'xcat', xcat: 'xcat' };
     function parseFilter(f) {
       if (!f) return null;
       if (typeof f === 'object') { var any = false; Object.keys(f).forEach(function (k) { if (f[k] && f[k].length) any = true; }); return any ? f : null; }
@@ -378,6 +416,8 @@
       if (f.cust && f.cust.length && !custMatch(f.cust, v)) return false;
       if (f.xcust && f.xcust.length && custMatch(f.xcust, v)) return false;
       if (f.ag && f.ag.length && !matchAny(f.ag, v.ag, (T().ag[v.ag] || {}).name)) return false;
+      if (f.cat && f.cat.length && f.cat.map(function (x) { return String(x).replace(/^@/, ''); }).indexOf(repCat(v.ag)) < 0) return false;
+      if (f.xcat && f.xcat.length && f.xcat.map(function (x) { return String(x).replace(/^@/, ''); }).indexOf(repCat(v.ag)) >= 0) return false;
       if (f.u && f.u.length && !matchAny(f.u, v.u, (T().us[v.u] || {}).name)) return false;
       if (f.type && f.type.length && !matchAny(f.type, v.t, (T().it[v.t] || {}).name)) return false;
       return true;
