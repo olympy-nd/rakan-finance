@@ -239,7 +239,7 @@
     function withBr(code, fn) { var prev = F.curBr || '*'; useBr(code); try { return fn(); } finally { useBr(prev); } }
 
     function build(code) {
-      var T = { acc: {}, bt: {}, it: {}, cu: {}, ag: {}, us: {}, st: {}, item: {}, jl: [], inv: {}, invl: [] };
+      var T = { acc: {}, bt: {}, it: {}, cu: {}, ag: {}, us: {}, st: {}, item: {}, icl: {}, igr: {}, jl: [], inv: {}, invl: [] };
       var all = code === undefined || code === '*';
       var put = function (kind, d) { if (kind === 'jl' || kind === 'invl') T[kind].push(d); else if (T[kind]) T[kind][d.id] = d; };
       var rows = F.rows || {};
@@ -535,6 +535,10 @@
       if (!f) return true;
       if (f.item && f.item.length && !itemMatch(f.item, l)) return false;
       if (f.xitem && f.xitem.length && itemMatch(f.xitem, l)) return false;
+      if (f.icl && f.icl.length && !iclMatch(f.icl, l.item)) return false;
+      if (f.xicl && f.xicl.length && iclMatch(f.xicl, l.item)) return false;
+      if (f.igrp && f.igrp.length && !igrpMatch(f.igrp, l.item)) return false;
+      if (f.xigrp && f.xigrp.length && igrpMatch(f.xigrp, l.item)) return false;
       if (f.st && f.st.length && !storeMatch(f.st, l.st)) return false;
       if (f.xst && f.xst.length && storeMatch(f.xst, l.st)) return false;
       return true;
