@@ -1927,10 +1927,25 @@
           return '<tr><th class="dl">' + esc(r.name) + '</th>' + D.vals.map(function (v) { var x = v[i]; return '<td class="dv"' + (x.err ? ' title="' + esc(x.err) + '"' : '') + '>' + (x.err ? '<span class="derr">خطأ</span>' : fmtVal(x.v, r.fmt || 'dec2')) + '</td>'; }).join('') + '</tr>';
         }).join('') + '</tbody></table>';
     }
+    // علامة «قيد التطوير» للتقرير اليومي: إعداد عام (مع الإعدادات المالية) ونسخة محلية تقرأها القائمة الجانبية
+    function devDaily() {
+      var u = F.config && F.config.ui, on;
+      if (u && u.devd !== undefined) on = u.devd !== false; else { try { on = localStorage.getItem('rk.devDaily') !== 'off'; } catch (e) { on = true; } }
+      try { localStorage.setItem('rk.devDaily', on ? 'on' : 'off'); } catch (e) {}
+      return on;
+    }
+    function setDevDaily(on) {
+      try { localStorage.setItem('rk.devDaily', on ? 'on' : 'off'); } catch (e) {}
+      var ui = Object.assign({}, (F.config && F.config.ui) || {}, { devd: !!on });
+      if (!F.config) F.config = {}; F.config.ui = ui;
+      if (window.RKShell) RKShell.navBadges();
+      return saveConfigKey('ui', ui, 'rk.finUi').then(function () { F.config.ui = Object.assign({}, F.config.ui || {}, { devd: !!on }); });
+    }
     function dailyHTML() {
       var D = dailyData(), errs = [];
       D.def.rows.forEach(function (r, i) { D.vals.forEach(function (v) { if (v[i].err && errs.indexOf(r.name) < 0) errs.push(r.name); }); });
-      var h = '<div class="card head-card"><div class="hc-top"><div class="grow"><h2>' + esc(D.def.title || 'التقرير اليومي للإدارة') + '</h2></div><div class="rh-act">' +
+      var h = (devDaily() ? '<div class="dev-note" role="note"><span class="dev-ic">!</span><div class="grow"><b>التقرير اليومي قيد التطوير</b><span>قد تتغير بنوده وطريقة حسابها خلال التطوير. راجع الأرقام قبل اعتمادها.</span></div>' + (canEdit() ? '<button class="btn sm ghost" data-devset>إخفاء من الإعدادات</button>' : '') + '</div>' : '') +
+        '<div class="card head-card"><div class="hc-top"><div class="grow"><h2>' + esc(D.def.title || 'التقرير اليومي للإدارة') + '</h2></div><div class="rh-act">' +
         '<button class="btn sm" data-dxls aria-label="Excel">' + ICON_XLS + '<span class="bt-txt">Excel</span></button><button class="btn sm" data-dprt aria-label="طباعة">' + ICON.print + '<span class="bt-txt">طباعة / PDF</span></button>' + (canEdit() ? '<button class="btn sm ghost" data-dcustom aria-label="تخصيص الأسطر">' + ICON_EDIT + '<span class="bt-txt">تخصيص</span></button>' : '') + '</div></div>' +
         '<div class="day-nav"><button class="iconbtn" data-dprev aria-label="اليوم السابق" title="اليوم السابق"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></button><label class="day-date">' + ICON_CAL + '<input type="date" class="input num" id="ddate" value="' + D.date + '"></label><button class="iconbtn" data-dnext aria-label="اليوم التالي" title="اليوم التالي"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg></button>' +
         '<span class="day-lbl">' + esc(DOW[new Date(d2t(D.date)).getUTCDay()] + ' ' + rangeText(D.date, D.date)) + '</span></div>' +
@@ -1961,6 +1976,7 @@
       var cu = q('[data-dcustom]', m);
       if (cu) cu.onclick = function () { F.setTab = 'daily'; go('settings'); };
       q('[data-dxls]', m).onclick = function () { exportDaily(); };
+      var dvs = q('[data-devset]', m); if (dvs) dvs.onclick = function () { F.setTab = 'daily'; go('settings'); };
       q('[data-dprt]', m).onclick = function () {
         var D = dailyData(), P = document.getElementById('print');
         P.innerHTML = '<div class="p-rep p-daily"><div class="p-head"><img src="logo.png" alt=""><div class="t"><b>' + esc(D.def.title || 'التقرير اليومي للإدارة') + '</b><span>شركة راكان لاستيراد المواد الغذائية والتوزيع · ' + esc(D.date) + '</span></div><span class="p-copy">' + esc('طُبع ' + RK.nowStr().slice(0, 16)) + '</span></div>' +
@@ -2966,7 +2982,8 @@
           '<div class="row" style="margin-top:10px"><button class="btn" data-cadd>+ بطاقة</button><span class="grow"></span><button class="btn ghost" data-creset>استعادة الافتراضي</button><button class="btn accent" data-csave' + (F.dirtyKeys && F.dirtyKeys.cards ? '' : ' disabled') + '>حفظ التغييرات</button></div></div>';
       } else if (tab === 'daily') {
         var dd = editDraft('daily'), d0 = F.D.maxDate || today();
-        h += '<div class="card"><h2>التقرير اليومي للإدارة</h2><p class="small muted" style="margin:0 0 10px">رتّب الأسطر وغيّر معادلة كل سطر. القيم الظاهرة هنا ليوم ' + N(d0) + '.</p>' +
+        h += '<div class="card dev-set"><label class="chk"><input type="checkbox" id="devd"' + (devDaily() ? ' checked' : '') + '> إظهار علامة «قيد التطوير» على التقرير اليومي</label><p class="small muted" style="margin:4px 0 0">تظهر بجانب زر التقرير في القائمة ورسالةً أعلى التقرير. أزل التحديد عند اعتماد التقرير.</p></div>' +
+          '<div class="card"><h2>التقرير اليومي للإدارة</h2><p class="small muted" style="margin:0 0 10px">رتّب الأسطر وغيّر معادلة كل سطر. القيم الظاهرة هنا ليوم ' + N(d0) + '.</p>' +
           '<div class="field"><label class="lbl" for="dtitle">عنوان التقرير</label><input id="dtitle" class="input" value="' + esc(dd.title || '') + '"></div>' +
           listEditorHTML('daily', dd.rows, { from: d0, to: d0 }) +
           '<div class="row" style="margin-top:10px"><button class="btn" data-dadd>+ سطر</button><button class="btn ghost" data-dsep>+ عنوان قسم</button><span class="grow"></span><button class="btn ghost" data-dreset>استعادة الافتراضي</button><button class="btn accent" data-dsave' + (F.dirtyKeys && F.dirtyKeys.daily ? '' : ' disabled') + '>حفظ التغييرات</button></div></div>' +
@@ -3037,6 +3054,7 @@
         q('[data-creset]', m).onclick = function () { A.confirmBox('استعادة الافتراضي', 'استبدال البطاقات الحالية بالبطاقات الافتراضية الست؟', 'استعادة').then(function (y) { if (y) saveConfig('cards', null); }); };
       } else if (tab === 'daily') {
         var dd = editDraft('daily'), d0 = F.D.maxDate || today(), chd = function () { markDirty('daily', true); A.render(); };
+        q('#devd', m).onchange = function () { var on = this.checked; setDevDaily(on).then(function () { toast(on ? 'ستظهر علامة «قيد التطوير»' : 'أُزيلت علامة «قيد التطوير»'); }); };
         bindListEditor(m, 'daily', function () { return dd.rows; }, 'row', function (i) { return ctxFor(dd.rows, i, d0, d0, 'يوم ' + d0); }, chd);
         q('#dtitle', m).onchange = function () { dd.title = this.value.trim(); chd(); };
         q('[data-dadd]', m).onclick = function () { editDaily(null, ctxFor(dd.rows, dd.rows.length, d0, d0, 'يوم ' + d0)).then(function (o) { if (o) { dd.rows.push(o); chd(); } }); };

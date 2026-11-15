@@ -889,3 +889,24 @@ body:has(.bnav) .toast { bottom: calc(var(--bnav) + 16px + env(safe-area-inset-b
 @media (prefers-reduced-motion: reduce) { .welcome, .wc-card { animation: none; } }
 
 .tbl .nw { white-space: nowrap; direction: ltr; unicode-bidi: isolate; }
+
+/* حقل التاريخ: اتجاه وعرض ثابتان حتى لا يتشوه على الهاتف */
+input[type=date].input { position: relative; direction: ltr; text-align: center; min-width: 9em; font-variant-numeric: tabular-nums; -webkit-appearance: none; appearance: none; display: flex; align-items: center; justify-content: center; line-height: 1.2; color-scheme: light; }
+input[type=date].input::-webkit-date-and-time-value { text-align: center; margin: 0; }
+input[type=date].input::-webkit-datetime-edit { padding: 0; text-align: center; }
+input[type=date].input::-webkit-calendar-picker-indicator { position: absolute; inset: 0; width: auto; height: auto; margin: 0; padding: 0; opacity: 0; cursor: pointer; }  /* الحقل كله يفتح التقويم */
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) input[type=date].input { color-scheme: dark; } }
+:root[data-theme="dark"] input[type=date].input { color-scheme: dark; }
+.day-date { flex: 0 1 13em; min-width: 0; cursor: pointer; }
+.day-date #ddate { flex: 1 1 auto; width: auto; min-width: 8.5em; }
+.ps-cust input[type=date].input { min-width: 0; width: 100%; }
+/* علامة «قيد التطوير» */
+.dev-b { font-style: normal; margin-inline-start: auto; font-size: 10.5px; font-weight: 800; line-height: 1; padding: 4px 7px; border-radius: 999px; background: var(--orange-soft); color: var(--orange); white-space: nowrap; }
+.more-i .dev-b { margin-inline-start: auto; }
+.bn-i .dev-b { position: absolute; top: 5px; inset-inline-start: calc(50% + 7px); margin: 0; font-size: 0; width: 9px; height: 9px; padding: 0; background: var(--orange); box-shadow: 0 0 0 2px var(--card); }
+.dev-note { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; padding: 10px 14px; border-radius: 14px; background: var(--orange-soft); border: 1px solid color-mix(in srgb, var(--orange) 30%, transparent); }
+.dev-note .grow { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.dev-note b { color: var(--orange); font-size: 14px; }
+.dev-note span { font-size: 13px; color: var(--ink); line-height: 1.5; }
+.dev-ic { flex: 0 0 auto; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: var(--orange); color: #fff; font-weight: 800; font-size: 14px; }
+@media (max-width: 560px) { .dev-note { flex-wrap: wrap; } .dev-note .btn { margin-inline-start: auto; } }

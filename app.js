@@ -232,6 +232,7 @@
     q('#lo').onclick = function () { confirmBox('خروج', 'هل تريد الخروج؟ تُمسح البيانات المالية من هذا الجهاز.', 'خروج').then(function (y) { if (y) logout(); }); };
     var pb = q('#pinb'); if (pb) pb.onclick = pinSheet;
     q('#sndb').onclick = sndSheet;
+    navBadges();
     qa('[data-tab]').forEach(function (b) { b.onclick = function () { go(b.dataset.tab); }; });
     var mb = q('[data-more]');
     if (mb) mb.onclick = function () {
@@ -246,6 +247,7 @@
         var mi = q('[data-minst]', s.el); if (mi) mi.onclick = function () { s.close(); RKInstall.show(); };
         q('[data-mpin]', s.el).onclick = function () { s.close(); pinSheet(); };
         q('[data-msnd]', s.el).onclick = function () { s.close(); sndSheet(); };
+        navBadges();
         q('[data-mlo]', s.el).onclick = function () { s.close(); q('#lo').click(); };
       });
     };
@@ -292,6 +294,16 @@
     if (v && v.load) v.load(quiet).then(function (changed) { if (VIEWS[st.tab] === v && changed !== false) render(); }).catch(function (e) { if (VIEWS[st.tab] === v) render(); if (!quiet) toast(e.message, true); });
   }
 
+  // علامة «قيد التطوير» على زر التقرير اليومي (تتحكم بها الإعدادات المالية)
+  function navBadges() {
+    var on = true; try { on = localStorage.getItem('rk.devDaily') !== 'off'; } catch (e) {}
+    qa('[data-tab="daily"]').forEach(function (b) {
+      var x = b.querySelector('.dev-b');
+      if (on && !x) { x = document.createElement('i'); x.className = 'dev-b'; x.textContent = 'قيد التطوير'; x.title = 'قيد التطوير'; b.appendChild(x); }
+      else if (!on && x) x.remove();
+    });
+  }
+  window.RKShell = { navBadges: navBadges };
   function sndIcon() {
     var off = window.RKSnd && RKSnd.level() === 'off';
     return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/>' + (off ? '<path d="M17 9l5 6M22 9l-5 6"/>' : '<path d="M16.5 8.5a5 5 0 010 7M19.5 5.5a9 9 0 010 13"/>') + '</svg>';
