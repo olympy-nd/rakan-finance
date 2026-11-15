@@ -1,62 +1,45 @@
-/* أصوات الواجهة: مؤثرات قصيرة هادئة تُولَّد بالمتصفح (بدون ملفات صوت) */
+/* أصوات الواجهة: نفس مؤثرات منظومة باركود الأصول (Web Audio، بدون ملفات) — تعمل عند الضغط فقط، لا عند التمرير */
 (function () {
   'use strict';
-  var KEY = 'rk.snd', ctx = null, master = null, lastAt = 0;
-  var LEVELS = { off: 0, low: 0.35, mid: 0.7 };
-  function level() { try { var v = localStorage.getItem(KEY); return LEVELS[v] !== undefined ? v : 'low'; } catch (e) { return 'low'; } }
-  function setLevel(v) { try { localStorage.setItem(KEY, v); } catch (e) {} if (master) master.gain.value = LEVELS[v] || 0; }
+  var KEY = 'rk.sndp', ctx = null, lastTick = 0;
+  function prefs() { var d = { sound: true, vol: 60 }; try { var v = JSON.parse(localStorage.getItem(KEY) || 'null'); if (v) { d.sound = v.sound !== false; d.vol = Math.max(0, Math.min(100, Number(v.vol) || 0)); if (v.vol === undefined) d.vol = 60; } } catch (e) {} return d; }
+  function setPrefs(p) { var c = prefs(); if (p.sound !== undefined) c.sound = !!p.sound; if (p.vol !== undefined) c.vol = Math.max(0, Math.min(100, Number(p.vol) || 0)); try { localStorage.setItem(KEY, JSON.stringify(c)); } catch (e) {} return c; }
   function ac() {
-    if (!LEVELS[level()]) return null;
     try {
-      if (!ctx) {
-        var C = window.AudioContext || window.webkitAudioContext; if (!C) return null;
-        ctx = new C(); master = ctx.createGain(); master.gain.value = LEVELS[level()];
-        var comp = ctx.createDynamicsCompressor(); comp.threshold.value = -18; comp.ratio.value = 4;
-        master.connect(comp); comp.connect(ctx.destination);
-      }
+      if (!ctx) { var A = window.AudioContext || window.webkitAudioContext; if (!A) return null; ctx = new A(); }
       if (ctx.state === 'suspended') ctx.resume();
       return ctx;
     } catch (e) { return null; }
   }
-  // نغمة واحدة بغلاف سريع (هجوم قصير ثم خفوت أسّي) — أساس كل المؤثرات
-  function tone(c, t0, f1, f2, dur, vol, type) {
-    var o = c.createOscillator(), g = c.createGain();
-    o.type = type || 'sine'; o.frequency.setValueAtTime(f1, t0); if (f2 && f2 !== f1) o.frequency.exponentialRampToValueAtTime(f2, t0 + dur);
-    g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(vol, t0 + 0.006); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-    o.connect(g); g.connect(master); o.start(t0); o.stop(t0 + dur + 0.02);
+  function tone(f1, f2, dur, o) {
+    o = o || {}; var c = ac(); if (!c) return;
+    var type = o.type || 'sine', gain = o.gain === undefined ? 0.18 : o.gain, at = o.at || 0, attack = o.attack || 0.004;
+    var t = c.currentTime + at, os = c.createOscillator(), g = c.createGain(), lp = c.createBiquadFilter();
+    lp.type = 'lowpass'; lp.frequency.value = 4200; os.type = type; os.frequency.setValueAtTime(f1, t); if (f2 !== f1) os.frequency.exponentialRampToValueAtTime(f2, t + dur);
+    var v = gain * (prefs().vol / 100); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(Math.max(v, 0.0002), t + attack); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    os.connect(lp); lp.connect(g); g.connect(c.destination); os.start(t); os.stop(t + dur + 0.02);
   }
-  // نقرة خفيفة: ضجيج قصير جداً بمرشح عالٍ يعطي ملمس الزر
-  function tick(c, t0, freq, vol) {
-    var n = Math.floor(c.sampleRate * 0.012), b = c.createBuffer(1, n, c.sampleRate), d = b.getChannelData(0);
-    for (var i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, 3);
-    var s = c.createBufferSource(), f = c.createBiquadFilter(), g = c.createGain();
-    f.type = 'bandpass'; f.frequency.value = freq; f.Q.value = 1.2; g.gain.value = vol;
-    s.buffer = b; s.connect(f); f.connect(g); g.connect(master); s.start(t0);
+  function play(k) {
+    if (!prefs().sound) return;
+    try {
+      switch (k) {
+        case 'tick': tone(1250, 1100, 0.045, { type: 'triangle', gain: 0.11 }); break;
+        case 'nav': tone(520, 780, 0.09, { gain: 0.10 }); break;
+        case 'pop': tone(440, 660, 0.11, { gain: 0.12 }); tone(880, 880, 0.08, { gain: 0.05, at: 0.05 }); break;
+        case 'ok': [[784, 0], [1046, 0.09], [1318, 0.18]].forEach(function (x) { tone(x[0], x[0], 0.22, { gain: 0.14, at: x[1], attack: 0.01 }); }); break;
+        case 'err': tone(320, 180, 0.22, { type: 'square', gain: 0.06 }); tone(240, 150, 0.24, { type: 'sine', gain: 0.12, at: 0.04 }); break;
+        case 'del': tone(700, 180, 0.32, { gain: 0.15 }); tone(1400, 360, 0.22, { type: 'triangle', gain: 0.04, at: 0.02 }); break;
+        case 'print': for (var i = 0; i < 5; i++) tone(1500 + i * 40, 1450, 0.03, { type: 'square', gain: 0.035, at: i * 0.055 }); tone(988, 1318, 0.18, { gain: 0.11, at: 0.32 }); break;
+        case 'login': [[523, 0], [659, 0.08], [784, 0.16], [1046, 0.24]].forEach(function (x) { tone(x[0], x[0], 0.26, { gain: 0.12, at: x[1], attack: 0.01 }); }); break;
+      }
+    } catch (e) {}
   }
-  var FX = {
-    tap: function (c, t) { tick(c, t, 3200, 0.55); tone(c, t, 1350, 1100, 0.045, 0.06, 'triangle'); },
-    nav: function (c, t) { tick(c, t, 2200, 0.4); tone(c, t, 660, 520, 0.08, 0.07, 'sine'); },
-    toggle: function (c, t) { tone(c, t, 1180, 1180, 0.035, 0.07, 'triangle'); tone(c, t + 0.04, 1580, 1580, 0.04, 0.05, 'triangle'); },
-    open: function (c, t) { tone(c, t, 420, 760, 0.12, 0.06, 'sine'); },
-    close: function (c, t) { tone(c, t, 700, 420, 0.1, 0.05, 'sine'); },
-    success: function (c, t) { tone(c, t, 1046.5, 1046.5, 0.14, 0.08, 'sine'); tone(c, t + 0.09, 1568, 1568, 0.22, 0.07, 'sine'); },
-    error: function (c, t) { tone(c, t, 392, 370, 0.14, 0.09, 'triangle'); tone(c, t + 0.13, 311, 294, 0.2, 0.08, 'triangle'); },
-    welcome: function (c, t) { [523.25, 659.25, 783.99, 1046.5].forEach(function (f, i) { tone(c, t + i * 0.085, f, f, 0.32, 0.055, 'sine'); }); }
-  };
-  function play(name) {
-    var c = ac(); if (!c || !FX[name]) return;
-    var now = performance.now(); if (name !== 'success' && name !== 'error' && name !== 'welcome' && now - lastAt < 45) return; lastAt = now;
-    try { FX[name](c, c.currentTime + 0.005); } catch (e) {}
-  }
-  // ربط عام: صوت عند الضغط على عناصر الواجهة حسب نوعها
-  document.addEventListener('pointerdown', function (e) {
-    if (e.button > 0) return;
-    var el = e.target.closest && e.target.closest('button, a[href], .tap, label.item, label.chk, input[type=checkbox], input[type=radio], select, summary, [data-tab], [data-open], [data-jump]');
-    if (!el || el.disabled || el.getAttribute('aria-disabled') === 'true') return;
-    if (el.matches('[data-tab], .bn-i, .side-i, [data-jump], .cat-card, [data-back]')) play('nav');
-    else if (el.matches('.chip, .per-b, input[type=checkbox], input[type=radio], label.chk, label.item, [data-pset], [data-gsplit], [data-igx], [data-cgx]')) play('toggle');
-    else if (el.matches('[data-x]')) play('close');
-    else play('tap');
+  // نقرة خفيفة عند الضغط فقط (حدث click لا يحدث عند التمرير)؛ التبويبات لها صوت التنقل من التطبيق نفسه
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest && e.target.closest('button, .tap, label.item, label.chk, input[type=checkbox], input[type=radio], select, summary');
+    if (!b || b.disabled || b.matches('[data-tab], [data-more], [data-x], [data-sfx]')) return;
+    var now = Date.now(); if (now - lastTick < 40) return; lastTick = now;
+    play('tick');
   }, true);
-  window.RKSnd = { play: play, level: level, setLevel: setLevel, LEVELS: [['off', 'إيقاف'], ['low', 'هادئ'], ['mid', 'متوسط']] };
+  window.RKSnd = { play: play, prefs: prefs, setPrefs: setPrefs };
 })();

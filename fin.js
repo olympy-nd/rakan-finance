@@ -1944,7 +1944,7 @@
     function dailyHTML() {
       var D = dailyData(), errs = [];
       D.def.rows.forEach(function (r, i) { D.vals.forEach(function (v) { if (v[i].err && errs.indexOf(r.name) < 0) errs.push(r.name); }); });
-      var h = (devDaily() ? '<div class="dev-note" role="note"><span class="dev-ic">!</span><div class="grow"><b>التقرير اليومي قيد التطوير</b><span>قد تتغير بنوده وطريقة حسابها خلال التطوير. راجع الأرقام قبل اعتمادها.</span></div>' + (canEdit() ? '<button class="btn sm ghost" data-devset>إخفاء من الإعدادات</button>' : '') + '</div>' : '') +
+      var h = (devDaily() ? '<div class="dev-note" role="note"><span class="dev-ic">!</span><div class="grow"><b>التقرير اليومي قيد التطوير</b><span>قد تتغير بنوده وطريقة حسابها خلال التطوير. راجع الأرقام قبل اعتمادها.</span></div></div>' : '') +
         '<div class="card head-card"><div class="hc-top"><div class="grow"><h2>' + esc(D.def.title || 'التقرير اليومي للإدارة') + '</h2></div><div class="rh-act">' +
         '<button class="btn sm" data-dxls aria-label="Excel">' + ICON_XLS + '<span class="bt-txt">Excel</span></button><button class="btn sm" data-dprt aria-label="طباعة">' + ICON.print + '<span class="bt-txt">طباعة / PDF</span></button>' + (canEdit() ? '<button class="btn sm ghost" data-dcustom aria-label="تخصيص الأسطر">' + ICON_EDIT + '<span class="bt-txt">تخصيص</span></button>' : '') + '</div></div>' +
         '<div class="day-nav"><button class="iconbtn" data-dprev aria-label="اليوم السابق" title="اليوم السابق"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></button><label class="day-date">' + ICON_CAL + '<input type="date" class="input num" id="ddate" value="' + D.date + '"></label><button class="iconbtn" data-dnext aria-label="اليوم التالي" title="اليوم التالي"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg></button>' +
@@ -1976,7 +1976,6 @@
       var cu = q('[data-dcustom]', m);
       if (cu) cu.onclick = function () { F.setTab = 'daily'; go('settings'); };
       q('[data-dxls]', m).onclick = function () { exportDaily(); };
-      var dvs = q('[data-devset]', m); if (dvs) dvs.onclick = function () { F.setTab = 'daily'; go('settings'); };
       q('[data-dprt]', m).onclick = function () {
         var D = dailyData(), P = document.getElementById('print');
         P.innerHTML = '<div class="p-rep p-daily"><div class="p-head"><img src="logo.png" alt=""><div class="t"><b>' + esc(D.def.title || 'التقرير اليومي للإدارة') + '</b><span>شركة راكان لاستيراد المواد الغذائية والتوزيع · ' + esc(D.date) + '</span></div><span class="p-copy">' + esc('طُبع ' + RK.nowStr().slice(0, 16)) + '</span></div>' +
@@ -2529,6 +2528,7 @@
       st.textContent = '@media print { @page { size: A4 ' + plan.orient + '; margin: 9mm 8mm 11mm; @bottom-center { content: "صفحة " counter(page) " من " counter(pages); font: 8pt Tajawal, sans-serif; color: #555; } } }';
       var clean = function () { st.textContent = ''; window.removeEventListener('afterprint', clean); };
       window.addEventListener('afterprint', clean);
+      if (window.RKSnd) RKSnd.play('print');
       setTimeout(function () { window.print(); }, 200);
     }
 

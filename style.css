@@ -917,3 +917,12 @@ input[type=date].input::-webkit-calendar-picker-indicator { position: absolute; 
 .hc-back2 .hb-ar { font-size: 17px; line-height: 1; }
 .hc-back2 .hb-t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 560px) { .hc-back2 { max-width: 40%; padding: 6px 10px; font-size: 12px; } }
+
+/* حقل التاريخ المنسّق */
+.dx { display: grid; position: relative; min-width: 0; width: 100%; }
+.dx > input, .dx > .dx-t { grid-area: 1 / 1; }
+.dx > input[type=date] { width: 100%; color: transparent !important; -webkit-text-fill-color: transparent; caret-color: transparent; }
+.dx > input[type=date]::-webkit-datetime-edit { opacity: 0; }
+.dx-t { display: flex; align-items: center; justify-content: center; pointer-events: none; direction: ltr; unicode-bidi: isolate; font-variant-numeric: tabular-nums; font-weight: 700; font-size: 15px; color: var(--ink); white-space: nowrap; padding: 0 8px; z-index: 1; }
+.day-date .dx { flex: 1 1 auto; }
+.day-date .dx-t { color: var(--blue); }

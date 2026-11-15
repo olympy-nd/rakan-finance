@@ -25,7 +25,7 @@
   function toast(msg, err) {
     var t = document.createElement('div');
     t.className = 'toast' + (err ? ' err' : ''); t.setAttribute('role', 'status'); t.textContent = msg;
-    if (window.RKSnd) RKSnd.play(err ? 'error' : 'success');
+    if (window.RKSnd) RKSnd.play(err ? 'err' : 'ok');
     document.body.appendChild(t);
     setTimeout(function () { t.remove(); }, err ? 5200 : 3000);
   }
@@ -37,6 +37,21 @@
       var e = new Error(r.msg || r.error || 'تعذّر تنفيذ الطلب'); e.code = r.error; throw e;
     });
   }
+  /* ===================== حقل التاريخ: نص منسّق ثابت فوق الحقل الأصلي (الهاتف يعرض الحقل العربي مقلوباً) ===================== */
+  function fmtDx(v) { var m = /^(\d{4})-(\d\d)-(\d\d)$/.exec(v || ''); return m ? m[3] + ' / ' + m[2] + ' / ' + m[1] : 'اختر التاريخ'; }
+  function enhanceDates() {
+    qa('input[type=date]:not([data-dx])').forEach(function (inp) {
+      inp.setAttribute('data-dx', '1');
+      var w = document.createElement('span'); w.className = 'dx';
+      ['width', 'maxWidth', 'minWidth', 'flex'].forEach(function (k) { if (inp.style[k]) { w.style[k] = inp.style[k]; inp.style[k] = ''; } });
+      inp.parentNode.insertBefore(w, inp); w.appendChild(inp);
+      var t = document.createElement('span'); t.className = 'dx-t'; t.setAttribute('aria-hidden', 'true'); w.appendChild(t);
+      var up = function () { t.textContent = fmtDx(inp.value); }; up();
+      inp.addEventListener('input', up); inp.addEventListener('change', up);
+    });
+  }
+  (function () { var qd = 0; new MutationObserver(function () { if (qd) return; qd = 1; requestAnimationFrame(function () { qd = 0; enhanceDates(); }); }).observe(document.documentElement, { childList: true, subtree: true }); })();
+
   /* ===================== سجل التنقل: الرجوع لنفس المكان (التبويب، التقرير، القسم، وموضع التمرير) ===================== */
   var SHEETS = [], NAV = [], NAVI = { skip: 0 };
   function navPush() {
@@ -69,7 +84,7 @@
     bg.innerHTML = '<div class="sheet" role="dialog" aria-modal="true" aria-label="' + esc(title) + '"><div class="sheet-h"><h2>' + esc(title) +
       '</h2><button class="iconbtn" data-x aria-label="إغلاق">' + ICON.close + '</button></div><div class="sheet-b">' + html + '</div></div>';
     document.body.appendChild(bg);
-    if (window.RKSnd) RKSnd.play('open');
+    if (window.RKSnd) RKSnd.play('pop');
     // زر الرجوع في الهاتف يغلق النافذة بدل الخروج من الصفحة
     var hs = false; try { history.pushState({ rkSheet: 1 }, ''); hs = true; } catch (e) {}
     var api = { el: q('.sheet-b', bg), close: function (fromPop) {
@@ -238,7 +253,7 @@
       w.innerHTML = '<div class="wc-card"><img src="logo.png" alt=""><div class="wc-hi">' + hi + '</div><div class="wc-name">' + esc(name || 'بك') + '</div>' +
         '<div class="wc-sub">' + (force ? 'أهلاً وسهلاً بك في منظومة راكان للتقارير المالية' : 'سعداء برؤيتك مجدداً في منظومة راكان للتقارير المالية') + '</div>' + (dt ? '<div class="wc-date">' + esc(dt) + '</div>' : '') + '</div>';
       var close = function () { if (!w.parentNode) return; w.classList.add('out'); setTimeout(function () { w.remove(); }, 320); };
-      document.body.appendChild(w); setTimeout(close, 4200); if (window.RKSnd) RKSnd.play('welcome');
+      document.body.appendChild(w); setTimeout(close, 1950); if (window.RKSnd) RKSnd.play('login');
     }).catch(function () {});
   }
   function startApp(keep) {
@@ -294,7 +309,7 @@
     if (!keep) refresh(false);
   }
 
-  function go(tab) { st.tab = tab; render(); refresh(true); window.scrollTo(0, 0); }
+  function go(tab) { if (window.RKSnd && tab !== st.tab) RKSnd.play('nav'); st.tab = tab; render(); refresh(true); window.scrollTo(0, 0); }
   function shellUI() {
     if (!st.user) return;
     var name = (tabsFor(st.user).filter(function (t) { return t[0] === st.tab; })[0] || [])[1] || '';
@@ -339,16 +354,21 @@
   }
   window.RKShell = { navBadges: navBadges };
   function sndIcon() {
-    var off = window.RKSnd && RKSnd.level() === 'off';
+    var off = window.RKSnd && !RKSnd.prefs().sound;
     return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/>' + (off ? '<path d="M17 9l5 6M22 9l-5 6"/>' : '<path d="M16.5 8.5a5 5 0 010 7M19.5 5.5a9 9 0 010 13"/>') + '</svg>';
   }
   function sndSheet() {
     if (!window.RKSnd) return;
-    sheet('أصوات الواجهة', '<div class="form"><p class="small muted" style="margin:0">مؤثرات قصيرة هادئة عند الضغط والتنقل والحفظ والأخطاء. الإعداد خاص بهذا الجهاز.</p><div class="chips snd-l">' +
-      RKSnd.LEVELS.map(function (l) { return '<button class="chip' + (RKSnd.level() === l[0] ? ' on' : '') + '" data-snd="' + l[0] + '">' + l[1] + '</button>'; }).join('') +
-      '</div><div class="row"><button class="btn ghost" data-sndt>تجربة</button></div></div>', function (s) {
-      qa('[data-snd]', s.el).forEach(function (b) { b.onclick = function () { RKSnd.setLevel(b.dataset.snd); qa('[data-snd]', s.el).forEach(function (x) { x.classList.toggle('on', x === b); }); var sb = q('#sndb'); if (sb) sb.innerHTML = sndIcon(); RKSnd.play('success'); }; });
-      q('[data-sndt]', s.el).onclick = function () { ['tap', 'toggle', 'success'].forEach(function (n, i) { setTimeout(function () { RKSnd.play(n); }, i * 260); }); };
+    var pr = RKSnd.prefs();
+    sheet('أصوات الواجهة', '<div class="form"><p class="small muted" style="margin:0">نفس مؤثرات منظومة باركود الأصول: نقرة خفيفة عند الضغط، وصوت للتنقل والحفظ والأخطاء والطباعة. الإعداد خاص بهذا الجهاز.</p>' +
+      '<label class="chk"><input type="checkbox" id="sndOn"' + (pr.sound ? ' checked' : '') + '> تشغيل الأصوات</label>' +
+      '<div class="field"><label class="lbl" for="sndVol">مستوى الصوت <b id="sndV">' + pr.vol + '%</b></label><input type="range" id="sndVol" min="0" max="100" step="5" value="' + pr.vol + '"' + (pr.sound ? '' : ' disabled') + ' style="width:100%"></div>' +
+      '<div class="row"><button class="btn ghost" data-sndt data-sfx="ok">تجربة</button></div></div>', function (s) {
+      var on = q('#sndOn', s.el), vol = q('#sndVol', s.el);
+      on.onchange = function () { RKSnd.setPrefs({ sound: on.checked }); vol.disabled = !on.checked; var sb = q('#sndb'); if (sb) sb.innerHTML = sndIcon(); if (on.checked) RKSnd.play('ok'); };
+      vol.oninput = function () { RKSnd.setPrefs({ vol: vol.value }); q('#sndV', s.el).textContent = vol.value + '%'; };
+      vol.onchange = function () { RKSnd.play('ok'); };
+      q('[data-sndt]', s.el).onclick = function () { ['tick', 'nav', 'ok'].forEach(function (n, i) { setTimeout(function () { RKSnd.play(n); }, i * 300); }); };
     });
   }
   function pinSheet() {
