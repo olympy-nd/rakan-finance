@@ -15,7 +15,7 @@
     function fk(n) { return Math.round(Number(n) || 0).toLocaleString('en-US'); }
     function fq(n) { return (Number(n) || 0).toLocaleString('en-US', { maximumFractionDigits: 2 }); }
     function pct(a, b) { return b ? (a / b * 100) : 0; }
-    function fp(n) { return (Number(n) || 0).toLocaleString('en-US', { maximumFractionDigits: 1 }) + '%'; }
+    function fp(n) { n = Number(n) || 0; if (Math.abs(n) < 0.05) n = 0; return n.toLocaleString('en-US', { maximumFractionDigits: 1 }) + '%'; }
     function today() { return RK.nowStr().slice(0, 10); }
     function d2t(d) { return Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10)); }
     function t2d(t) { return new Date(t).toISOString().slice(0, 10); }
@@ -451,8 +451,12 @@
     function payIds() { return grpIds('pay'); }
     // صناديق الفرع المعروض فقط (حساب الصندوق موجود في نموذجه)
     // أنواع السندات المعروضة لكل صندوق (فارغ = كل الأنواع)
-    function boxTypeMap() { var m = {}; F.boxes.forEach(function (b) { if (b.active && b.types && b.types.length) m[b.acc] = b.types.map(String); }); return m; }
-    function boxLinePass(l, m) { var t = (m || boxTypeMap())[l.a]; return !t || t.indexOf(String(l.bt)) >= 0; }
+    // لكل صندوق: أنواع السندات المعروضة، والطرف المعروض (مدين فقط / دائن فقط / كلاهما) — يُحفظ الطرف كرمز side:dr داخل الأنواع
+    var BOX_SIDES = [['', 'كلا الطرفين (مدين ودائن)'], ['dr', 'المدين فقط (الداخل)'], ['cr', 'الدائن فقط (الخارج)']];
+    function boxSide(b) { var t = (b && b.types || []).filter(function (x) { return String(x).indexOf('side:') === 0; })[0]; return t ? String(t).slice(5) : ''; }
+    function boxTypesOnly(b) { return (b && b.types || []).map(String).filter(function (x) { return x.indexOf('side:') !== 0; }); }
+    function boxTypeMap() { var m = {}; F.boxes.forEach(function (b) { if (!b.active) return; var ty = boxTypesOnly(b), sd = boxSide(b); if (ty.length || sd) m[b.acc] = { t: ty.length ? ty : null, s: sd }; }); return m; }
+    function boxLinePass(l, m) { var r = (m || boxTypeMap())[l.a]; if (!r) return true; if (r.t && r.t.indexOf(String(l.bt)) < 0) return false; if (r.s === 'dr' && !(l.dr > 0)) return false; if (r.s === 'cr' && !(l.cr > 0)) return false; return true; }
     function activeBoxes(kind) { return F.boxes.filter(function (b) { return b.active && (!kind || b.kind === kind || b.name.indexOf(kind) >= 0) && (!multiBr() || !!T().acc[b.acc]); }); }
     function boxIds(kind) { return activeBoxes(kind).map(function (b) { return b.acc; }); }
     function counterpart(l, ids) {

@@ -15,7 +15,7 @@
     function fk(n) { return Math.round(Number(n) || 0).toLocaleString('en-US'); }
     function fq(n) { return (Number(n) || 0).toLocaleString('en-US', { maximumFractionDigits: 2 }); }
     function pct(a, b) { return b ? (a / b * 100) : 0; }
-    function fp(n) { return (Number(n) || 0).toLocaleString('en-US', { maximumFractionDigits: 1 }) + '%'; }
+    function fp(n) { n = Number(n) || 0; if (Math.abs(n) < 0.05) n = 0; return n.toLocaleString('en-US', { maximumFractionDigits: 1 }) + '%'; }
     function today() { return RK.nowStr().slice(0, 10); }
     function d2t(d) { return Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10)); }
     function t2d(t) { return new Date(t).toISOString().slice(0, 10); }
@@ -451,8 +451,12 @@
     function payIds() { return grpIds('pay'); }
     // صناديق الفرع المعروض فقط (حساب الصندوق موجود في نموذجه)
     // أنواع السندات المعروضة لكل صندوق (فارغ = كل الأنواع)
-    function boxTypeMap() { var m = {}; F.boxes.forEach(function (b) { if (b.active && b.types && b.types.length) m[b.acc] = b.types.map(String); }); return m; }
-    function boxLinePass(l, m) { var t = (m || boxTypeMap())[l.a]; return !t || t.indexOf(String(l.bt)) >= 0; }
+    // لكل صندوق: أنواع السندات المعروضة، والطرف المعروض (مدين فقط / دائن فقط / كلاهما) — يُحفظ الطرف كرمز side:dr داخل الأنواع
+    var BOX_SIDES = [['', 'كلا الطرفين (مدين ودائن)'], ['dr', 'المدين فقط (الداخل)'], ['cr', 'الدائن فقط (الخارج)']];
+    function boxSide(b) { var t = (b && b.types || []).filter(function (x) { return String(x).indexOf('side:') === 0; })[0]; return t ? String(t).slice(5) : ''; }
+    function boxTypesOnly(b) { return (b && b.types || []).map(String).filter(function (x) { return x.indexOf('side:') !== 0; }); }
+    function boxTypeMap() { var m = {}; F.boxes.forEach(function (b) { if (!b.active) return; var ty = boxTypesOnly(b), sd = boxSide(b); if (ty.length || sd) m[b.acc] = { t: ty.length ? ty : null, s: sd }; }); return m; }
+    function boxLinePass(l, m) { var r = (m || boxTypeMap())[l.a]; if (!r) return true; if (r.t && r.t.indexOf(String(l.bt)) < 0) return false; if (r.s === 'dr' && !(l.dr > 0)) return false; if (r.s === 'cr' && !(l.cr > 0)) return false; return true; }
     function activeBoxes(kind) { return F.boxes.filter(function (b) { return b.active && (!kind || b.kind === kind || b.name.indexOf(kind) >= 0) && (!multiBr() || !!T().acc[b.acc]); }); }
     function boxIds(kind) { return activeBoxes(kind).map(function (b) { return b.acc; }); }
     function counterpart(l, ids) {
@@ -1447,8 +1451,8 @@
           if (tm[b.acc]) { var inn = 0, out = 0; (F.D.byAcc[b.acc] || []).forEach(function (l) { if (l.d >= p.from && l.d <= p.to && boxLinePass(l, tm)) { inn += l.dr; out += l.cr; } }); o.other = (r.dr - r.cr) - (inn - out); o.inn = inn; o.out = out; }
           return o;
         });
-        var cols = [C('name', 'الاسم'), C('kind', 'النوع'), C('open', 'رصيد أول المدة', 'money'), C('inn', 'الداخل (مدين)', 'money'), C('out', 'الخارج (دائن)', 'money')].concat(anyT ? [C('other', 'صافي سندات غير معروضة', 'money')] : []).concat([C('close', 'الرصيد', 'money')]);
-        return { cols: cols, rows: rows, total: sumRow(rows, cols), chart: { type: 'hbar', x: 'name', y: ['close'], yl: ['الرصيد'] }, note: 'اضغط على أي صندوق أو بنك لعرض حركته التفصيلية برصيد تراكمي' + (anyT ? ' · لبعض الصناديق أنواع سندات محددة في الإعدادات؛ عمود «غير معروضة» يبيّن صافي باقي الحركات حتى يبقى الرصيد صحيحاً' : '') };
+        var cols = [C('name', 'الاسم'), C('kind', 'النوع'), C('open', 'رصيد أول المدة', 'money'), C('inn', 'الداخل (مدين)', 'money'), C('out', 'الخارج (دائن)', 'money')].concat(anyT ? [C('other', 'صافي حركة غير معروضة', 'money')] : []).concat([C('close', 'الرصيد', 'money')]);
+        return { cols: cols, rows: rows, total: sumRow(rows, cols), chart: { type: 'hbar', x: 'name', y: ['close'], yl: ['الرصيد'] }, note: 'اضغط على أي صندوق أو بنك لعرض حركته التفصيلية برصيد تراكمي' + (anyT ? ' · لبعض الصناديق أنواع سندات أو طرف حركة (مدين أو دائن) محدد في الإعدادات؛ عمود «غير معروضة» يبيّن صافي باقي الحركات حتى يبقى الرصيد صحيحاً' : '') };
       } };
     R.box_daily = { cat: 'cash', name: 'الحركة اليومية للصناديق والبنوك', desc: 'الداخل والخارج والرصيد لكل يوم', params: ['period', 'boxkind'],
       run: function (p) {
@@ -1459,7 +1463,7 @@
         var tm = boxTypeMap(), anyT = ids.some(function (x) { return tm[x]; });
         T().jl.forEach(function (l) { if (!set[l.a] || l.d < p.from || l.d > p.to) return; var r = g[l.d] || (g[l.d] = { inn: 0, out: 0, other: 0 }); if (boxLinePass(l, tm)) { r.inn += l.dr; r.out += l.cr; } else r.other += l.dr - l.cr; });
         Object.keys(g).sort().forEach(function (d) { var r = g[d]; rows.push({ name: d, open: bal, inn: r.inn, out: r.out, other: r.other, close: bal + r.inn - r.out + r.other }); bal += r.inn - r.out + r.other; });
-        var cols = [C('name', 'اليوم'), C('open', 'أول اليوم', 'money'), C('inn', 'الداخل', 'money'), C('out', 'الخارج', 'money')].concat(anyT ? [C('other', 'سندات غير معروضة', 'money')] : []).concat([C('close', 'آخر اليوم', 'money')]);
+        var cols = [C('name', 'اليوم'), C('open', 'أول اليوم', 'money'), C('inn', 'الداخل', 'money'), C('out', 'الخارج', 'money')].concat(anyT ? [C('other', 'حركة غير معروضة', 'money')] : []).concat([C('close', 'آخر اليوم', 'money')]);
         var t = sumRow(rows, [C('inn', '', 'money'), C('out', '', 'money'), C('other', '', 'money')]); t.close = bal;
         return { cols: cols, rows: rows, total: t, chart: { type: 'line', x: 'name', y: ['close'], yl: ['الرصيد'] } };
       } };
@@ -2425,15 +2429,82 @@
         download(X, wb, 'rakan-' + (res.title || name).replace(/[\\/:*?"<>|]/g, '').slice(0, 40) + '-' + today() + '.xlsx');
       }).catch(function (e) { toast(e.message, true); });
     }
-    function printReport(res, name, p) {
-      var def = curDef(), P = document.getElementById('print');
-      P.innerHTML = '<div class="p-rep"><div class="p-head"><img src="logo.png" alt=""><div class="t"><b>' + esc(res.title || name) + '</b><span>شركة راكان لاستيراد المواد الغذائية والتوزيع · ' + esc(periodText(p, def)) + '</span></div><span class="p-copy">' +
-        esc('طُبع ' + RK.nowStr().slice(0, 16)) + '</span></div>' + (res.note ? '<p class="p-note">' + esc(plain(res.note)) + '</p>' : '') +
-        '<table class="p-tbl"><thead><tr>' + res.cols.map(function (c) { return '<th>' + esc(c.l) + '</th>'; }).join('') + '</tr></thead><tbody>' +
-        res.rows.map(function (r) { return '<tr' + (r._b ? ' style="font-weight:800"' : '') + '>' + res.cols.map(function (c, i) { return '<td class="' + (isNum(c) ? 'n' : c.t === 'long' ? 'lt' : '') + '"' + (r._lvl && i === lvlCol(res) ? ' style="padding-inline-start:' + (2 + r._lvl * 4) + 'mm"' : '') + '>' + cell(c, r[c.k], r) + '</td>'; }).join('') + '</tr>'; }).join('') + '</tbody>' +
-        (res.total ? '<tfoot><tr>' + res.cols.map(function (c, i) { return '<td class="' + (isNum(c) ? 'n' : '') + '"><b>' + (i === 0 ? 'الإجمالي' : cell(c, res.total[c.k], res.total)) + '</b></td>'; }).join('') + '</tr></tfoot>' : '') + '</table>' +
-        '<p class="p-note">آخر بيانات من سراج: ' + esc((F.meta && F.meta.last) || '') + ' · تقارير راكان تقرأ من سراج ولا تعدّل فيه</p></div>';
-      setTimeout(function () { window.print(); }, 150);
+    /* ---------- الطباعة الاحترافية: اختيار الاتجاه وحجم الخط تلقائياً، وتقسيم الأعمدة على أجزاء عند الحاجة دون فقد أي عمود ---------- */
+    var PX2MM = 25.4 / 96;
+    function pMeasure(t, pt, bold) { return textW(String(t), pt * 96 / 72, bold) * PX2MM; }
+    function pColWidths(res, rows, cols, pt) {
+      return cols.map(function (c) {
+        var num = isNum(c), head = String(c.l), hw = Math.max.apply(null, head.split(/\s+/).map(function (w) { return pMeasure(w, pt - 0.5, true); })), natural = 0, word = 0;
+        var sample = rows.length > 400 ? rows.filter(function (r, i) { return i % Math.ceil(rows.length / 400) === 0 || r._b; }) : rows;
+        sample.concat(res.total ? [res.total] : []).forEach(function (r) {
+          var v = plain(cell(c, r[c.k], r)); if (!v) return;
+          var w = pMeasure(v, pt, !!r._b); if (w > natural) natural = w;
+          if (!num) v.split(/\s+/).forEach(function (x) { var ww = pMeasure(x, pt); if (ww > word) word = ww; });
+        });
+        var cap = num ? 999 : c.t === 'long' ? 62 : 40, w = num ? natural : Math.max(word, Math.min(natural, cap));
+        return Math.max(w, hw, num ? 9 : 12) + 3.2;   // + الحشوة
+      });
+    }
+    function printPlan(res, mode) {
+      var rows = res.rows, cols = res.cols.filter(function (c) { return rows.some(function (r) { var v = r[c.k]; return v !== '' && v !== undefined && v !== null; }) || (res.total && res.total[c.k] !== undefined && res.total[c.k] !== ''); });
+      if (!cols.length) cols = res.cols.slice();
+      var best = null, AV = { portrait: 190, landscape: 277 }, sizes = [8.5, 8, 7.5, 7, 6.6], tries = mode === 'portrait' ? ['portrait'] : mode === 'landscape' ? ['landscape'] : ['portrait', 'landscape'];
+      if (mode !== 'split') for (var o = 0; o < tries.length; o++) for (var k = 0; k < sizes.length; k++) {
+        var ws = pColWidths(res, rows, cols, sizes[k]), tot = ws.reduce(function (a, b) { return a + b; }, 0);
+        if (tot <= AV[tries[o]]) { var cand = { orient: tries[o], pt: sizes[k], parts: [{ cols: cols, ws: ws.map(function (w) { return w / tot * 100; }) }] }; if (!best || cand.pt > best.pt) best = cand; break; }
+      }
+      // العمودي يُفضَّل إذا كان خطه 8 فأكبر أو مساوياً للأفقي، وإلا فالأفقي بخط أوضح
+      if (best && mode !== 'split') return best;
+      // تقسيم الأعمدة: أعمدة التعريف (الاسم/الرمز) تتكرر في كل جزء، وبقية الأعمدة توزَّع بالترتيب
+      var pt = mode === 'split' ? 8 : 7.5, orient = mode === 'portrait' ? 'portrait' : 'landscape', av = AV[orient], ws2 = pColWidths(res, rows, cols, pt);
+      var nKey = 1; if (cols.length > 2 && !isNum(cols[1]) && (cols[0].k === 'code' || ws2[0] < 30)) nKey = 2;
+      var keyW = ws2.slice(0, nKey).reduce(function (a, b) { return a + b; }, 0), parts = [], cur = [];
+      for (var i = nKey; i < cols.length; i++) {
+        var used = keyW + cur.reduce(function (a, x) { return a + ws2[x]; }, 0);
+        if (cur.length && used + ws2[i] > av) { parts.push(cur); cur = []; }
+        cur.push(i);
+      }
+      if (cur.length) parts.push(cur);
+      return { orient: orient, pt: pt, split: true, parts: parts.map(function (ix) {
+        var idx = []; for (var z = 0; z < nKey; z++) idx.push(z); idx = idx.concat(ix);
+        var w = idx.map(function (x) { return ws2[x]; }), t = w.reduce(function (a, b) { return a + b; }, 0), fill = t < av * 0.75;
+        return { cols: idx.map(function (x) { return cols[x]; }), ws: w.map(function (x) { return fill ? x / av * 100 : x / t * 100; }), fill: fill };
+      }) };
+    }
+    function printTableHTML(res, part, pt) {
+      var cols = part.cols, rows = res.rows, lc = lvlCol(res), lk = res.cols[lc] && res.cols[lc].k;
+      return '<table class="p-tbl p-auto" style="font-size:' + pt + 'pt' + (part.fill ? ';width:auto;min-width:' + Math.round(part.ws.reduce(function (a, b) { return a + b; }, 0)) + '%' : '') + '"><colgroup>' + part.ws.map(function (w) { return '<col style="width:' + w.toFixed(2) + '%">'; }).join('') + '</colgroup><thead><tr>' +
+        cols.map(function (c) { return '<th class="' + (isNum(c) ? 'n' : '') + '">' + esc(c.l) + '</th>'; }).join('') + '</tr></thead><tbody>' +
+        rows.map(function (r) {
+          return '<tr class="' + (r._gh ? 'gh ' : r._b ? 'b ' : '') + (r._hl ? 'hl' : '') + '">' + cols.map(function (c) {
+            return '<td class="' + (isNum(c) ? 'n' : c.t === 'long' ? 'lt' : '') + '"' + (r._lvl && c.k === lk ? ' style="padding-inline-start:' + (1.5 + r._lvl * 3.5) + 'mm"' : '') + '>' + cell(c, r[c.k], r) + '</td>';
+          }).join('') + '</tr>';
+        }).join('') + '</tbody>' +
+        (res.total ? '<tfoot><tr>' + cols.map(function (c, i) { return '<td class="' + (isNum(c) ? 'n' : '') + '">' + (i === 0 ? esc(res.total[c.k] && !isNum(c) ? res.total[c.k] : res.total.name || 'الإجمالي') : cell(c, res.total[c.k], res.total)) + '</td>'; }).join('') + '</tr></tfoot>' : '') + '</table>';
+    }
+    function printReport(res, name, p, mode) {
+      if (!mode) {   // نافذة اختيار سريعة مع الخيار التلقائي الموصى به
+        var auto = printPlan(res, 'auto'), desc = function (pl) { return (pl.orient === 'landscape' ? 'أفقي' : 'عمودي') + ' · خط ' + pl.pt + (pl.split && pl.parts.length > 1 ? ' · الأعمدة على ' + pl.parts.length + ' أجزاء' : ''); };
+        return sheet('طباعة التقرير', '<div class="form"><p class="small muted" style="margin:0">' + fk(res.rows.length) + ' سطر · ' + res.cols.length + ' عمود. يُختار الاتجاه وحجم الخط تلقائياً حتى تظهر كل الأعمدة بوضوح.</p><div class="list">' +
+          [['auto', 'تلقائي (موصى به)', desc(auto)], ['portrait', 'عمودي', desc(printPlan(res, 'portrait'))], ['landscape', 'أفقي', desc(printPlan(res, 'landscape'))], ['split', 'تقسيم الأعمدة على أجزاء بخط أوضح', desc(printPlan(res, 'split'))]].map(function (o, i) {
+            return '<label class="item tap"><input type="radio" name="pmode" value="' + o[0] + '"' + (i === 0 ? ' checked' : '') + '><div class="main"><b>' + o[1] + '</b><div class="meta"><span>' + esc(o[2]) + '</span></div></div></label>';
+          }).join('') + '</div><button class="btn primary big" data-pgo>طباعة</button></div>', function (s) {
+          q('[data-pgo]', s.el).onclick = function () { var v = (q('input[name=pmode]:checked', s.el) || {}).value || 'auto'; s.close(); printReport(res, name, p, v); };
+        });
+      }
+      var def = curDef(), P = document.getElementById('print'), plan = printPlan(res, mode);
+      var head = function (k) { return '<div class="p-head"><img src="logo.png" alt=""><div class="t"><b>' + esc(res.title || name) + '</b><span>شركة راكان لاستيراد المواد الغذائية والتوزيع · ' + esc(periodText(p, def)) + (res.subtitle ? ' · ' + esc(plain(res.subtitle)) : '') + '</span></div><span class="p-copy">' +
+        (plan.split ? 'الجزء ' + (k + 1) + ' من ' + plan.parts.length : esc('طُبع ' + RK.nowStr().slice(0, 16))) + '</span></div>'; };
+      var foot = '<p class="p-note">آخر بيانات من سراج: ' + esc((F.meta && F.meta.last) || '') + ' · طُبع ' + esc(RK.nowStr().slice(0, 16)) + ' · ' + fk(res.rows.length) + ' سطر · تقارير راكان تقرأ من سراج ولا تعدّل فيه</p>';
+      P.innerHTML = '<div class="p-rep p-' + plan.orient + '">' + plan.parts.map(function (part, k) {
+        return '<section class="p-part">' + head(k) + (k === 0 && res.note ? '<p class="p-note">' + esc(plain(res.note)) + '</p>' : '') +
+          (plan.split ? '<p class="p-note p-cols">الأعمدة في هذا الجزء: ' + esc(part.cols.map(function (c) { return c.l; }).join('، ')) + '</p>' : '') + printTableHTML(res, part, plan.pt) + foot + '</section>';
+      }).join('') + '</div>';
+      var st = document.getElementById('p-page-style') || document.head.appendChild(Object.assign(document.createElement('style'), { id: 'p-page-style' }));
+      st.textContent = '@media print { @page { size: A4 ' + plan.orient + '; margin: 9mm 8mm 11mm; @bottom-center { content: "صفحة " counter(page) " من " counter(pages); font: 8pt Tajawal, sans-serif; color: #555; } } }';
+      var clean = function () { st.textContent = ''; window.removeEventListener('afterprint', clean); };
+      window.addEventListener('afterprint', clean);
+      setTimeout(function () { window.print(); }, 200);
     }
 
     /* ---------- اختيار حساب ---------- */
@@ -2875,9 +2946,9 @@
             var sug = boxSuggestions(), bts = T().bt || {};
             var o = '<div class="card box-br">' + (br.name ? '<h2 class="box-brh">' + esc(br.name) + ' <span class="badge">' + bx.filter(function (b) { return b.active; }).length + '</span></h2>' : '') +
               (bx.length ? '<div class="list">' + bx.map(function (b) {
-                var tl = (b.types || []).map(function (t) { return (bts[t] || T().it[t] || {}).name || t; });
+                var tl = boxTypesOnly(b).map(function (t) { return (bts[t] || T().it[t] || {}).name || t; }), sd = boxSide(b);
                 return '<div class="item' + (b.active ? '' : ' muted') + '"><div class="main"><b>' + esc(b.name) + ' <span class="badge">' + esc(b.kind) + '</span>' + (b.active ? '' : ' <span class="badge">موقوف</span>') + '</b><div class="meta"><span class="num">' + esc((acc(b.acc) || {}).code || '') + '</span><span>' + esc(accName(b.acc)) + '</span><span>الرصيد الآن: <b class="num">' + fm(balance([b.acc], null, null).close) + '</b></span></div>' +
-                  '<div class="meta"><span>' + (tl.length ? 'السندات المعروضة: ' + esc(tl.join('، ')) : 'السندات المعروضة: كل الأنواع') + '</span></div></div>' +
+                  '<div class="meta"><span>' + (tl.length ? 'السندات المعروضة: ' + esc(tl.join('، ')) : 'السندات المعروضة: كل الأنواع') + '</span><span class="badge' + (sd ? ' warn' : '') + '">' + (sd === 'dr' ? 'المدين فقط' : sd === 'cr' ? 'الدائن فقط' : 'مدين ودائن') + '</span></div></div>' +
                   '<div class="fe-btns"><button class="btn sm ghost" data-bedit="' + esc(b.id) + '" data-bbr="' + esc(br.code) + '">تعديل</button>' + (b.active ? '' : '<button class="btn sm ghost" data-bon="' + esc(b.id) + '">تفعيل</button>') + '<button class="btn sm ghost danger-t" data-bdel="' + esc(b.id) + '">حذف التعريف</button></div></div>';
               }).join('') + '</div>' : '<div class="msg info">لم يُعرّف أي صندوق أو بنك' + (br.name ? ' في ' + esc(br.name) : '') + ' بعد.</div>') +
               '<div class="row" style="margin-top:10px"><button class="btn primary" data-badd="' + esc(br.code) + '">+ تعريف صناديق أو بنوك' + (br.name ? ' في ' + esc(br.name) : '') + '</button><span class="small muted" style="align-self:center">يمكن تحديد عدة حسابات دفعة واحدة</span></div>';
@@ -3005,7 +3076,9 @@
         var rows = ids.map(function (id) { var a = list.filter(function (x) { return x.id === id; })[0] || { id: id, name: id, code: '' }; return { acc: id, code: a.code, name: String(a.name).trim(), kind: boxGuessKind(a, inBr) }; });
         sheet('تعريف ' + rows.length + ' حسابات دفعة واحدة' + (mb ? ' · ' + brName(br) : ''), '<div class="form"><p class="small muted" style="margin:0">راجع الاسم والنوع لكل حساب، ثم اضغط «تعريف الكل». يمكنك تحديد أنواع السندات لكل واحد لاحقاً من «تعديل».</p><div class="list bulk-box">' + rows.map(function (r, i) {
           return '<div class="item"><div class="main"><div class="small muted num">' + esc(r.code) + '</div><input class="input" data-bn="' + i + '" value="' + esc(r.name) + '"></div><div class="chips">' + ['صندوق', 'بنك'].map(function (k) { return '<button type="button" class="chip' + (r.kind === k ? ' on' : '') + '" data-bk="' + i + '|' + k + '">' + k + '</button>'; }).join('') + '</div><button type="button" class="iconbtn" data-bx="' + i + '" aria-label="إزالة">✕</button></div>';
-        }).join('') + '</div><div id="bberr"></div><button class="btn primary big" id="bbsv">تعريف الكل (' + rows.length + ')</button></div>', function (s) {
+        }).join('') + '</div><div class="field"><span class="lbl">الحركة التي تظهر في التقارير (للكل)</span><div class="chips">' + BOX_SIDES.map(function (o) { return '<button class="chip' + (o[0] === '' ? ' on' : '') + '" data-bside="' + o[0] + '">' + o[1] + '</button>'; }).join('') + '</div></div><div id="bberr"></div><button class="btn primary big" id="bbsv">تعريف الكل (' + rows.length + ')</button></div>', function (s) {
+          var bside = '';
+          qa('[data-bside]', s.el).forEach(function (c) { c.onclick = function () { bside = c.dataset.bside; qa('[data-bside]', s.el).forEach(function (x) { x.classList.toggle('on', x === c); }); }; });
           qa('[data-bn]', s.el).forEach(function (el) { el.oninput = function () { rows[Number(el.dataset.bn)].name = el.value; }; });
           qa('[data-bk]', s.el).forEach(function (c) { c.onclick = function () { var x = c.dataset.bk.split('|'); rows[Number(x[0])].kind = x[1]; qa('[data-bk^="' + x[0] + '|"]', s.el).forEach(function (y) { y.classList.toggle('on', y === c); }); }; });
           qa('[data-bx]', s.el).forEach(function (c) { c.onclick = function () { var i = Number(c.dataset.bx); rows[i].skip = true; c.closest('.item').remove(); q('#bbsv', s.el).textContent = 'تعريف الكل (' + rows.filter(function (r) { return !r.skip; }).length + ')'; }; });
@@ -3014,7 +3087,7 @@
             if (!todo.length) { s.close(); return; }
             if (todo.some(function (r) { return !String(r.name).trim(); })) { q('#bberr', s.el).innerHTML = '<div class="msg err">اكتب اسماً لكل حساب</div>'; return; }
             busy(btn, true); var done = 0, chain = Promise.resolve();
-            todo.forEach(function (r, i) { chain = chain.then(function () { return call('fin_box_save', { box: { acc: r.acc, name: String(r.name).trim(), kind: r.kind, sort: F.boxes.length + i, types: [] } }).then(function (x) { F.boxes = x.boxes; done++; btn.textContent = 'جارٍ التعريف… ' + done + ' من ' + todo.length; }); }); });
+            todo.forEach(function (r, i) { chain = chain.then(function () { return call('fin_box_save', { box: { acc: r.acc, name: String(r.name).trim(), kind: r.kind, sort: F.boxes.length + i, types: bside ? ['side:' + bside] : [] } }).then(function (x) { F.boxes = x.boxes; done++; btn.textContent = 'جارٍ التعريف… ' + done + ' من ' + todo.length; }); }); });
             chain.then(function () { S.set('fin:aux', { boxes: F.boxes, reports: F.reports, config: F.config }); resetCache(); s.close(); toast('عُرّف ' + done + ' صندوق/بنك'); A.render(); })
               .catch(function (e) { busy(btn, false); q('#bberr', s.el).innerHTML = '<div class="msg err">' + esc(e.message) + (done ? ' (عُرّف ' + done + ' قبل الخطأ)' : '') + '</div>'; F.boxes = F.boxes; A.render(); });
           };
@@ -3023,7 +3096,7 @@
     }
     function boxForm(b, brCode) {
       var isNew = !b || b._new; var d = b ? Object.assign({}, b) : { acc: '', name: '', kind: 'صندوق', active: true, sort: F.boxes.length, types: [] }; delete d._new; if (isNew) b = null;
-      d.types = (d.types || []).slice();
+      d.side = boxSide(d); d.types = boxTypesOnly(d);
       var mb = multiBr(), br = brCode || '';
       // داخل نموذج الفرع حتى تظهر حساباته وأنواع سنداته فقط
       var inBr = function (fn) { return mb ? withBr(br, fn) : fn(); };
@@ -3050,6 +3123,7 @@
       return sheet((b ? 'تعديل ' + b.name : 'تعريف صندوق أو بنك') + (mb ? ' · ' + brName(br) : ''), '<div class="form"><div class="field"><span class="lbl">الحساب في دليل سراج' + (mb ? ' (' + esc(brName(br)) + ')' : '') + '</span><button class="input" id="bacc" style="text-align:start">' + esc(accLabel()) + '</button></div>' +
         '<div class="field"><label class="lbl" for="bnm">الاسم في التقارير</label><input id="bnm" class="input" value="' + esc(d.name) + '"></div>' +
         '<div class="field"><span class="lbl">النوع</span><div class="chips">' + ['صندوق', 'بنك'].map(function (k) { return '<button class="chip' + (d.kind === k ? ' on' : '') + '" data-k="' + k + '">' + k + '</button>'; }).join('') + '</div></div>' +
+        '<div class="field"><span class="lbl">الحركة التي تظهر في التقارير</span><div class="chips">' + BOX_SIDES.map(function (o) { return '<button class="chip' + (d.side === o[0] ? ' on' : '') + '" data-side="' + o[0] + '">' + o[1] + '</button>'; }).join('') + '</div><p class="small muted" style="margin:4px 0 0">الرصيد يبقى الرصيد الفعلي للحساب؛ الحركة المخفية تظهر في عمود «غير معروضة».</p></div>' +
         '<div class="field"><span class="lbl">أنواع السندات التي تظهر في التقارير</span><div id="btypes"></div></div>' +
         '<div class="field"><label class="lbl" for="bso">الترتيب</label><input id="bso" type="number" class="input num" value="' + esc(d.sort) + '" style="max-width:120px"></div>' +
         (b ? '<label class="chk"><input type="checkbox" id="bac"' + (d.active ? ' checked' : '') + '> نشط (يظهر في التقارير)</label>' : '') +
@@ -3064,10 +3138,12 @@
           });
         };
         qa('[data-k]', s.el).forEach(function (c) { c.onclick = function () { d.kind = c.dataset.k; qa('[data-k]', s.el).forEach(function (x) { x.classList.toggle('on', x === c); }); }; });
+        qa('[data-side]', s.el).forEach(function (c) { c.onclick = function () { d.side = c.dataset.side; qa('[data-side]', s.el).forEach(function (x) { x.classList.toggle('on', x === c); }); }; });
         q('#bsv', s.el).onclick = function () {
           var btn = this; busy(btn, true);
           d.name = q('#bnm', s.el).value.trim(); d.sort = Number(q('#bso', s.el).value) || 0; if (b) d.active = q('#bac', s.el).checked;
-          call('fin_box_save', { box: d }).then(function (r) { F.boxes = r.boxes; S.set('fin:aux', { boxes: F.boxes, reports: F.reports, config: F.config }); resetCache(); s.close(); toast('حُفظ'); A.render(); })
+          var sendBox = Object.assign({}, d, { types: d.types.concat(d.side ? ['side:' + d.side] : []) }); delete sendBox.side;
+          call('fin_box_save', { box: sendBox }).then(function (r) { F.boxes = r.boxes; S.set('fin:aux', { boxes: F.boxes, reports: F.reports, config: F.config }); resetCache(); s.close(); toast('حُفظ'); A.render(); })
             .catch(function (e) { busy(btn, false); q('#berr', s.el).innerHTML = '<div class="msg err">' + esc(e.message) + '</div>'; });
         };
       });

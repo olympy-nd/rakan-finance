@@ -25,6 +25,7 @@
   function toast(msg, err) {
     var t = document.createElement('div');
     t.className = 'toast' + (err ? ' err' : ''); t.setAttribute('role', 'status'); t.textContent = msg;
+    if (window.RKSnd) RKSnd.play(err ? 'error' : 'success');
     document.body.appendChild(t);
     setTimeout(function () { t.remove(); }, err ? 5200 : 3000);
   }
@@ -42,6 +43,7 @@
     bg.innerHTML = '<div class="sheet" role="dialog" aria-modal="true" aria-label="' + esc(title) + '"><div class="sheet-h"><h2>' + esc(title) +
       '</h2><button class="iconbtn" data-x aria-label="إغلاق">' + ICON.close + '</button></div><div class="sheet-b">' + html + '</div></div>';
     document.body.appendChild(bg);
+    if (window.RKSnd) RKSnd.play('open');
     var api = { el: q('.sheet-b', bg), close: function () { bg.remove(); if (api.onclose) api.onclose(); } };
     q('[data-x]', bg).onclick = api.close;
     bg.addEventListener('click', function (e) { if (e.target === bg && !api.sticky) api.close(); });
@@ -202,7 +204,7 @@
       w.innerHTML = '<div class="wc-card"><img src="logo.png" alt=""><div class="wc-hi">' + hi + '</div><div class="wc-name">' + esc(name || 'بك') + '</div>' +
         '<div class="wc-sub">' + (force ? 'أهلاً وسهلاً بك في منظومة راكان للتقارير المالية' : 'سعداء برؤيتك مجدداً في منظومة راكان للتقارير المالية') + '</div>' + (dt ? '<div class="wc-date">' + esc(dt) + '</div>' : '') + '</div>';
       var close = function () { if (!w.parentNode) return; w.classList.add('out'); setTimeout(function () { w.remove(); }, 320); };
-      document.body.appendChild(w); setTimeout(close, 4200);
+      document.body.appendChild(w); setTimeout(close, 4200); if (window.RKSnd) RKSnd.play('welcome');
     }).catch(function () {});
   }
   function startApp(keep) {
@@ -225,10 +227,11 @@
     $app.innerHTML = '<div class="strip"></div><div class="shell ' + (phone ? 'has-bnav' : 'has-side') + '">' + (phone ? '' : nav) +
       '<div class="shell-b"><header class="top"><div class="top-in">' + (phone ? '<img class="logo" src="logo.png" alt="راكان">' : '') +
       '<div class="who"><h1 id="ptitle"></h1><span id="psub"></span></div>' +
-      '<span class="dsync" id="dsync" hidden></span><span class="net" id="net"></span><button class="iconbtn" id="lo" aria-label="خروج" title="خروج">' + ICON.out + '</button></div></header>' +
+      '<span class="dsync" id="dsync" hidden></span><span class="net" id="net"></span><button class="iconbtn" id="sndb" aria-label="الأصوات" title="الأصوات">' + sndIcon() + '</button><button class="iconbtn" id="lo" aria-label="خروج" title="خروج">' + ICON.out + '</button></div></header>' +
       '<main id="main"></main></div>' + (phone ? nav : '') + '</div>';
     q('#lo').onclick = function () { confirmBox('خروج', 'هل تريد الخروج؟ تُمسح البيانات المالية من هذا الجهاز.', 'خروج').then(function (y) { if (y) logout(); }); };
     var pb = q('#pinb'); if (pb) pb.onclick = pinSheet;
+    q('#sndb').onclick = sndSheet;
     qa('[data-tab]').forEach(function (b) { b.onclick = function () { go(b.dataset.tab); }; });
     var mb = q('[data-more]');
     if (mb) mb.onclick = function () {
@@ -238,10 +241,11 @@
         return head + '<button class="tab more-i' + (st.tab === t[0] ? ' on' : '') + '" data-tab="' + t[0] + '">' + tabIcon(t[0]) + '<span>' + esc(t[1]) + '</span></button>';
       }).join('') + '<div class="side-g">الحساب</div>' +
         (window.RKInstall && RKInstall.can() ? '<button class="tab more-i" data-minst>' + tabIcon('dash') + '<span>تثبيت التطبيق على الجهاز</span></button>' : '') +
-        '<button class="tab more-i" data-mpin>' + ICON.key + '<span>تغيير الرقم السري</span></button><button class="tab more-i" data-mlo>' + ICON.out + '<span>خروج</span></button></div>', function (s) {
+        '<button class="tab more-i" data-msnd>' + sndIcon() + '<span>الأصوات</span></button><button class="tab more-i" data-mpin>' + ICON.key + '<span>تغيير الرقم السري</span></button><button class="tab more-i" data-mlo>' + ICON.out + '<span>خروج</span></button></div>', function (s) {
         qa('[data-tab]', s.el).forEach(function (b) { b.onclick = function () { s.close(); go(b.dataset.tab); }; });
         var mi = q('[data-minst]', s.el); if (mi) mi.onclick = function () { s.close(); RKInstall.show(); };
         q('[data-mpin]', s.el).onclick = function () { s.close(); pinSheet(); };
+        q('[data-msnd]', s.el).onclick = function () { s.close(); sndSheet(); };
         q('[data-mlo]', s.el).onclick = function () { s.close(); q('#lo').click(); };
       });
     };
@@ -288,6 +292,19 @@
     if (v && v.load) v.load(quiet).then(function (changed) { if (VIEWS[st.tab] === v && changed !== false) render(); }).catch(function (e) { if (VIEWS[st.tab] === v) render(); if (!quiet) toast(e.message, true); });
   }
 
+  function sndIcon() {
+    var off = window.RKSnd && RKSnd.level() === 'off';
+    return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/>' + (off ? '<path d="M17 9l5 6M22 9l-5 6"/>' : '<path d="M16.5 8.5a5 5 0 010 7M19.5 5.5a9 9 0 010 13"/>') + '</svg>';
+  }
+  function sndSheet() {
+    if (!window.RKSnd) return;
+    sheet('أصوات الواجهة', '<div class="form"><p class="small muted" style="margin:0">مؤثرات قصيرة هادئة عند الضغط والتنقل والحفظ والأخطاء. الإعداد خاص بهذا الجهاز.</p><div class="chips snd-l">' +
+      RKSnd.LEVELS.map(function (l) { return '<button class="chip' + (RKSnd.level() === l[0] ? ' on' : '') + '" data-snd="' + l[0] + '">' + l[1] + '</button>'; }).join('') +
+      '</div><div class="row"><button class="btn ghost" data-sndt>تجربة</button></div></div>', function (s) {
+      qa('[data-snd]', s.el).forEach(function (b) { b.onclick = function () { RKSnd.setLevel(b.dataset.snd); qa('[data-snd]', s.el).forEach(function (x) { x.classList.toggle('on', x === b); }); var sb = q('#sndb'); if (sb) sb.innerHTML = sndIcon(); RKSnd.play('success'); }; });
+      q('[data-sndt]', s.el).onclick = function () { ['tap', 'toggle', 'success'].forEach(function (n, i) { setTimeout(function () { RKSnd.play(n); }, i * 260); }); };
+    });
+  }
   function pinSheet() {
     sheet('تغيير الرقم السري', '<form class="form" id="cf"><div class="field"><label for="c0">الرقم السري الحالي</label><input id="c0" class="input pin" type="password" inputmode="numeric" required></div>' +
       '<div class="field"><label for="c1">الجديد (4 إلى 8 أرقام)</label><input id="c1" class="input pin" type="password" inputmode="numeric" required></div>' +

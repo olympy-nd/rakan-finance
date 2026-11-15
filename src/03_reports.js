@@ -577,8 +577,8 @@
           if (tm[b.acc]) { var inn = 0, out = 0; (F.D.byAcc[b.acc] || []).forEach(function (l) { if (l.d >= p.from && l.d <= p.to && boxLinePass(l, tm)) { inn += l.dr; out += l.cr; } }); o.other = (r.dr - r.cr) - (inn - out); o.inn = inn; o.out = out; }
           return o;
         });
-        var cols = [C('name', 'الاسم'), C('kind', 'النوع'), C('open', 'رصيد أول المدة', 'money'), C('inn', 'الداخل (مدين)', 'money'), C('out', 'الخارج (دائن)', 'money')].concat(anyT ? [C('other', 'صافي سندات غير معروضة', 'money')] : []).concat([C('close', 'الرصيد', 'money')]);
-        return { cols: cols, rows: rows, total: sumRow(rows, cols), chart: { type: 'hbar', x: 'name', y: ['close'], yl: ['الرصيد'] }, note: 'اضغط على أي صندوق أو بنك لعرض حركته التفصيلية برصيد تراكمي' + (anyT ? ' · لبعض الصناديق أنواع سندات محددة في الإعدادات؛ عمود «غير معروضة» يبيّن صافي باقي الحركات حتى يبقى الرصيد صحيحاً' : '') };
+        var cols = [C('name', 'الاسم'), C('kind', 'النوع'), C('open', 'رصيد أول المدة', 'money'), C('inn', 'الداخل (مدين)', 'money'), C('out', 'الخارج (دائن)', 'money')].concat(anyT ? [C('other', 'صافي حركة غير معروضة', 'money')] : []).concat([C('close', 'الرصيد', 'money')]);
+        return { cols: cols, rows: rows, total: sumRow(rows, cols), chart: { type: 'hbar', x: 'name', y: ['close'], yl: ['الرصيد'] }, note: 'اضغط على أي صندوق أو بنك لعرض حركته التفصيلية برصيد تراكمي' + (anyT ? ' · لبعض الصناديق أنواع سندات أو طرف حركة (مدين أو دائن) محدد في الإعدادات؛ عمود «غير معروضة» يبيّن صافي باقي الحركات حتى يبقى الرصيد صحيحاً' : '') };
       } };
     R.box_daily = { cat: 'cash', name: 'الحركة اليومية للصناديق والبنوك', desc: 'الداخل والخارج والرصيد لكل يوم', params: ['period', 'boxkind'],
       run: function (p) {
@@ -589,7 +589,7 @@
         var tm = boxTypeMap(), anyT = ids.some(function (x) { return tm[x]; });
         T().jl.forEach(function (l) { if (!set[l.a] || l.d < p.from || l.d > p.to) return; var r = g[l.d] || (g[l.d] = { inn: 0, out: 0, other: 0 }); if (boxLinePass(l, tm)) { r.inn += l.dr; r.out += l.cr; } else r.other += l.dr - l.cr; });
         Object.keys(g).sort().forEach(function (d) { var r = g[d]; rows.push({ name: d, open: bal, inn: r.inn, out: r.out, other: r.other, close: bal + r.inn - r.out + r.other }); bal += r.inn - r.out + r.other; });
-        var cols = [C('name', 'اليوم'), C('open', 'أول اليوم', 'money'), C('inn', 'الداخل', 'money'), C('out', 'الخارج', 'money')].concat(anyT ? [C('other', 'سندات غير معروضة', 'money')] : []).concat([C('close', 'آخر اليوم', 'money')]);
+        var cols = [C('name', 'اليوم'), C('open', 'أول اليوم', 'money'), C('inn', 'الداخل', 'money'), C('out', 'الخارج', 'money')].concat(anyT ? [C('other', 'حركة غير معروضة', 'money')] : []).concat([C('close', 'آخر اليوم', 'money')]);
         var t = sumRow(rows, [C('inn', '', 'money'), C('out', '', 'money'), C('other', '', 'money')]); t.close = bal;
         return { cols: cols, rows: rows, total: t, chart: { type: 'line', x: 'name', y: ['close'], yl: ['الرصيد'] } };
       } };

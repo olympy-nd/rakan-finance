@@ -1,6 +1,6 @@
 /* راكان المالية · عامل الخدمة: يحفظ ملفات التطبيق ليفتح بسرعة وبلا إنترنت (البيانات نفسها محفوظة في IndexedDB) */
-var VERSION = 'rakan-fin-v23';
-var SHELL = ['./', 'index.html', 'style.css', 'app.js', 'install.js', 'fin.js', 'core.js', 'config.js', 'logo.png', 'icon-192.png', 'icon-512.png',
+var VERSION = 'rakan-fin-v24';
+var SHELL = ['./', 'index.html', 'style.css', 'sound.js', 'app.js', 'install.js', 'fin.js', 'core.js', 'config.js', 'logo.png', 'icon-192.png', 'icon-512.png',
   'manifest.webmanifest', 'xlsx.style.min.js', 'fonts/Tajawal-Regular.ttf', 'fonts/Tajawal-Bold.ttf', 'fonts/Tajawal-ExtraBold.ttf', 'fonts/RkNum-400.woff2', 'fonts/RkNum-700.woff2', 'fonts/RkNum-800.woff2'];
 
 self.addEventListener('install', function (e) {
