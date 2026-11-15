@@ -86,15 +86,41 @@
     function perLabel(from, to) { return from === to ? N(from) : 'من ' + N(from) + ' إلى ' + N(to); }
 
     /* ===================== تحميل البيانات ===================== */
-    function load(force) {
-      if (F.loading) return F.loading;
-      F.loading = (F.rows ? Promise.resolve() : Promise.all([S.get('fin:rows'), S.get('fin:rev'), S.get('fin:meta'), S.get('fin:aux')]).then(function (v) {
+    /* ===================== تحميل البيانات =====================
+     * الحزم: بيانات كل شهر (لكل قاعدة) ملف مضغوط واحد، تُنزَّل الحزمة فقط إذا تغيّر إصدارها،
+     * وتُحفظ على الجهاز كما هي. فوقها «سجل التغييرات» (F.rows): ما وصل بعد آخر اعتماد للحزم. */
+    function readCache() {
+      return Promise.all([S.get('fin:rows'), S.get('fin:rev'), S.get('fin:meta'), S.get('fin:aux'), S.get('fin:pks')]).then(function (v) {
         F.rows = v[0] || {}; F.rev = v[1] || 0; F.meta = v[2] || null;
         if (v[3]) { F.boxes = v[3].boxes || []; F.reports = v[3].reports || []; F.config = v[3].config || {}; }
-        if (Object.keys(F.rows).length) rebuild();
-      })).then(function () {
+        F.pks = v[4] || { gen: '', base: 0, list: {} };
+        F.packs = {};
+        var names = Object.keys(F.pks.list || {});
+        return Promise.all(names.map(function (n) { return S.get('fin:pk:' + n); })).then(function (arr) {
+          arr.forEach(function (x, i) {
+            if (!x || x.ver !== F.pks.list[names[i]]) { delete F.pks.list[names[i]]; return; }
+            try { F.packs[names[i]] = JSON.parse(x.s); } catch (e) { delete F.pks.list[names[i]]; }
+          });
+          if (hasData()) rebuild();
+        });
+      });
+    }
+    function dataCount() {
+      var n = 0, rows = F.rows || {};
+      Object.keys(F.packs || {}).forEach(function (nm) { var k = F.packs[nm].k; Object.keys(k).forEach(function (x) { n += k[x].v.length; }); });
+      Object.keys(rows).forEach(function (k) { if (rows[k][1]) n++; });
+      return n;
+    }
+    function hasData() { return Object.keys(F.rows || {}).length > 0 || Object.keys(F.packs || {}).length > 0; }
+    function load(force) {
+      if (F.loading) return F.loading;
+      var fresh = !F.rows;
+      F.loading = (fresh ? readCache().then(function () {
+        // الفتح الفوري: نعرض آخر بيانات محفوظة الآن، والتحديث يكمل في الخلفية
+        if (F.D) setTimeout(function () { if (A.render) A.render(); }, 0);
+      }) : Promise.resolve()).then(function () {
         if (!navigator.onLine) throw new Error('لا يوجد اتصال بالإنترنت');
-        return pull(force).then(function () { return Promise.all([call('fin_boxes'), call('fin_reports'), call('fin_config').catch(function () { return { config: F.config }; })]); }).then(function (r) {
+        return sync(force).then(function () { return Promise.all([call('fin_boxes'), call('fin_reports'), call('fin_config').catch(function () { return { config: F.config }; })]); }).then(function (r) {
           F.boxes = r[0].boxes; F.reports = r[1].reports; F.config = r[2].config || {}; F.error = null; F.lastPull = Date.now();
           return S.set('fin:aux', { boxes: F.boxes, reports: F.reports, config: F.config });
         });
@@ -105,6 +131,44 @@
       return F.loading;
     }
 
+    function gunzipText(b64) {
+      var bin = atob(b64), u = new Uint8Array(bin.length);
+      for (var i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+      if (typeof DecompressionStream === 'undefined') return Promise.reject(new Error('المتصفح قديم: حدّثه لتعمل المنظومة'));
+      return new Response(new Blob([u]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
+    }
+    // يجلب حالة الحزم من الخادم، وينزّل ما تغيّر منها فقط (3 في الوقت نفسه)، ثم سجل التغييرات بعدها
+    function sync(force) {
+      return call('fin_state').catch(function () { return null; }).then(function (st) {
+        if (!st || !st.meta || !st.meta.gen) return pull(force);   // خادم أقدم أو بلا حزم بعد: الطريقة القديمة
+        F.meta = st.meta;
+        var list = {}, changed = false;
+        st.packs.forEach(function (p) { list[p.name] = p.ver; });
+        var genChanged = st.meta.gen !== F.pks.gen;
+        var need = st.packs.filter(function (p) { return !F.packs[p.name] || F.pks.list[p.name] !== p.ver; });
+        Object.keys(F.packs).forEach(function (n) { if (!list[n]) { delete F.packs[n]; S.del('fin:pk:' + n); changed = true; } });
+        var done = 0, total = need.length, queue = need.slice();
+        var one = function () {
+          var p = queue.shift();
+          if (!p) return Promise.resolve();
+          return call('fin_pack', { name: p.name }, { timeout: 180000 }).then(function (r) {
+            return gunzipText(r.data).then(function (txt) {
+              F.packs[p.name] = JSON.parse(txt); F.pks.list[p.name] = r.ver; changed = true; done++;
+              F.progress = 'جارٍ تنزيل البيانات المالية… ' + done + ' من ' + total; paintProgress();
+              return S.set('fin:pk:' + p.name, { ver: r.ver, s: txt });
+            });
+          }).then(one);
+        };
+        if (total) { F.progress = 'جارٍ تنزيل البيانات المالية… 0 من ' + total; paintProgress(); }
+        return Promise.all([one(), one(), one()]).then(function () {
+          // الحزم الجديدة تغطي كل ما قبل نقطة الاعتماد: سجل التغييرات القديم لم يعد لازماً
+          if (genChanged || F.rev < st.meta.base) { F.rows = {}; F.rev = st.meta.base; changed = true; }
+          F.pks = { gen: st.meta.gen, base: st.meta.base, list: list };
+          return S.set('fin:pks', F.pks);
+        }).then(function () { return pull(force || changed); });
+      });
+    }
+
     function pull(force) {
       var changed = 0;
       var step = function () {
@@ -112,7 +176,8 @@
           F.meta = r.meta;
           r.rows.forEach(function (x) {
             var key = x[0] + ':' + x[4];
-            if (x[2]) delete F.rows[key]; else F.rows[key] = [x[0], x[1]];
+            // الحذف يبقى علامة حتى يخفي السجل الموجود في الحزمة
+            if (x[2]) F.rows[key] = [x[0], null]; else F.rows[key] = [x[0], x[1]];
             changed++;
           });
           F.rev = r.next;
@@ -120,7 +185,7 @@
         });
       };
       return step().then(function () {
-        if (changed || !F.D || force) { if (Object.keys(F.rows).length) rebuild(); else { F.D = null; F.Dby = {}; } return Promise.all([S.set('fin:rows', F.rows), S.set('fin:rev', F.rev), S.set('fin:meta', F.meta)]); }
+        if (changed || !F.D || force) { if (hasData()) rebuild(); else { F.D = null; F.Dby = {}; } return Promise.all([S.set('fin:rows', F.rows), S.set('fin:rev', F.rev), S.set('fin:meta', F.meta)]); }
         return S.set('fin:meta', F.meta);
       });
     }
@@ -161,12 +226,29 @@
     function build(code) {
       var T = { acc: {}, bt: {}, it: {}, cu: {}, ag: {}, us: {}, st: {}, item: {}, jl: [], inv: {}, invl: [] };
       var all = code === undefined || code === '*';
-      Object.keys(F.rows).forEach(function (k) {
-        var v = F.rows[k], d;
+      var put = function (kind, d) { if (kind === 'jl' || kind === 'invl') T[kind].push(d); else if (T[kind]) T[kind][d.id] = d; };
+      var rows = F.rows || {};
+      Object.keys(F.packs || {}).forEach(function (name) {
+        var pk = F.packs[name], br = pk.br || '';
+        if (!all && br !== code) return;
+        Object.keys(pk.k).forEach(function (kind) {
+          var cols = pk.k[kind].c, vals = pk.k[kind].v, nc = cols.length, idi = cols.indexOf('id');
+          for (var r = 0; r < vals.length; r++) {
+            var row = vals[r];
+            if (rows[kind + ':' + row[idi]]) continue;          // في سجل التغييرات نسخة أحدث
+            var d = { br: br };
+            for (var c = 0; c < nc; c++) if (row[c] !== null) d[cols[c]] = row[c];
+            put(kind, d);
+          }
+        });
+      });
+      Object.keys(rows).forEach(function (k) {
+        var v = rows[k], d;
+        if (!v[1]) return;
         try { d = JSON.parse(v[1]); } catch (e) { return; }
         if (!all && (d.br || '') !== code) return;
         d.br = d.br || '';
-        if (v[0] === 'jl' || v[0] === 'invl') T[v[0]].push(d); else if (T[v[0]]) T[v[0]][d.id] = d;
+        put(v[0], d);
       });
       // الحسابات: الشجرة والمسار والطبيعة
       Object.keys(T.acc).forEach(function (id) { var a = T.acc[id]; a.kids = []; a.lvl = Number(a.lvl) || 1; a.fin = Number(a.fin) || 0; a.code = String(a.code || ''); });
@@ -1561,18 +1643,18 @@
     function view(sub) {
       return {
         load: function (quiet) {
-          var had = !!F.D, rev = F.rev, nb = JSON.stringify([F.boxes, F.reports, F.config]);
+          var had = !!F.D, rev = F.rev + '|' + ((F.pks && F.pks.gen) || ''), nb = JSON.stringify([F.boxes, F.reports, F.config]);
           // التحديث التلقائي لا يعيد رسم الشاشة إلا إذا وصل جديد، حتى لا يقطع ما يكتبه المستخدم
           if (quiet && had && F.lastPull && Date.now() - F.lastPull < 180000) return Promise.resolve(false);
           if (quiet && F.dirty) return Promise.resolve(false);
           F.quiet = quiet;
-          return load(false).then(function () { return !had || F.rev !== rev || nb !== JSON.stringify([F.boxes, F.reports, F.config]); });
+          return load(false).then(function () { return !had || F.rev + '|' + ((F.pks && F.pks.gen) || '') !== rev || nb !== JSON.stringify([F.boxes, F.reports, F.config]); });
         },
         html: function () {
           if (F.sub !== sub) { F.sub = sub; if (sub !== 'reports') F.cur = null; }
           var h = '';
           if (!F.D && F.error && !F.loading) return '<div class="card empty"><p>تعذّر تحميل البيانات المالية: ' + esc(F.error) + '</p><button class="btn primary" data-frefresh>' + ICON.refresh + ' إعادة المحاولة</button></div>';
-          if (!F.D && F.rows && !Object.keys(F.rows).length && !F.loading && F.meta) return '<div class="card empty"><p>لم تصل بيانات مالية من الوكيل بعد.</p><p class="small muted">بعد إعداد الوكيل على جهاز سراج بمفتاح المنظومة المالية سيرسل القيود والفواتير تلقائياً خلال دقائق.</p><button class="btn primary" data-frefresh>' + ICON.refresh + ' تحقق الآن</button></div>';
+          if (!F.D && F.rows && !hasData() && !F.loading && F.meta) return '<div class="card empty"><p>لم تصل بيانات مالية من الوكيل بعد.</p><p class="small muted">بعد إعداد الوكيل على جهاز سراج بمفتاح المنظومة المالية سيرسل القيود والفواتير تلقائياً خلال دقائق.</p><button class="btn primary" data-frefresh>' + ICON.refresh + ' تحقق الآن</button></div>';
           if (!F.D) return '<div class="card loading"><span class="spin"></span> <span id="finprog">' + esc(F.progress || 'جارٍ تحميل البيانات المالية… أول مرة قد تستغرق دقيقة') + '</span></div>';
           h += syncLine();
           if (sub === 'dash' || sub === 'daily' || sub === 'reports') h += brBarHTML();
@@ -2572,7 +2654,7 @@
           (multiBr() ? branches().map(function (b) { return '<h3 style="margin:6px 0 0">' + esc(b.name) + '</h3>' + grpField('recv', b.code) + grpField('pay', b.code); }).join('') : grpField('recv', '') + grpField('pay', '')) +
           '<div class="field"><label class="lbl" for="fys">بداية السنة المالية</label><input type="date" class="input num" id="fys" value="' + esc(s.year_start || '2026-01-01') + '" style="max-width:200px"></div></div></div>';
       } else {
-        h += '<div class="card"><h2>البيانات على هذا الجهاز</h2><p class="small" style="margin:0">' + fk(Object.keys(F.rows || {}).length) + ' سجل · آخر مزامنة ' + esc((F.meta && F.meta.last) || '—') + '</p><p class="small muted">تُحفظ البيانات المالية على هذا الجهاز لتعمل التقارير بسرعة وبلا إنترنت، وتُمسح عند الخروج من التطبيق.</p><button class="btn sm ghost" data-open="data_check">فحص سلامة البيانات</button></div>';
+        h += '<div class="card"><h2>البيانات على هذا الجهاز</h2><p class="small" style="margin:0">' + fk(dataCount()) + ' سجل · آخر مزامنة ' + esc((F.meta && F.meta.last) || '—') + '</p><p class="small muted">تُحفظ البيانات المالية على هذا الجهاز لتعمل التقارير بسرعة وبلا إنترنت، وتُمسح عند الخروج من التطبيق.</p><button class="btn sm ghost" data-open="data_check">فحص سلامة البيانات</button></div>';
       }
       return h;
     }
@@ -4145,7 +4227,7 @@
     }
 
     // عند الخروج: مسح البيانات المالية من الجهاز
-    A.onLogout(function () { F.rows = null; F.D = null; F.Dby = null; F.Dcache = null; F.br = undefined; F.rev = 0; F.meta = null; F.cur = null; F.edit = null; F.dirtyKeys = null; F.dirty = false; return Promise.all([S.del('fin:rows'), S.del('fin:rev'), S.del('fin:meta'), S.del('fin:aux')]); });
+    A.onLogout(function () { var pk = Object.keys((F.pks && F.pks.list) || {}); F.packs = {}; F.pks = null; F.rows = null; F.D = null; F.Dby = null; F.Dcache = null; F.br = undefined; F.rev = 0; F.meta = null; F.cur = null; F.edit = null; F.dirtyKeys = null; F.dirty = false; return Promise.all([S.del('fin:rows'), S.del('fin:rev'), S.del('fin:meta'), S.del('fin:aux'), S.del('fin:pks')].concat(pk.map(function (n) { return S.del('fin:pk:' + n); }))); });
     try { st.finParams = JSON.parse(localStorage.getItem('rk.finParams') || '{}'); } catch (e) { st.finParams = {}; }
 
     // للاختبارات: الوصول للمحرّك
