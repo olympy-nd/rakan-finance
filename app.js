@@ -37,6 +37,32 @@
       var e = new Error(r.msg || r.error || 'تعذّر تنفيذ الطلب'); e.code = r.error; throw e;
     });
   }
+  /* ===================== سجل التنقل: الرجوع لنفس المكان (التبويب، التقرير، القسم، وموضع التمرير) ===================== */
+  var SHEETS = [], NAV = [], NAVI = { skip: 0 };
+  function navPush() {
+    NAV.push({ tab: st.tab, y: window.scrollY || 0, fin: FINAPI && FINAPI.navSnap ? FINAPI.navSnap() : null });
+    if (NAV.length > 40) NAV.shift();
+    try { history.pushState({ rkNav: NAV.length }, ''); } catch (e) {}
+  }
+  function restoreY(y) { var n = 8, f = function () { window.scrollTo(0, y); if (--n > 0 && Math.abs((window.scrollY || 0) - y) > 2) requestAnimationFrame(f); }; requestAnimationFrame(f); }
+  function navPop() {
+    var s = NAV.pop(); if (!s) return false;
+    if (FINAPI && FINAPI.navApply) FINAPI.navApply(s.fin);
+    var same = st.tab === s.tab; st.tab = s.tab; render(); if (!same) refresh(true); restoreY(s.y);
+    return true;
+  }
+  window.addEventListener('popstate', function () {
+    if (NAVI.skip > 0) { NAVI.skip--; return; }
+    if (SHEETS.length) { SHEETS[SHEETS.length - 1].close(true); return; }
+    navPop();
+  });
+  window.RKNav = {
+    push: navPush,
+    // زر «رجوع» في الواجهة: يرجع خطوة في السجل إن وجدت
+    back: function () { if (!NAV.length) return false; if (history.state && history.state.rkNav) history.back(); else navPop(); return true; },
+    peek: function () { return NAV[NAV.length - 1] || null; },
+    tabName: function (t) { return (tabsFor(st.user).filter(function (x) { return x[0] === t; })[0] || [])[1] || ''; }
+  };
   function sheet(title, html, mount) {
     var bg = document.createElement('div');
     bg.className = 'sheet-bg';
@@ -44,8 +70,16 @@
       '</h2><button class="iconbtn" data-x aria-label="إغلاق">' + ICON.close + '</button></div><div class="sheet-b">' + html + '</div></div>';
     document.body.appendChild(bg);
     if (window.RKSnd) RKSnd.play('open');
-    var api = { el: q('.sheet-b', bg), close: function () { bg.remove(); if (api.onclose) api.onclose(); } };
-    q('[data-x]', bg).onclick = api.close;
+    // زر الرجوع في الهاتف يغلق النافذة بدل الخروج من الصفحة
+    var hs = false; try { history.pushState({ rkSheet: 1 }, ''); hs = true; } catch (e) {}
+    var api = { el: q('.sheet-b', bg), close: function (fromPop) {
+      if (!bg.parentNode) return;
+      bg.remove(); SHEETS.splice(SHEETS.indexOf(api), 1);
+      if (hs && fromPop !== true && history.state && history.state.rkSheet) { NAVI.skip++; history.back(); }
+      if (api.onclose) api.onclose();
+    } };
+    SHEETS.push(api);
+    q('[data-x]', bg).onclick = function () { api.close(); };
     bg.addEventListener('click', function (e) { if (e.target === bg && !api.sticky) api.close(); });
     if (mount) mount(api);
     return api;
@@ -233,7 +267,7 @@
     var pb = q('#pinb'); if (pb) pb.onclick = pinSheet;
     q('#sndb').onclick = sndSheet;
     navBadges();
-    qa('[data-tab]').forEach(function (b) { b.onclick = function () { go(b.dataset.tab); }; });
+    qa('[data-tab]').forEach(function (b) { b.onclick = function () { if (b.dataset.tab !== st.tab || (FINAPI && FINAPI.navSnap && FINAPI.navSnap().cur)) navPush(); go(b.dataset.tab); }; });
     var mb = q('[data-more]');
     if (mb) mb.onclick = function () {
       var last2 = null;
@@ -243,7 +277,7 @@
       }).join('') + '<div class="side-g">الحساب</div>' +
         (window.RKInstall && RKInstall.can() ? '<button class="tab more-i" data-minst>' + tabIcon('dash') + '<span>تثبيت التطبيق على الجهاز</span></button>' : '') +
         '<button class="tab more-i" data-msnd>' + sndIcon() + '<span>الأصوات</span></button><button class="tab more-i" data-mpin>' + ICON.key + '<span>تغيير الرقم السري</span></button><button class="tab more-i" data-mlo>' + ICON.out + '<span>خروج</span></button></div>', function (s) {
-        qa('[data-tab]', s.el).forEach(function (b) { b.onclick = function () { s.close(); go(b.dataset.tab); }; });
+        qa('[data-tab]', s.el).forEach(function (b) { b.onclick = function () { s.close(); setTimeout(function () { navPush(); go(b.dataset.tab); }, 30); }; });
         var mi = q('[data-minst]', s.el); if (mi) mi.onclick = function () { s.close(); RKInstall.show(); };
         q('[data-mpin]', s.el).onclick = function () { s.close(); pinSheet(); };
         q('[data-msnd]', s.el).onclick = function () { s.close(); sndSheet(); };

@@ -236,7 +236,7 @@
       call('fin_report_save', { report: { id: d.id, name: d.name, cat: d.cat || 'تقاريري', def: cleanDef(df) } }).then(function (r) {
         F.reports = r.reports; var saved = d.id ? r.reports.filter(function (x) { return x.id === d.id; })[0] : r.reports.filter(function (x) { return x.name === d.name; }).pop();
         toast('حُفظ التقرير في «تقاريري»'); F.custom = null; F.dirty = false;
-        if (saved) openReport('c:' + saved.id); else go('reports');
+        if (saved) openReport('c:' + saved.id, null, { noPush: true }); else go('reports');
       }).catch(function (e) { busy(btn, false); toast(e.message, true); });
     }
 
@@ -297,7 +297,7 @@
         qa('.fin-catsec', m).forEach(function (s) { s.hidden = !!t && !qa('.rep-tile', s).some(function (b) { return !b.hidden; }); });
       };
       inp.oninput = apply; if (F.rq) apply();
-      qa('[data-jump]', m).forEach(function (b) { b.onclick = function () { F.rcat = b.dataset.jump; F.rcatPrev = null; inp.value = ''; F.rq = ''; A.render(); window.scrollTo(0, 0); }; });
+      qa('[data-jump]', m).forEach(function (b) { b.onclick = function () { if (window.RKNav && F.rcat !== b.dataset.jump) RKNav.push(); F.rcat = b.dataset.jump; F.rcatPrev = null; inp.value = ''; F.rq = ''; A.render(); window.scrollTo(0, 0); }; });
       qa('[data-newrep]', m).forEach(function (b) { b.onclick = function () { F.custom = null; go('builder'); }; });
       bindSavedHome(m);
       var np = q('[data-newpair]', m); if (np) np.onclick = function () { F.custom = { name: '', cat: 'تقاريري', def: ST_TPL[0][3]() }; go('builder'); };

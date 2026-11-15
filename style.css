@@ -910,3 +910,10 @@ input[type=date].input::-webkit-calendar-picker-indicator { position: absolute; 
 .dev-note span { font-size: 13px; color: var(--ink); line-height: 1.5; }
 .dev-ic { flex: 0 0 auto; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: var(--orange); color: #fff; font-weight: 800; font-size: 14px; }
 @media (max-width: 560px) { .dev-note { flex-wrap: wrap; } .dev-note .btn { margin-inline-start: auto; } }
+
+/* زر الرجوع مع اسم المكان السابق */
+.hc-back2 { display: inline-flex; align-items: center; gap: 6px; max-width: 46%; flex: 0 0 auto; border: 1.5px solid var(--line); background: var(--card); color: var(--blue); border-radius: 999px; padding: 6px 12px 6px 10px; font: 700 13px/1.2 var(--font); cursor: pointer; margin-inline-end: 6px; align-self: flex-start; }
+.hc-back2:hover { background: var(--blue-soft); }
+.hc-back2 .hb-ar { font-size: 17px; line-height: 1; }
+.hc-back2 .hb-t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 560px) { .hc-back2 { max-width: 40%; padding: 6px 10px; font-size: 12px; } }

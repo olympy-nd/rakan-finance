@@ -535,9 +535,18 @@
     }
     function short(v) { var a = Math.abs(v); return (a >= 1e6 ? (v / 1e6).toFixed(1) + 'م' : a >= 1e3 ? (v / 1e3).toFixed(0) + 'أ' : fk(v)); }
 
-    function openReport(id, params) {
-      // نحفظ موضع قائمة التقارير لنعود إليه عند الرجوع
+    function backBtnHTML() {
+      var pk = window.RKNav && RKNav.peek(), to = 'التقارير';
+      if (pk) to = pk.fin && pk.fin.cur ? (pk.fin.cur.custom ? pk.fin.cur.custom.name : (R[pk.fin.cur.id] || {}).name || 'التقرير السابق') : pk.tab === 'reports' ? 'التقارير' : RKNav.tabName(pk.tab) || 'السابق';
+      return '<button class="hc-back2" data-back aria-label="رجوع إلى ' + esc(to) + '" title="رجوع إلى ' + esc(to) + '"><span class="hb-ar">→</span><span class="hb-t">' + esc(to) + '</span></button>';
+    }
+    // لقطة من حالة التقارير لسجل التنقل، واستعادتها عند الرجوع
+    function navSnap() { return { cur: F.cur ? { id: F.cur.id, custom: F.cur.custom, p: JSON.parse(JSON.stringify(F.cur.p || {})), sort: F.cur.sort } : null, rcat: F.rcat, rq: F.rq }; }
+    function navApply(s) { if (!s) { F.cur = null; return; } F.cur = s.cur ? { id: s.cur.id, custom: s.cur.custom, p: s.cur.p, sort: s.cur.sort } : null; F.rcat = s.rcat; F.rq = s.rq || ''; }
+    function openReport(id, params, opt) {
+      // نحفظ المكان الحالي (لوحة المؤشرات، قائمة التقارير، أو تقرير آخر) لنرجع إليه بنفس موضع التمرير
       if (!F.cur) F.catY = A.st.tab === 'reports' ? (window.scrollY || 0) : 0;
+      if (window.RKNav && !(opt && opt.noPush)) RKNav.push();
       var def = id.indexOf('c:') === 0 ? F.reports.filter(function (r) { return 'c:' + r.id === id; })[0] : null;
       if (!def && !R[id]) { toast('التقرير غير موجود', true); return; }
       var t = today();
@@ -750,7 +759,7 @@
       try { res = runCur(); } catch (e) { res = { cols: [], rows: [], empty: 'تعذّر إعداد التقرير: ' + e.message }; if (window.console) console.error(e); }
       c.res = res;
       var p = c.p;
-      var h = '<div class="card head-card"><div class="hc-top"><button class="iconbtn hc-back" data-back aria-label="رجوع إلى التقارير">→</button><div class="grow"><h2>' + esc(res.title || def.name) + '</h2><div class="small muted hc-desc">' + esc(res.subtitle || def.desc || '') + '</div></div>' +
+      var h = '<div class="card head-card"><div class="hc-top">' + backBtnHTML() + '<div class="grow"><h2>' + esc(res.title || def.name) + '</h2><div class="small muted hc-desc">' + esc(res.subtitle || def.desc || '') + '</div></div>' +
         '<div class="rh-act"><button class="btn sm" data-xls aria-label="Excel">' + ICON_XLS + '<span class="bt-txt">Excel</span></button><button class="btn sm" data-prt aria-label="طباعة">' + ICON.print + '<span class="bt-txt">طباعة</span></button>' + (c.custom && canEdit() ? '<button class="btn sm ' + (c.custom.tmp ? 'accent' : 'ghost') + '" data-edit aria-label="تعديل">' + ICON_EDIT + '<span class="bt-txt">' + (c.custom.tmp ? 'رجوع للتعديل والحفظ' : 'تعديل') + '</span></button>' : '') + '</div></div>' +
         (p._pin && p.flt ? '<div class="pin-note">📌 مُطبَّق الفلتر المثبّت «' + esc(p._pin) + '» · يُلغى من صفحة التقارير ← الفلاتر الجاهزة</div>' : '') + paramsHTML(def, p) + (res.empty && !hasView(p.view) ? '' : viewPanelHTML(res, p)) +
         (res.note ? '<div class="small muted rep-note">' + esc(plain(res.note)) + '</div>' : '') + (res._custRows ? '' : grpDefaultHTML()) + splitBarHTML(res, p) + '</div>';
@@ -793,7 +802,7 @@
     function bindReport(m) {
       var c = F.cur, p = c.p, def = curDef();
       var save = function () { st.finParams = st.finParams || {}; st.finParams[c.id] = Object.assign({}, p); try { localStorage.setItem('rk.finParams', JSON.stringify(st.finParams)); } catch (e) {} };
-      q('[data-back]', m).onclick = function () { var y = F.catY || 0; F.cur = null; A.render(); var go2 = function (n) { window.scrollTo(0, y); if (n && Math.abs(window.scrollY - y) > 2) requestAnimationFrame(function () { go2(n - 1); }); }; requestAnimationFrame(function () { go2(5); }); };
+      q('[data-back]', m).onclick = function () { if (window.RKNav && RKNav.back()) return; var y = F.catY || 0; F.cur = null; A.render(); var go2 = function (n) { window.scrollTo(0, y); if (n && Math.abs(window.scrollY - y) > 2) requestAnimationFrame(function () { go2(n - 1); }); }; requestAnimationFrame(function () { go2(5); }); };
       bindPeriod(m, 'rep', function () { return p; }, function (ps) { Object.assign(p, ps); save(); A.render(); }, def.params.indexOf('period') >= 0);
       qa('[data-pk]', m).forEach(function (el) {
         el.addEventListener('change', function () { p[el.dataset.pk] = el.value; if (el.dataset.pk === 'from' || el.dataset.pk === 'to') p.preset = 'custom'; save(); A.render(); });
@@ -1331,7 +1340,7 @@
         call('fin_report_save', { report: { id: d.id, name: d.name, cat: d.cat, def: def } }).then(function (r) {
           F.reports = r.reports; var saved = r.reports.filter(function (x) { return x.name === d.name; }).pop();
           toast('حُفظ التقرير في «تقاريري المخصصة»'); F.custom = null; F.preview = false;
-          if (saved) openReport('c:' + saved.id); else go('reports');
+          if (saved) openReport('c:' + saved.id, null, { noPush: true }); else go('reports');
         }).catch(function (e) { busy(b, false); toast(e.message, true); });
       };
       var del = q('[data-bdel]', m);
