@@ -612,6 +612,7 @@
       if (has('box')) row += sel('box', 'الصندوق/البنك', [['all', 'كل الصناديق والبنوك (ملخص)']].concat(activeBoxes().map(function (b) { return [b.acc, b.name]; })));
       (def.sel || []).forEach(function (x) { row += sel(x[0], x[1], x[2]); });
       if (has('search')) row += '<label class="field fin-param"><span class="lbl">بحث</span><input class="input" data-pk="search" value="' + esc(p.search || '') + '" placeholder="رقم أو اسم"></label>';
+      if (has('cust1')) { var ck1 = c1Default(p); if (ck1) p.cust1 = ck1; row += '<div class="field fin-param" style="flex:1 1 100%;max-width:520px"><span class="lbl">العميل</span><button class="input" data-custpick style="text-align:start;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + (ck1 ? esc(c1Sub(ck1)) : 'اختر العميل…') + '</button></div>'; }
       if (has('account')) row += '<div class="field fin-param" style="flex:2"><span class="lbl">الحساب</span><button class="input" data-accpick style="text-align:start">' + (p.account ? esc(acc(p.account) ? acc(p.account).code + ' · ' + acc(p.account).name : '—') : 'اختر الحساب…') + '</button></div>';
       if (row) h += '<div class="fin-params">' + row + '</div>';
       if (has('flt')) h += fltPanelHTML(fdimsFor(def), p.flt, 'rep');
@@ -654,14 +655,14 @@
       var rows = res.rows.slice();
       if (sk) { var col = res.cols.filter(function (c) { return c.k === sk.k; })[0]; if (col) rows.sort(function (a, b) { var x = a[sk.k], y = b[sk.k]; if (isNum(col)) { x = Number(x) || 0; y = Number(y) || 0; } return (x < y ? -1 : x > y ? 1 : 0) * sk.dir; }); }
       if (!rows.length) return '<p class="muted" style="margin:0">لا توجد حركة في هذه الفترة</p>';
-      var clickable = rows.some(function (r) { return r._acc || r._box; });
+      var clickable = rows.some(function (r) { return r._acc || r._box || r._c1; }), hasC1 = rows.some(function (r) { return r._c1; });
       var shown = rows.length > 3000 ? rows.slice(0, 3000) : rows;
       return '<table class="tbl fin"><thead><tr>' + res.cols.map(function (c) { return '<th class="' + (isNum(c) ? 'n' : '') + '" data-sort="' + c.k + '">' + esc(c.l) + (sk && sk.k === c.k ? (sk.dir > 0 ? ' ▲' : ' ▼') : '') + '</th>'; }).join('') + '</tr></thead><tbody>' +
         shown.map(function (r) {
-          return '<tr class="' + (r._b ? 'b ' : '') + (r._hl ? 'hl ' : '') + ((r._acc || r._box) && clickable ? 'tap' : '') + '"' + (r._acc ? ' data-acc="' + esc(r._acc) + '"' : r._box ? ' data-box="' + esc(r._box) + '"' : '') + '>' +
+          return '<tr class="' + (r._b ? 'b ' : '') + (r._hl ? 'hl ' : '') + ((r._acc || r._box || r._c1) && clickable ? 'tap' : '') + '"' + (r._c1 ? ' data-c1="' + esc(r._c1) + '"' : r._acc ? ' data-acc="' + esc(r._acc) + '"' : r._box ? ' data-box="' + esc(r._box) + '"' : '') + '>' +
             res.cols.map(function (c, i) { return '<td class="' + (isNum(c) ? 'n' : '') + '"' + (r._lvl && i === lvlCol(res) ? ' style="padding-inline-start:' + (6 + r._lvl * 18) + 'px"' : '') + '>' + cell(c, r[c.k], r) + '</td>'; }).join('') + '</tr>';
         }).join('') + '</tbody>' + (res.total ? '<tfoot><tr>' + res.cols.map(function (c, i) { return '<td class="' + (isNum(c) ? 'n' : '') + '">' + (i === 0 ? esc(res.total[c.k] && !isNum(c) ? res.total[c.k] : res.total.name || res.total.desc || 'الإجمالي') : cell(c, res.total[c.k], res.total)) + '</td>'; }).join('') + '</tr></tfoot>' : '') + '</table>' +
-        '<p class="small muted" style="margin:8px 0 0">' + fk(rows.length) + ' سطر' + (shown.length < rows.length ? ' (يظهر أول ' + fk(shown.length) + '، وملف Excel فيه الكل)' : '') + (clickable ? ' · اضغط على أي حساب لفتح كشف حسابه' : '') + ' · اضغط على عنوان أي عمود للترتيب</p>';
+        '<p class="small muted" style="margin:8px 0 0">' + fk(rows.length) + ' سطر' + (shown.length < rows.length ? ' (يظهر أول ' + fk(shown.length) + '، وملف Excel فيه الكل)' : '') + (clickable ? (hasC1 ? ' · اضغط على أي عميل لفتح ملفه الكامل' : ' · اضغط على أي حساب لفتح كشف حسابه') : '') + ' · اضغط على عنوان أي عمود للترتيب</p>';
     }
 
     function bindReport(m) {
@@ -672,11 +673,14 @@
       qa('[data-pk]', m).forEach(function (el) {
         el.addEventListener('change', function () { p[el.dataset.pk] = el.value; if (el.dataset.pk === 'from' || el.dataset.pk === 'to') p.preset = 'custom'; save(); A.render(); });
       });
+      var cp = q('[data-custpick]', m);
+      if (cp) cp.onclick = function () { pickCustomer(p.cust1).then(function (k) { if (k) { p.cust1 = k; c1Last(k); save(); A.render(); } }); };
       var ap = q('[data-accpick]', m);
       if (ap) ap.onclick = function () { pickAccount({ title: 'اختر الحساب', any: true }).then(function (id) { if (id) { p.account = id; save(); A.render(); } }); };
       bindFltPanel(m, 'rep', fdimsFor(def), function () { return p.flt; }, function (f) { p.flt = f; save(); A.render(); });
       qa('th[data-sort]', m).forEach(function (th) { th.onclick = function () { var k = th.dataset.sort; c.sort = c.sort && c.sort.k === k ? { k: k, dir: -c.sort.dir } : { k: k, dir: -1 }; A.render(); }; });
       qa('tr[data-acc]', m).forEach(function (tr) { tr.onclick = function () { var asof = def.params.indexOf('asof') >= 0; openReport('statement', { account: tr.dataset.acc, preset: asof ? 'custom' : p.preset, from: asof ? p.asof.slice(0, 4) + '-01-01' : p.from, to: asof ? p.asof : p.to }); }; });
+      qa('tr[data-c1]', m).forEach(function (tr) { tr.onclick = function () { var asof = def.params.indexOf('asof') >= 0; c1Last(tr.dataset.c1); openReport('c1_card', { cust1: tr.dataset.c1, preset: asof ? 'custom' : p.preset, from: asof ? p.asof.slice(0, 4) + '-01-01' : p.from, to: asof ? p.asof : p.to }); }; });
       qa('tr[data-box]', m).forEach(function (tr) { tr.onclick = function () { p.box = tr.dataset.box; save(); A.render(); }; });
       q('[data-xls]', m).onclick = function () { exportXLSX(c.res, def.name, p); };
       q('[data-prt]', m).onclick = function () { printReport(c.res, def.name, p); };
@@ -736,6 +740,22 @@
     }
 
     /* ---------- اختيار حساب ---------- */
+    // اختيار عميل واحد: بحث بالاسم أو الرمز، مرتب بمبيعات آخر سنة
+    function pickCustomer(cur) {
+      return new Promise(function (res) {
+        sheet('اختر العميل', '<input class="input" id="cq" placeholder="ابحث باسم العميل أو رمز حسابه"><div class="list acc-list" id="cl"></div>', function (s) {
+          var inp = q('#cq', s.el), cl = q('#cl', s.el), all = custChoices();
+          function draw() {
+            var t = normAr(inp.value.trim());
+            var list = all.filter(function (r) { return !t || normAr(r.name + ' ' + r.code).indexOf(t) >= 0; }).slice(0, 200);
+            cl.innerHTML = list.map(function (r) { return '<button class="item tap acc-it' + (r.k === cur ? ' sel' : '') + '" data-k="' + esc(r.k) + '"><div class="main"><b>' + esc(r.name) + '</b><div class="meta">' + (r.code ? '<span class="num">' + esc(r.code) + '</span>' : '') + '<span>مبيعات سنة: ' + fk(r.net) + '</span>' + (r.last ? '<span>آخر شراء ' + esc(r.last) + '</span>' : '') + '</div></div>' + (r.k === cur ? '✓' : '') + '</button>'; }).join('') || '<p class="muted">لا نتائج</p>';
+            qa('[data-k]', cl).forEach(function (b) { b.onclick = function () { s.done = true; s.close(); res(b.dataset.k); }; });
+          }
+          inp.oninput = draw; draw(); setTimeout(function () { inp.focus(); }, 50);
+          s.onclose = function () { if (!s.done) res(null); };
+        });
+      });
+    }
     function pickAccount(opts) {
       opts = opts || {};
       return new Promise(function (res) {
