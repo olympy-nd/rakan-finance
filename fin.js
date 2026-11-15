@@ -2224,7 +2224,7 @@
       var h = '<div class="card head-card"><div class="hc-top"><button class="iconbtn hc-back" data-back aria-label="رجوع إلى التقارير">→</button><div class="grow"><h2>' + esc(res.title || def.name) + '</h2><div class="small muted hc-desc">' + esc(res.subtitle || def.desc || '') + '</div></div>' +
         '<div class="rh-act"><button class="btn sm" data-xls aria-label="Excel">' + ICON_XLS + '<span class="bt-txt">Excel</span></button><button class="btn sm" data-prt aria-label="طباعة">' + ICON.print + '<span class="bt-txt">طباعة</span></button>' + (c.custom && canEdit() ? '<button class="btn sm ' + (c.custom.tmp ? 'accent' : 'ghost') + '" data-edit aria-label="تعديل">' + ICON_EDIT + '<span class="bt-txt">' + (c.custom.tmp ? 'رجوع للتعديل والحفظ' : 'تعديل') + '</span></button>' : '') + '</div></div>' +
         (p._pin && p.flt ? '<div class="pin-note">📌 مُطبَّق الفلتر المثبّت «' + esc(p._pin) + '» · يُلغى من صفحة التقارير ← الفلاتر الجاهزة</div>' : '') + paramsHTML(def, p) + (res.empty && !hasView(p.view) ? '' : viewPanelHTML(res, p)) +
-        (res.note ? '<div class="small muted rep-note">' + esc(plain(res.note)) + '</div>' : '') + '</div>';
+        (res.note ? '<div class="small muted rep-note">' + esc(plain(res.note)) + '</div>' : '') + (res._custRows ? '' : grpDefaultHTML()) + '</div>';
       if (res.empty) return h + '<div class="card empty">' + esc(res.empty) + '</div>';
       if (res.chart && (res.chart.rowsOverride || res.rows.length > 1)) h += '<div class="card">' + chartSVG(res.chart, res.rows) + '</div>';
       if (!res.rows.length && hasView(p.view)) return h + '<div class="card empty">لا توجد أسطر تطابق شروط التخصيص. عدّل الشروط أو اضغط «إلغاء كل التعديلات».</div>';
@@ -2800,7 +2800,7 @@
           '<div class="row" style="margin-top:10px"><button class="btn" data-dadd>+ سطر</button><button class="btn ghost" data-dsep>+ عنوان قسم</button><span class="grow"></span><button class="btn ghost" data-dreset>استعادة الافتراضي</button><button class="btn accent" data-dsave' + (F.dirtyKeys && F.dirtyKeys.daily ? '' : ' disabled') + '>حفظ التغييرات</button></div></div>' +
           '<div class="card"><h3>ملاحظة عن Sell-Out</h3><p class="small" style="margin:0">«Total Sell-Out» افتراضياً = الكمية المباعة لكل العملاء. لحصره في عملاء أو أصناف أو مخزن معين: اضغط «تعديل» على السطر، ثم «كل العملاء» أو «كل الأصناف» واختر ما تريد.</p></div>';
       } else if (tab === 'cgroups') {
-        h += cgSettingsHTML();
+        h += cgSettingsHTML() + grpDefaultSettingsHTML();
       } else if (tab === 'reps') {
         h += repsSettingsHTML();
       } else if (tab === 'groups') {
@@ -2870,7 +2870,7 @@
         q('[data-dsave]', m).onclick = function () { saveConfig('daily', { title: dd.title, rows: dd.rows }, this); };
         q('[data-dreset]', m).onclick = function () { A.confirmBox('استعادة الافتراضي', 'استبدال أسطر التقرير اليومي بالأسطر الافتراضية (مثل نموذج الإدارة)؟', 'استعادة').then(function (y) { if (y) saveConfig('daily', null); }); };
       } else if (tab === 'cgroups') {
-        bindCgSettings(m);
+        bindCgSettings(m); bindGrpBar(m, {}, function () {});
       } else if (tab === 'reps') {
         bindRepsSettings(m);
       } else if (tab === 'groups') {
@@ -5365,11 +5365,22 @@
     }
     function bindGrpBar(m, p, save) {
       qa('[data-cgx]', m).forEach(function (b) { b.onclick = function () { p.cgx = b.dataset.cgx === grpDefault() ? 'auto' : b.dataset.cgx; save(); A.render(); }; });
-      var d = q('[data-cgxdef]', m);
-      if (d) d.onclick = function () {
+      qa('[data-cgxdef]', m).forEach(function (d) { d.onclick = function () {
         var v = d.dataset.cgxdef, ui = Object.assign({}, (F.config && F.config.ui) || {}, { grp: v });
-        saveConfigKey('ui', ui, 'rk.finUi').then(function (local) { if (local) try { localStorage.setItem('rk.finUi', JSON.stringify(ui)); } catch (e) {} p.cgx = 'auto'; save(); toast(v === 'none' ? 'أصبح الافتراضي: بدون تجميع' : 'أصبح الافتراضي في كل تقارير العملاء: ' + GRP_MODES.filter(function (x) { return x[0] === v; })[0][1]); A.render(); }).catch(function (e) { toast(e.message, true); });
-      };
+        saveConfigKey('ui', ui, 'rk.finUi').then(function (local) { if (local) try { localStorage.setItem('rk.finUi', JSON.stringify(ui)); } catch (e) {} p.cgx = 'auto'; save(); toast(v === 'none' ? 'أُلغي الافتراضي: تقارير العملاء بدون تجميع' : 'أصبح الافتراضي في كل تقارير العملاء: ' + GRP_MODES.filter(function (x) { return x[0] === v; })[0][1]); A.render(); }).catch(function (e) { toast(e.message, true); });
+      }; });
+    }
+    // في أي تقرير (حتى لو لم تكن صفوفه عملاء): تنبيه بالقالب الافتراضي المفعّل مع تغييره أو إلغائه مباشرة
+    function grpDefaultHTML() {
+      var def = grpDefault(); if (def === 'none') return '';
+      return '<div class="grp-def"><span>قالب تجميع العملاء الافتراضي: <b>' + esc(GRP_MODES.filter(function (x) { return x[0] === def; })[0][1]) + '</b> <span class="small muted">(يُطبَّق على كل تقارير العملاء)</span></span>' +
+        (canEdit() ? '<span class="grp-def-act">' + GRP_MODES.filter(function (x) { return x[0] !== def; }).map(function (x) { return '<button class="btn sm ' + (x[0] === 'none' ? 'ghost danger-t' : 'ghost') + '" data-cgxdef="' + x[0] + '">' + (x[0] === 'none' ? 'إلغاء الافتراضي' : 'تغييره إلى: ' + x[1]) + '</button>'; }).join('') + '</span>' : '') + '</div>';
+    }
+    // اختيار القالب الافتراضي من الإعدادات
+    function grpDefaultSettingsHTML() {
+      var def = grpDefault();
+      return '<div class="card"><h2>قالب تجميع العملاء الافتراضي</h2><p class="small muted" style="margin:0 0 10px">كيف تُعرض صفوف العملاء في كل التقارير ما لم تغيّره في تقرير بعينه.</p><div class="chips">' +
+        GRP_MODES.map(function (x) { return '<button class="chip' + (def === x[0] ? ' on' : '') + '" data-cgxdef="' + x[0] + '"' + (canEdit() ? '' : ' disabled') + '>' + x[1] + '</button>'; }).join('') + '</div></div>';
     }
 
     // عند الخروج: مسح البيانات المالية من الجهاز

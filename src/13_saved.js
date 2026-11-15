@@ -95,9 +95,20 @@
     }
     function bindGrpBar(m, p, save) {
       qa('[data-cgx]', m).forEach(function (b) { b.onclick = function () { p.cgx = b.dataset.cgx === grpDefault() ? 'auto' : b.dataset.cgx; save(); A.render(); }; });
-      var d = q('[data-cgxdef]', m);
-      if (d) d.onclick = function () {
+      qa('[data-cgxdef]', m).forEach(function (d) { d.onclick = function () {
         var v = d.dataset.cgxdef, ui = Object.assign({}, (F.config && F.config.ui) || {}, { grp: v });
-        saveConfigKey('ui', ui, 'rk.finUi').then(function (local) { if (local) try { localStorage.setItem('rk.finUi', JSON.stringify(ui)); } catch (e) {} p.cgx = 'auto'; save(); toast(v === 'none' ? 'أصبح الافتراضي: بدون تجميع' : 'أصبح الافتراضي في كل تقارير العملاء: ' + GRP_MODES.filter(function (x) { return x[0] === v; })[0][1]); A.render(); }).catch(function (e) { toast(e.message, true); });
-      };
+        saveConfigKey('ui', ui, 'rk.finUi').then(function (local) { if (local) try { localStorage.setItem('rk.finUi', JSON.stringify(ui)); } catch (e) {} p.cgx = 'auto'; save(); toast(v === 'none' ? 'أُلغي الافتراضي: تقارير العملاء بدون تجميع' : 'أصبح الافتراضي في كل تقارير العملاء: ' + GRP_MODES.filter(function (x) { return x[0] === v; })[0][1]); A.render(); }).catch(function (e) { toast(e.message, true); });
+      }; });
+    }
+    // في أي تقرير (حتى لو لم تكن صفوفه عملاء): تنبيه بالقالب الافتراضي المفعّل مع تغييره أو إلغائه مباشرة
+    function grpDefaultHTML() {
+      var def = grpDefault(); if (def === 'none') return '';
+      return '<div class="grp-def"><span>قالب تجميع العملاء الافتراضي: <b>' + esc(GRP_MODES.filter(function (x) { return x[0] === def; })[0][1]) + '</b> <span class="small muted">(يُطبَّق على كل تقارير العملاء)</span></span>' +
+        (canEdit() ? '<span class="grp-def-act">' + GRP_MODES.filter(function (x) { return x[0] !== def; }).map(function (x) { return '<button class="btn sm ' + (x[0] === 'none' ? 'ghost danger-t' : 'ghost') + '" data-cgxdef="' + x[0] + '">' + (x[0] === 'none' ? 'إلغاء الافتراضي' : 'تغييره إلى: ' + x[1]) + '</button>'; }).join('') + '</span>' : '') + '</div>';
+    }
+    // اختيار القالب الافتراضي من الإعدادات
+    function grpDefaultSettingsHTML() {
+      var def = grpDefault();
+      return '<div class="card"><h2>قالب تجميع العملاء الافتراضي</h2><p class="small muted" style="margin:0 0 10px">كيف تُعرض صفوف العملاء في كل التقارير ما لم تغيّره في تقرير بعينه.</p><div class="chips">' +
+        GRP_MODES.map(function (x) { return '<button class="chip' + (def === x[0] ? ' on' : '') + '" data-cgxdef="' + x[0] + '"' + (canEdit() ? '' : ' disabled') + '>' + x[1] + '</button>'; }).join('') + '</div></div>';
     }
