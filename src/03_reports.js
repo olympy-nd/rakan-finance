@@ -166,7 +166,7 @@
       } };
     R.balance_cmp = { cat: 'stmt', name: 'المركز المالي المقارن', desc: 'الميزانية في تاريخين مع الفرق', params: ['asof', 'asof2', 'level'],
       run: function (p) {
-        var d2 = p.asof2 || addD(p.asof.slice(0, 4) + '-01-01', -1), depth = Number(p.level || 2);
+        var d2 = p.asof2 || addD(p.asof.slice(0, 4) + '-01-01', -1); if (!p.asof2 && d2 < dataStart()) d2 = addD(p.asof.slice(0, 7) + '-01', -1); var depth = Number(p.level || 2);
         var a = bsRows(p.asof, depth), b = bsRows(d2, depth), map = {};
         b.rows.forEach(function (r) { map[r._acc] = r.v; });
         var rows = a.rows.map(function (r) { var o = map[r._acc] || 0; return { code: r.code, name: r.name, _lvl: r._lvl, _b: r._b, _acc: r._acc, v: r.v, o: o, ch: r.v - o }; });

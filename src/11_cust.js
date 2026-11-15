@@ -370,7 +370,7 @@
             lost: sum(r.list, function (o) { return (b - o.p) * o.qty; }), prices: r.list.map(function (o) { return fm(o.p) + ' × ' + fq(o.qty); }).join(' | '), _acc: acc(r.ck) ? r.ck : null };
         }).filter(function (r) { return r.diffp >= mn; }).sort(function (a, b) { return b.lost - a.lost; });
         var cols = [C('cust', 'العميل'), C('name', 'الصنف'), C('unit', 'الوحدة'), C('np', 'عدد الأسعار', 'int'), C('pmin', 'أقل سعر', 'money'), C('pmax', 'أعلى سعر', 'money'), C('diff', 'الفرق', 'money'), C('diffp', 'الفرق %', 'pct'),
-          C('qty', 'الكمية', 'qty'), C('val', 'القيمة', 'money'), C('profit', 'الربح', 'money'), C('margin', 'الهامش', 'pct'), C('lost', 'الفرق لو بيع كله بأعلى سعر', 'money'), C('prices', 'الأسعار × الكميات')];
+          C('qty', 'الكمية', 'qty'), C('val', 'القيمة', 'money'), C('profit', 'الربح', 'money'), C('margin', 'الهامش', 'pct'), C('lost', 'الفرق لو بيع كله بأعلى سعر', 'money'), C('prices', 'الأسعار × الكميات', 'long')];
         var t = sumRow(rows, cols); t.np = ''; t.qty = ''; t.margin = pct(t.profit, t.val); t.cust = 'الإجمالي (' + rows.length + ')';
         var res = withNote(topN({ cols: cols, rows: rows, total: t, note: 'اضغط على صف لفتح كشف حساب العميل. للتفصيل الكامل لعميل واحد استعمل «ملف العميل ← أصناف بيعت للعميل بأكثر من سعر».' }, p), p);
         if (!rows.length) res.empty = 'لم يُبع أي صنف لنفس العميل بأكثر من سعر في هذه الفترة';

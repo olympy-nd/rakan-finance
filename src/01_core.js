@@ -239,7 +239,7 @@
     function withBr(code, fn) { var prev = F.curBr || '*'; useBr(code); try { return fn(); } finally { useBr(prev); } }
 
     function build(code) {
-      var T = { acc: {}, bt: {}, it: {}, cu: {}, ag: {}, us: {}, st: {}, item: {}, icl: {}, igr: {}, jl: [], inv: {}, invl: [] };
+      var T = { acc: {}, bt: {}, it: {}, cu: {}, ag: {}, us: {}, st: {}, item: {}, icl: {}, igr: {}, ipr: {}, jl: [], inv: {}, invl: [] };
       var all = code === undefined || code === '*';
       var put = function (kind, d) { if (kind === 'jl' || kind === 'invl') T[kind].push(d); else if (T[kind]) T[kind][d.id] = d; };
       var rows = F.rows || {};
@@ -430,6 +430,9 @@
     }
     // بداية البيانات المعتمدة للمقارنة: بداية السنة المالية من الإعدادات، وإلا أول قيد
     function dataStart() { var ys = F.meta && F.meta.settings && F.meta.settings.year_start; if (ys) return ys; if (!F.cache.dstart) F.cache.dstart = T().jl.reduce(function (x, l) { return l.d && l.d < x ? l.d : x; }, today()); return F.cache.dstart; }
+    // هل توجد بيانات لسنة سابقة؟ التقارير التي تقارن بالسنة السابقة تُخفى حتى توجد
+    function hasPrevYear() { return dataStart() < today().slice(0, 4) + '-01-01'; }
+    function repKeys() { var hp = hasPrevYear(); return Object.keys(R).filter(function (k) { return hp || !R[k].needPrev; }); }
     function yearStart() { return (F.meta && F.meta.settings && F.meta.settings.year_start) || today().slice(0, 4) + '-01-01'; }
     // حسابات العملاء والموردين: لكل فرع حساباته (دليل حسابات مستقل). الفرع الذي لم تُحدَّد له يأخذ رموز القاعدة الرئيسية
     function grpCodes(k, code) {

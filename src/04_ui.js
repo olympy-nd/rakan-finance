@@ -545,6 +545,7 @@
     }
 
     function curDef() { var c = F.cur; if (c.custom && c.custom.def.kind === 'ready' && R[c.custom.def.base]) return Object.assign({}, R[c.custom.def.base], { name: c.custom.name, desc: customDesc(c.custom.def) }); return c.custom ? { name: c.custom.name, desc: customDesc(c.custom.def), params: c.custom.def.kind === 'formula' ? ['period', 'flt'] : ['period'], fdims: DASH_DIMS } : R[c.id]; }
+    function usesPrev(id) { var r = R[id]; if (r._up === undefined) r._up = /prevRange\(|custMetrics\(/.test(String(r.run)) && r.params.indexOf('period') >= 0; return r._up; }
     function runCur() {
       var c = F.cur, p = c.p;
       if (p.preset && p.preset !== 'custom') { var r = presetRange(p.preset, p.from, p.to, p.year, p.month); p.from = r[0]; p.to = r[1]; }
@@ -563,6 +564,8 @@
         if (out) out._split = sp.key;
       } else out = isCmp(p.preset) && curDef().params.indexOf('period') >= 0 ? runCompare(fn, p) : fn(p);
       if (multiBr() && out && !out.empty) out.note = brNote() + (out.note ? ' · ' + plain(out.note) : '');
+      // تقارير تقارن بالفترة السابقة: تنبيه إذا كانت الفترة السابقة قبل بداية البيانات
+      if (out && !out.empty && !c.custom && R[c.id] && usesPrev(c.id) && p.from) { var pr0 = prevRange(p.from, p.to, p.preset); if (pr0[0] < dataStart()) out.note = 'لا توجد بيانات للفترة السابقة (' + rangeText(pr0[0], pr0[1]) + ') لأن بيانات المنظومة تبدأ من ' + rangeText(dataStart(), dataStart()) + '، فأعمدة المقارنة صفر' + (out.note ? ' · ' + out.note : ''); }
       c.rawCols = out && out.cols; var vw = applyView(out, p.view); if (out && out._split) return vw; var g1 = groupBySel(vw, p.flt, c.id && R[c.id] && R[c.id].cat === 'cgrp' ? 'none' : grpMode(p)); return g1 && g1._grouped ? g1 : itemGroupBy(g1, p.flt, p.igx);
     }
     // مقارنة الأرباع أو الأشهر: يُشغَّل التقرير لكل فترة، ويُعرض رقم واحد يختاره المستخدم في عمود لكل فترة
@@ -751,6 +754,7 @@
       if (c.t === 'int') return fk(v);
       if (c.t === 'qty') return fq(v);
       if (c.t === 'pct') return fp(v);
+      if (typeof v === 'string' && /^\d{4}-\d\d-\d\d( \d\d:\d\d(:\d\d)?)?$/.test(v)) return '<span class="nw">' + esc(v) + '</span>';
       return esc(v);
     }
     function lvlCol(res) { return res._lvlc !== undefined ? res._lvlc : res.cols[0] && res.cols[0].k === 'code' ? 1 : 0; }
@@ -762,10 +766,10 @@
       if (!rows.length) return '<p class="muted" style="margin:0">لا توجد حركة في هذه الفترة</p>';
       var clickable = rows.some(function (r) { return r._acc || r._box || r._c1; }), hasC1 = rows.some(function (r) { return r._c1; });
       var shown = rows.length > 3000 ? rows.slice(0, 3000) : rows;
-      return '<table class="tbl fin"><thead><tr>' + res.cols.map(function (c) { return '<th class="' + (isNum(c) ? 'n' : '') + '" data-sort="' + c.k + '">' + esc(c.l) + (sk && sk.k === c.k ? (sk.dir > 0 ? ' ▲' : ' ▼') : '') + '</th>'; }).join('') + '</tr></thead><tbody>' +
+      return '<table class="tbl fin"><thead><tr>' + res.cols.map(function (c) { return '<th class="' + (isNum(c) ? 'n' : c.t === 'long' ? 'lt' : '') + '" data-sort="' + c.k + '">' + esc(c.l) + (sk && sk.k === c.k ? (sk.dir > 0 ? ' ▲' : ' ▼') : '') + '</th>'; }).join('') + '</tr></thead><tbody>' +
         shown.map(function (r) {
           return '<tr class="' + (r._b ? 'b ' : '') + (r._hl ? 'hl ' : '') + ((r._acc || r._box || r._c1) && clickable ? 'tap' : '') + '"' + (r._c1 ? ' data-c1="' + esc(r._c1) + '"' : r._acc ? ' data-acc="' + esc(r._acc) + '"' : r._box ? ' data-box="' + esc(r._box) + '"' : '') + '>' +
-            res.cols.map(function (c, i) { return '<td class="' + (isNum(c) ? 'n' : '') + '"' + (r._lvl && i === lvlCol(res) ? ' style="padding-inline-start:' + (6 + r._lvl * 18) + 'px"' : '') + '>' + cell(c, r[c.k], r) + '</td>'; }).join('') + '</tr>';
+            res.cols.map(function (c, i) { return '<td class="' + (isNum(c) ? 'n' : c.t === 'long' ? 'lt' : '') + '"' + (r._lvl && i === lvlCol(res) ? ' style="padding-inline-start:' + (6 + r._lvl * 18) + 'px"' : '') + '>' + cell(c, r[c.k], r) + '</td>'; }).join('') + '</tr>';
         }).join('') + '</tbody>' + (res.total ? '<tfoot><tr>' + res.cols.map(function (c, i) { return '<td class="' + (isNum(c) ? 'n' : '') + '">' + (i === 0 ? esc(res.total[c.k] && !isNum(c) ? res.total[c.k] : res.total.name || res.total.desc || 'الإجمالي') : cell(c, res.total[c.k], res.total)) + '</td>'; }).join('') + '</tr></tfoot>' : '') + '</table>' +
         '<p class="small muted" style="margin:8px 0 0">' + fk(rows.length) + ' سطر' + (shown.length < rows.length ? ' (يظهر أول ' + fk(shown.length) + '، وملف Excel فيه الكل)' : '') + (clickable ? (hasC1 ? ' · اضغط على أي عميل لفتح ملفه الكامل' : ' · اضغط على أي حساب لفتح كشف حسابه') : '') + ' · اضغط على عنوان أي عمود للترتيب</p>';
     }
@@ -841,7 +845,7 @@
       P.innerHTML = '<div class="p-rep"><div class="p-head"><img src="logo.png" alt=""><div class="t"><b>' + esc(res.title || name) + '</b><span>شركة راكان لاستيراد المواد الغذائية والتوزيع · ' + esc(periodText(p, def)) + '</span></div><span class="p-copy">' +
         esc('طُبع ' + RK.nowStr().slice(0, 16)) + '</span></div>' + (res.note ? '<p class="p-note">' + esc(plain(res.note)) + '</p>' : '') +
         '<table class="p-tbl"><thead><tr>' + res.cols.map(function (c) { return '<th>' + esc(c.l) + '</th>'; }).join('') + '</tr></thead><tbody>' +
-        res.rows.map(function (r) { return '<tr' + (r._b ? ' style="font-weight:800"' : '') + '>' + res.cols.map(function (c, i) { return '<td class="' + (isNum(c) ? 'n' : '') + '"' + (r._lvl && i === lvlCol(res) ? ' style="padding-inline-start:' + (2 + r._lvl * 4) + 'mm"' : '') + '>' + cell(c, r[c.k], r) + '</td>'; }).join('') + '</tr>'; }).join('') + '</tbody>' +
+        res.rows.map(function (r) { return '<tr' + (r._b ? ' style="font-weight:800"' : '') + '>' + res.cols.map(function (c, i) { return '<td class="' + (isNum(c) ? 'n' : c.t === 'long' ? 'lt' : '') + '"' + (r._lvl && i === lvlCol(res) ? ' style="padding-inline-start:' + (2 + r._lvl * 4) + 'mm"' : '') + '>' + cell(c, r[c.k], r) + '</td>'; }).join('') + '</tr>'; }).join('') + '</tbody>' +
         (res.total ? '<tfoot><tr>' + res.cols.map(function (c, i) { return '<td class="' + (isNum(c) ? 'n' : '') + '"><b>' + (i === 0 ? 'الإجمالي' : cell(c, res.total[c.k], res.total)) + '</b></td>'; }).join('') + '</tr></tfoot>' : '') + '</table>' +
         '<p class="p-note">آخر بيانات من سراج: ' + esc((F.meta && F.meta.last) || '') + ' · تقارير راكان تقرأ من سراج ولا تعدّل فيه</p></div>';
       setTimeout(function () { window.print(); }, 150);

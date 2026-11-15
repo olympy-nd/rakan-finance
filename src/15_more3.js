@@ -14,7 +14,7 @@
         var rows = M.map(function (m) { var a = m[1](0), b = m[1](1), c = m[1](2); return { name: m[0], d0: a, d1: b, d7: c, c1: b ? (a - b) / Math.abs(b) * 100 : '', c7: c ? (a - c) / Math.abs(c) * 100 : '', _fmt: m[2] === 'pct' ? 'pct' : m[2] }; });
         return withNote({ cols: [C('name', 'المؤشر'), C('d0', 'اليوم ' + ds[0], 'money'), C('d1', 'أمس ' + ds[1], 'money'), C('c1', 'التغير عن أمس', 'pct'), C('d7', 'الأسبوع الماضي ' + ds[2], 'money'), C('c7', 'التغير عن الأسبوع الماضي', 'pct')], rows: rows, subtitle: 'يوم ' + d }, p);
       } };
-    R.exec_ytd = { year: true, cat: 'exec', name: 'الأداء التراكمي مقابل السنة السابقة', desc: 'لكل شهر: صافي المبيعات والربح والتحصيل للشهر وتراكمياً من بداية السنة، مقارنة بنفس الشهر والتراكمي في السنة السابقة', params: ['period', 'flt'], fdims: SF3,
+    R.exec_ytd = { year: true, needPrev: true, cat: 'exec', name: 'الأداء التراكمي مقابل السنة السابقة', desc: 'لكل شهر: صافي المبيعات والربح والتحصيل للشهر وتراكمياً من بداية السنة، مقارنة بنفس الشهر والتراكمي في السنة السابقة', params: ['period', 'flt'], fdims: SF3,
       run: function (p) {
         var y = p.to.slice(0, 4), from = y + '-01-01', ms = ymList(from, p.to), cum = { n: 0, pn: 0, pr: 0, c: 0 }, rows = [];
         ms.forEach(function (m) {

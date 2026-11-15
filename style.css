@@ -296,6 +296,7 @@ video.scan { width: 100%; border-radius: 14px; background: #000; max-height: 50v
 .p-rep .p-tbl tfoot td { border-top: 2px solid #0C4CA2; }
 .tbl.fin td:not(.n) { min-width: 64px; }
 .tbl.fin td:nth-child(2):not(.n) { min-width: 150px; }
+.tbl.fin td.lt, .tbl.fin th.lt { min-width: 260px; max-width: 420px; white-space: normal; line-height: 1.6; }
 @media (max-width: 560px) {
   .fin-kpi b { font-size: 19px; }
   .fin-kpis { grid-template-columns: 1fr 1fr; gap: 8px; }
@@ -857,3 +858,19 @@ body:has(.bnav) .toast { bottom: calc(var(--bnav) + 16px + env(safe-area-inset-b
 .kpi-cmp .kc-ar .up { color: var(--ok); } .kpi-cmp .kc-ar .down { color: var(--err); }
 .kpi-cmp .kc-i { display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid currentColor; font: 700 10px/1 var(--font); font-style: normal; }
 @media (max-width: 560px) { .kpi-cmp { font-size: 12px; margin-top: 6px; } }
+
+/* رسالة الترحيب */
+.welcome { position: fixed; top: max(14px, env(safe-area-inset-top)); inset-inline: 0; z-index: 120; display: flex; justify-content: center; padding: 0 16px; pointer-events: none; animation: wcIn .35s ease both; }
+.welcome.out { animation: wcOut .3s ease both; }
+.wc-card { width: min(400px, 100%); background: var(--card, #fff); border-radius: 20px; padding: 18px 20px 16px; text-align: center; box-shadow: 0 24px 60px rgba(10, 25, 50, .3); border-top: 5px solid var(--orange, #F26B21); animation: wcPop .45s cubic-bezier(.2, .9, .3, 1.2) both; }
+.wc-card img { height: 40px; margin-bottom: 6px; }
+.wc-hi { color: var(--muted); font-size: 15px; font-weight: 700; }
+.wc-name { color: var(--blue, #0B4EA2); font-size: 24px; font-weight: 800; margin: 4px 0 8px; line-height: 1.35; }
+.wc-sub { color: var(--ink); font-size: 14.5px; line-height: 1.7; }
+.wc-date { margin-top: 12px; display: inline-block; padding: 4px 12px; border-radius: 999px; background: var(--chip, #EEF3FA); color: var(--muted); font-size: 12.5px; font-weight: 700; }
+@keyframes wcIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes wcOut { to { opacity: 0; } }
+@keyframes wcPop { from { opacity: 0; transform: translateY(-16px) scale(.97); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .welcome, .wc-card { animation: none; } }
+
+.tbl .nw { white-space: nowrap; direction: ltr; unicode-bidi: isolate; }

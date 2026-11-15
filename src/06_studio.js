@@ -242,7 +242,7 @@
 
     /* ---------- فهرس التقارير ---------- */
     function catalogHTML() {
-      var n = Object.keys(R).length;
+      var n = repKeys().length;
       var h = '<div class="card cat-top"><div class="cat-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>' +
         '<input class="input" id="rq" placeholder="ابحث في ' + n + ' تقريراً: مبيعات، عميل، ميزانية، مخزون…" value="' + esc(F.rq || '') + '" aria-label="بحث في التقارير"></div>' +
         (canEdit() ? '<div class="cat-cta"><button class="btn accent" data-newrep>+ إنشاء تقرير</button><button class="btn" data-newpair>حساب مقابل حساب</button></div>' : '') + '</div>' +
@@ -253,7 +253,7 @@
       var mine = F.reports.map(function (r) { return { id: 'c:' + r.id, rid: r.id, name: r.name, desc: customDesc(r.def), by: r.by }; });
       var cats = [['mine', 'تقاريري']].concat(CATS.filter(function (c) { return c[0] !== 'mine'; }));
       cats.forEach(function (c) {
-        var list = c[0] === 'mine' ? mine : Object.keys(R).filter(function (k) { return R[k].cat === c[0]; }).map(function (k) { return { id: k, name: R[k].name, desc: R[k].desc }; });
+        var list = c[0] === 'mine' ? mine : repKeys().filter(function (k) { return R[k].cat === c[0]; }).map(function (k) { return { id: k, name: R[k].name, desc: R[k].desc }; });
         if (!list.length && c[0] !== 'mine') return;
         if (!list.length && !canEdit()) return;
         if (view !== 'all' && view !== c[0]) return;
@@ -272,19 +272,20 @@
       cust: ['تحليل العملاء وتقييمهم وأسعارهم', 'M12 12a4 4 0 100-8 4 4 0 000 8zM4 21v-1a8 8 0 0116 0v1'], cust1: ['كل شيء عن عميل واحد', 'M12 11a3.5 3.5 0 100-7 3.5 3.5 0 000 7zM5 20a7 7 0 0114 0M19 4l2 2-2 2'],
       cgrp: ['الوكلاء والفروع ومجموعات العملاء', 'M3 7l9-4 9 4-9 4zM3 12l9 4 9-4M3 17l9 4 9-4'], debts: ['المديونيات وأعمارها والتحصيل', 'M3 6h18v12H3zM3 10h18M7 15h3'],
       cash: ['الصناديق والبنوك والسندات', 'M3 10l9-6 9 6M5 10v8m4-8v8m6-8v8m4-8v8M3 20h18'], items: ['الأصناف وربحيتها وتحليلها', 'M21 8l-9-5-9 5 9 5zM3 8v8l9 5 9-5V8M12 13v8'],
+      disc: ['قوائم الأسعار والتخفيضات والحسومات والهدايا', 'M20.6 13.4l-7.2 7.2a2 2 0 01-2.8 0L3 13V3h10l7.6 7.6a2 2 0 010 2.8zM7.5 7.5h.01'],
       analytics: ['إحصاءات وتوقعات وتوزيعات', 'M12 3v9l7 4M21 12a9 9 0 11-9-9'], purch: ['المشتريات والموردون', 'M3 7h13v10H3zM16 10h3l2 3v4h-5M7 20a2 2 0 100-4 2 2 0 000 4zM18 20a2 2 0 100-4 2 2 0 000 4z'],
       stock: ['المخزون والحركة والتغطية', 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z'], admin: ['المستخدمون وسجل التعديلات', 'M12 15a3 3 0 100-6 3 3 0 000 6zM19 12l2-1-1-3-2 .5-1.5-1.5L17 5l-3-1-1 2h-2L10 4 7 5l.5 2L6 8.5 4 8l-1 3 2 1v2l-2 1 1 3 2-.5L7.5 18 7 20l3 1 1-2h2l1 2 3-1-.5-2 1.5-1.5 2 .5 1-3-2-1z'],
       mine: ['التقارير التي صممتها وحفظتها', 'M12 3l2.7 5.5 6 .9-4.4 4.2 1 6L12 16.8 6.7 19.6l1-6L3.3 9.4l6-.9z']
     };
     function catHomeHTML() {
-      var cnt = {}; Object.keys(R).forEach(function (k) { cnt[R[k].cat] = (cnt[R[k].cat] || 0) + 1; }); cnt.mine = F.reports.length;
+      var cnt = {}; repKeys().forEach(function (k) { cnt[R[k].cat] = (cnt[R[k].cat] || 0) + 1; }); cnt.mine = F.reports.length;
       var cats = (F.reports.length || canEdit() ? [['mine', 'تقاريري']] : []).concat(CATS.filter(function (c) { return c[0] !== 'mine' && cnt[c[0]]; }));
       var icon = function (k) { var d = (CAT_INFO[k] || ['', 'M4 4h16v16H4z'])[1]; return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="' + d + '"/></svg>'; };
-      var names = function (k) { return Object.keys(R).filter(function (r) { return R[r].cat === k; }).slice(0, 3).map(function (r) { return R[r].name; }).join(' · '); };
+      var names = function (k) { return repKeys().filter(function (r) { return R[r].cat === k; }).slice(0, 3).map(function (r) { return R[r].name; }).join(' · '); };
       return '<div class="cat-home">' + cats.map(function (c) {
         return '<button class="cat-card' + (c[0] === 'mine' ? ' mine' : '') + '" data-jump="' + c[0] + '"><span class="cat-ic">' + icon(c[0]) + '</span><span class="cat-tx"><b>' + esc(c[1]) + '</b><span class="cat-sub">' + esc((CAT_INFO[c[0]] || [''])[0]) + '</span>' +
           '<span class="cat-ex">' + esc(c[0] === 'mine' ? (cnt.mine ? F.reports.slice(0, 3).map(function (r) { return r.name; }).join(' · ') : 'لم تحفظ تقارير بعد') : names(c[0])) + '</span></span><span class="cat-cnt">' + fk(cnt[c[0]] || 0) + '</span></button>';
-      }).join('') + '</div><div class="row" style="justify-content:center;margin-top:14px"><button class="btn ghost" data-jump="all">عرض كل التقارير (' + Object.keys(R).length + ') في قائمة واحدة</button></div>';
+      }).join('') + '</div><div class="row" style="justify-content:center;margin-top:14px"><button class="btn ghost" data-jump="all">عرض كل التقارير (' + repKeys().length + ') في قائمة واحدة</button></div>';
     }
     function bindCatalog(m) {
       var inp = q('#rq', m);
@@ -304,7 +305,7 @@
     }
 
     function pickReady() {
-      var list = Object.keys(R).map(function (k) { return { id: k, name: R[k].name, desc: R[k].desc, cat: (CATS.filter(function (c) { return c[0] === R[k].cat; })[0] || [0, ''])[1] }; });
+      var list = repKeys().map(function (k) { return { id: k, name: R[k].name, desc: R[k].desc, cat: (CATS.filter(function (c) { return c[0] === R[k].cat; })[0] || [0, ''])[1] }; });
       sheet('اختر التقرير الذي تريد تخصيصه', '<input class="input" id="rpq" placeholder="ابحث باسم التقرير…"><div class="list rp-list" id="rpl"></div>', function (s) {
         var inp = q('#rpq', s.el), box = q('#rpl', s.el);
         var draw = function () {

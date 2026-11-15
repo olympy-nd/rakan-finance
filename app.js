@@ -104,7 +104,7 @@
       if (!v[1] || !v[2]) return renderLogin();
       st.user = v[2];
       if (st.user.must_change) return renderChangePin();
-      startApp();
+      startApp(); welcome(false);
       if (navigator.onLine) call('me').then(function (r) { st.user = r.user; S.set('user', r.user); }).catch(function () {});
     });
   }
@@ -141,7 +141,7 @@
         busy(b, false);
         if (r.ok) {
           st.user = r.user;
-          return Promise.all([S.set('token', r.token), S.set('user', r.user)]).then(function () { if (r.user.must_change) renderChangePin(); else startApp(); });
+          return Promise.all([S.set('token', r.token), S.set('user', r.user)]).then(function () { if (r.user.must_change) renderChangePin(); else { startApp(); welcome(true); } });
         }
         if (r.error === 'code') { q('#lcw').hidden = false; q('#lc').focus(); m.innerHTML = '<div class="msg info">' + esc(r.msg) + '</div>'; return; }
         m.innerHTML = '<div class="msg err">' + esc(r.msg || r.error) + '</div>';
@@ -162,7 +162,7 @@
       if (q('#p1').value !== q('#p2').value) { m.innerHTML = '<div class="msg err">الرقمان غير متطابقين</div>'; return; }
       var b = q('#pb'); busy(b, true);
       call('change_pin', { old: q('#p0').value, pin: q('#p1').value }).then(function (r) {
-        st.user = r.user; S.set('user', r.user); startApp(); toast('تم حفظ رقمك السري');
+        st.user = r.user; S.set('user', r.user); startApp(); welcome(true); toast('تم حفظ رقمك السري');
       }).catch(function (e2) { busy(b, false); m.innerHTML = '<div class="msg err">' + esc(e2.message) + '</div>'; });
     };
   }
@@ -190,6 +190,21 @@
   var PAGE_SUB = { dash: 'أهم الأرقام لفترة تختارها', daily: 'تقرير الإدارة اليومي', reports: 'كل التقارير الجاهزة وتقاريرك', builder: 'صمّم تقريراً خاصاً بك من الصفر', settings: 'الصناديق والبطاقات ومجموعات الحسابات', users: 'من يدخل المنظومة وصلاحياته', audit: 'كل ما حدث في المنظومة' };
   function isPhone() { return window.matchMedia('(max-width: 899px)').matches; }
 
+  // رسالة ترحيب باسم المستخدم: عند تسجيل الدخول، ومرة واحدة في اليوم عند فتح التطبيق
+  function welcome(force) {
+    var day = RK.nowStr().slice(0, 10);
+    Promise.resolve(S.get('welcomed')).then(function (v) {
+      if (!force && v === day) return;
+      S.set('welcomed', day);
+      var h = +RK.nowStr().slice(11, 13), hi = h >= 4 && h < 12 ? 'صباح الخير' : 'مساء الخير', name = String((st.user && st.user.name) || '').trim();
+      var dt = ''; try { dt = new Date().toLocaleDateString('ar-LY-u-nu-latn', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }); } catch (e) {}
+      var w = document.createElement('div'); w.className = 'welcome'; w.setAttribute('role', 'status');
+      w.innerHTML = '<div class="wc-card"><img src="logo.png" alt=""><div class="wc-hi">' + hi + '</div><div class="wc-name">' + esc(name || 'بك') + '</div>' +
+        '<div class="wc-sub">' + (force ? 'أهلاً وسهلاً بك في منظومة راكان للتقارير المالية' : 'سعداء برؤيتك مجدداً في منظومة راكان للتقارير المالية') + '</div>' + (dt ? '<div class="wc-date">' + esc(dt) + '</div>' : '') + '</div>';
+      var close = function () { if (!w.parentNode) return; w.classList.add('out'); setTimeout(function () { w.remove(); }, 320); };
+      document.body.appendChild(w); setTimeout(close, 4200);
+    }).catch(function () {});
+  }
   function startApp(keep) {
     var tabs = tabsFor(st.user);
     if (!st.tab || !tabs.some(function (t) { return t[0] === st.tab; })) st.tab = tabs[0][0];
