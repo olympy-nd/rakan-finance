@@ -787,20 +787,21 @@
       return new Promise(function (res) {
         var sel = opts.multi ? (opts.value || []).slice() : null;
         sheet(opts.title || 'اختر الحساب', '<input class="input" id="aq" placeholder="ابحث بالرمز أو الاسم">' + (opts.hint ? '<div class="msg info">' + esc(opts.hint) + '</div>' : '') +
-          '<div class="list acc-list" id="al"></div>' + (opts.multi ? '<button class="btn primary big" data-ok>حفظ الاختيار</button>' : ''), function (s) {
+          '<div class="list acc-list" id="al"></div>' + (opts.multi ? '<button class="btn primary big" data-ok>' + (opts.okText || 'حفظ الاختيار') + '</button>' : ''), function (s) {
           var inp = q('#aq', s.el), al = q('#al', s.el);
           function draw() {
             var t = inp.value.trim();
             var list = (opts.list || F.D.accList).filter(function (a) { return (!opts.filter || opts.filter(a)) && (!t || (a.code + ' ' + a.name).indexOf(t) >= 0); }).slice(0, 300);
             al.innerHTML = list.map(function (a) {
-              var on = sel && sel.indexOf(String(a.code)) >= 0;
+              var on = sel && sel.indexOf(String(opts.byId ? a.id : a.code)) >= 0;
               return '<button class="item tap acc-it' + (on ? ' sel' : '') + '" data-a="' + esc(a.id) + '" style="padding-inline-start:' + (8 + (t ? 0 : (a.lvl - 1) * 14)) + 'px"><div class="main"><b>' + esc(a.name) + '</b><div class="meta"><span class="num">' + esc(a.code) + '</span><span>مستوى ' + a.lvl + '</span>' + (a.leaf ? '' : '<span>رئيسي · ' + a.kids.length + ' فرع</span>') + '</div></div>' + (on ? '✓' : '') + '</button>';
             }).join('') || '<p class="muted">لا نتائج</p>';
+            var okb = q('[data-ok]', s.el); if (okb && sel) okb.textContent = (opts.okText || 'حفظ الاختيار') + (sel.length ? ' (' + sel.length + ')' : '');
             qa('[data-a]', al).forEach(function (b) {
               b.onclick = function () {
                 var a = opts.list ? opts.list.filter(function (x) { return x.id === b.dataset.a; })[0] : acc(b.dataset.a);
                 if (!sel) { s.done = true; s.close(); res(a.id); return; }
-                var c = String(a.code), i = sel.indexOf(c); if (i >= 0) sel.splice(i, 1); else sel.push(c); draw();
+                var c = String(opts.byId ? a.id : a.code), i = sel.indexOf(c); if (i >= 0) sel.splice(i, 1); else sel.push(c); draw();
               };
             });
           }
@@ -1208,7 +1209,7 @@
                   '<div class="meta"><span>' + (tl.length ? 'السندات المعروضة: ' + esc(tl.join('، ')) : 'السندات المعروضة: كل الأنواع') + '</span></div></div>' +
                   '<div class="fe-btns"><button class="btn sm ghost" data-bedit="' + esc(b.id) + '" data-bbr="' + esc(br.code) + '">تعديل</button>' + (b.active ? '' : '<button class="btn sm ghost" data-bon="' + esc(b.id) + '">تفعيل</button>') + '<button class="btn sm ghost danger-t" data-bdel="' + esc(b.id) + '">حذف التعريف</button></div></div>';
               }).join('') + '</div>' : '<div class="msg info">لم يُعرّف أي صندوق أو بنك' + (br.name ? ' في ' + esc(br.name) : '') + ' بعد.</div>') +
-              '<div class="row" style="margin-top:10px"><button class="btn primary" data-badd="' + esc(br.code) + '">+ تعريف صندوق أو بنك' + (br.name ? ' في ' + esc(br.name) : '') + '</button></div>';
+              '<div class="row" style="margin-top:10px"><button class="btn primary" data-badd="' + esc(br.code) + '">+ تعريف صناديق أو بنوك' + (br.name ? ' في ' + esc(br.name) : '') + '</button><span class="small muted" style="align-self:center">يمكن تحديد عدة حسابات دفعة واحدة</span></div>';
             if (sug.length) o += '<details class="box-sug"' + (bx.length ? '' : ' open') + '><summary>حسابات مقترحة من دليل سراج (' + sug.length + ')</summary><p class="small muted" style="margin:6px 0 8px">حسابات تحت «الصناديق» و«المصارف» عليها حركة ولم تُعرّف بعد.</p><div class="list">' +
               sug.map(function (x) { return '<label class="item tap"><input type="checkbox" data-sug="' + esc(br.code) + '|' + esc(x.acc) + '|' + esc(x.kind) + '" data-sname="' + esc(x.name) + '"><div class="main"><b>' + esc(x.name) + '</b><div class="meta"><span class="badge">' + x.kind + '</span><span>' + fk(x.n) + ' حركة</span><span>الرصيد ' + fm(x.bal) + '</span></div></div></label>'; }).join('') +
               '</div><button class="btn accent" data-sugadd="' + esc(br.code) + '" style="margin-top:10px">تعريف المحدد</button></details>';
@@ -1260,7 +1261,7 @@
       qa('[data-stab]', m).forEach(function (b) { b.onclick = function () { F.setTab = b.dataset.stab; A.render(); }; });
       var tab = F.setTab || 'boxes';
       if (tab === 'boxes') {
-        qa('[data-badd]', m).forEach(function (b) { b.onclick = function () { boxForm(null, b.dataset.badd); }; });
+        qa('[data-badd]', m).forEach(function (b) { b.onclick = function () { boxAdd(b.dataset.badd); }; });
         qa('[data-bedit]', m).forEach(function (b) { b.onclick = function () { boxForm(F.boxes.filter(function (x) { return x.id === b.dataset.bedit; })[0], b.dataset.bbr); }; });
         qa('[data-bon]', m).forEach(function (b) {
           b.onclick = function () { var x = Object.assign({}, F.boxes.filter(function (y) { return y.id === b.dataset.bon; })[0], { active: true }); busy(b, true); call('fin_box_save', { box: x }).then(function (r) { F.boxes = r.boxes; toast('فُعّل'); A.render(); }).catch(function (e) { busy(b, false); toast(e.message, true); }); };
@@ -1317,8 +1318,36 @@
         q('#fys', m).onchange = function () { call('fin_settings_save', { settings: { year_start: this.value } }).then(function (r) { F.meta.settings = r.settings; resetCache(); S.set('fin:meta', F.meta); toast('حُفظت'); A.render(); }).catch(function (e) { toast(e.message, true); }); };
       }
     }
+    // تعريف صندوق أو أكثر: اختر حساباً واحداً (نموذج كامل) أو عدة حسابات دفعة واحدة
+    function boxGuessKind(a, inBr) { return inBr(function () { var n = a.name, p0 = acc(a.parent), g = 0; while (p0 && g++ < 4) { n += ' ' + p0.name; p0 = acc(p0.parent); } return /مصرف|بنك|مصارف/.test(n) ? 'بنك' : 'صندوق'; }); }
+    function boxAdd(brCode) {
+      var mb = multiBr(), br = brCode || '', inBr = function (fn) { return mb ? withBr(br, fn) : fn(); };
+      var list = inBr(function () { return F.D.accList.filter(function (a) { return a.leaf; }).slice(); });
+      var defined = {}; F.boxes.forEach(function (x) { defined[x.acc] = x.name; });
+      pickAccount({ multi: true, byId: true, value: [], list: list, okText: 'التالي', title: 'اختر حساباً أو أكثر' + (mb ? ' · ' + brName(br) : ''), hint: 'يمكنك تحديد عدة صناديق وبنوك لتعريفها دفعة واحدة. الحسابات المعرّفة مسبقاً لا تُكرَّر.', filter: function (a) { return !defined[a.id]; } }).then(function (ids) {
+        if (!ids || !ids.length) return;
+        if (ids.length === 1) { boxForm({ acc: ids[0], name: String((list.filter(function (a) { return a.id === ids[0]; })[0] || {}).name || '').trim(), kind: boxGuessKind(list.filter(function (a) { return a.id === ids[0]; })[0], inBr), active: true, sort: F.boxes.length, types: [], _new: true }, br); return; }
+        var rows = ids.map(function (id) { var a = list.filter(function (x) { return x.id === id; })[0] || { id: id, name: id, code: '' }; return { acc: id, code: a.code, name: String(a.name).trim(), kind: boxGuessKind(a, inBr) }; });
+        sheet('تعريف ' + rows.length + ' حسابات دفعة واحدة' + (mb ? ' · ' + brName(br) : ''), '<div class="form"><p class="small muted" style="margin:0">راجع الاسم والنوع لكل حساب، ثم اضغط «تعريف الكل». يمكنك تحديد أنواع السندات لكل واحد لاحقاً من «تعديل».</p><div class="list bulk-box">' + rows.map(function (r, i) {
+          return '<div class="item"><div class="main"><div class="small muted num">' + esc(r.code) + '</div><input class="input" data-bn="' + i + '" value="' + esc(r.name) + '"></div><div class="chips">' + ['صندوق', 'بنك'].map(function (k) { return '<button type="button" class="chip' + (r.kind === k ? ' on' : '') + '" data-bk="' + i + '|' + k + '">' + k + '</button>'; }).join('') + '</div><button type="button" class="iconbtn" data-bx="' + i + '" aria-label="إزالة">✕</button></div>';
+        }).join('') + '</div><div id="bberr"></div><button class="btn primary big" id="bbsv">تعريف الكل (' + rows.length + ')</button></div>', function (s) {
+          qa('[data-bn]', s.el).forEach(function (el) { el.oninput = function () { rows[Number(el.dataset.bn)].name = el.value; }; });
+          qa('[data-bk]', s.el).forEach(function (c) { c.onclick = function () { var x = c.dataset.bk.split('|'); rows[Number(x[0])].kind = x[1]; qa('[data-bk^="' + x[0] + '|"]', s.el).forEach(function (y) { y.classList.toggle('on', y === c); }); }; });
+          qa('[data-bx]', s.el).forEach(function (c) { c.onclick = function () { var i = Number(c.dataset.bx); rows[i].skip = true; c.closest('.item').remove(); q('#bbsv', s.el).textContent = 'تعريف الكل (' + rows.filter(function (r) { return !r.skip; }).length + ')'; }; });
+          q('#bbsv', s.el).onclick = function () {
+            var todo = rows.filter(function (r) { return !r.skip; }), btn = this;
+            if (!todo.length) { s.close(); return; }
+            if (todo.some(function (r) { return !String(r.name).trim(); })) { q('#bberr', s.el).innerHTML = '<div class="msg err">اكتب اسماً لكل حساب</div>'; return; }
+            busy(btn, true); var done = 0, chain = Promise.resolve();
+            todo.forEach(function (r, i) { chain = chain.then(function () { return call('fin_box_save', { box: { acc: r.acc, name: String(r.name).trim(), kind: r.kind, sort: F.boxes.length + i, types: [] } }).then(function (x) { F.boxes = x.boxes; done++; btn.textContent = 'جارٍ التعريف… ' + done + ' من ' + todo.length; }); }); });
+            chain.then(function () { S.set('fin:aux', { boxes: F.boxes, reports: F.reports, config: F.config }); resetCache(); s.close(); toast('عُرّف ' + done + ' صندوق/بنك'); A.render(); })
+              .catch(function (e) { busy(btn, false); q('#bberr', s.el).innerHTML = '<div class="msg err">' + esc(e.message) + (done ? ' (عُرّف ' + done + ' قبل الخطأ)' : '') + '</div>'; F.boxes = F.boxes; A.render(); });
+          };
+        });
+      });
+    }
     function boxForm(b, brCode) {
-      var d = b ? Object.assign({}, b) : { acc: '', name: '', kind: 'صندوق', active: true, sort: F.boxes.length, types: [] };
+      var isNew = !b || b._new; var d = b ? Object.assign({}, b) : { acc: '', name: '', kind: 'صندوق', active: true, sort: F.boxes.length, types: [] }; delete d._new; if (isNew) b = null;
       d.types = (d.types || []).slice();
       var mb = multiBr(), br = brCode || '';
       // داخل نموذج الفرع حتى تظهر حساباته وأنواع سنداته فقط
