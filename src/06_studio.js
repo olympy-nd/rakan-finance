@@ -246,14 +246,17 @@
       var h = '<div class="card cat-top"><div class="cat-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>' +
         '<input class="input" id="rq" placeholder="ابحث في ' + n + ' تقريراً: مبيعات، عميل، ميزانية، مخزون…" value="' + esc(F.rq || '') + '" aria-label="بحث في التقارير"></div>' +
         (canEdit() ? '<div class="cat-cta"><button class="btn accent" data-newrep>+ إنشاء تقرير</button><button class="btn" data-newpair>حساب مقابل حساب</button></div>' : '') + '</div>' +
-        '<div class="cat-filter" role="group" aria-label="التصنيف">' + [['all', 'الكل']].concat(F.reports.length ? [['mine', 'تقاريري']] : []).concat(CATS.filter(function (c) { return c[0] !== 'mine'; })).map(function (c) { return '<button class="' + ((F.rcat || 'all') === c[0] ? 'on' : '') + '" data-jump="' + c[0] + '">' + c[1] + '</button>'; }).join('') + '</div>';
+        '';
+      var view = F.rcat || 'home';
+      if (view === 'home' && !F.rq) return h + catHomeHTML();
+      h += '<div class="cat-nav"><button class="btn sm ghost cat-back" data-jump="home">→ كل الأقسام</button><div class="cat-filter" role="group" aria-label="التصنيف">' + [['all', 'الكل']].concat(F.reports.length ? [['mine', 'تقاريري']] : []).concat(CATS.filter(function (c) { return c[0] !== 'mine'; })).map(function (c) { return '<button class="' + (view === c[0] ? 'on' : '') + '" data-jump="' + c[0] + '">' + c[1] + '</button>'; }).join('') + '</div></div>';
       var mine = F.reports.map(function (r) { return { id: 'c:' + r.id, rid: r.id, name: r.name, desc: customDesc(r.def), by: r.by }; });
       var cats = [['mine', 'تقاريري']].concat(CATS.filter(function (c) { return c[0] !== 'mine'; }));
       cats.forEach(function (c) {
         var list = c[0] === 'mine' ? mine : Object.keys(R).filter(function (k) { return R[k].cat === c[0]; }).map(function (k) { return { id: k, name: R[k].name, desc: R[k].desc }; });
         if (!list.length && c[0] !== 'mine') return;
         if (!list.length && !canEdit()) return;
-        if (F.rcat && F.rcat !== 'all' && F.rcat !== c[0]) return;
+        if (view !== 'all' && view !== c[0]) return;
         h += '<section class="fin-catsec' + (c[0] === 'mine' ? ' mine' : '') + '" id="cat-' + c[0] + '"><div class="sec-title"><h2>' + c[1] + ' <span class="badge">' + list.length + '</span></h2></div><div class="fin-cat">' + (list.length ? list.map(function (r) {
           return '<div class="rep-tile" data-s="' + esc(r.name + ' ' + (r.desc || '') + ' ' + c[1]) + '"><button class="rep-open" data-open="' + esc(r.id) + '"><b>' + esc(r.name) + '</b><span>' + esc(r.desc || '') + (r.by ? ' · ' + esc(r.by) : '') + '</span></button>' +
             (r.rid && canEdit() ? '<button class="iconbtn rep-ed" data-redit="' + esc(r.rid) + '" aria-label="تعديل" title="تعديل">' + ICON_EDIT + '</button>' : '') + '</div>';
@@ -261,16 +264,39 @@
       });
       return h;
     }
+    // الصفحة الأولى للتقارير: بطاقة لكل قسم رئيسي، وعند الضغط تظهر تقاريره
+    var CAT_INFO = {
+      exec: ['ملخص الإدارة ومؤشرات الأداء', 'M4 19V9m6 10V5m6 14v-7m4 7H2'], stmt: ['قائمة الدخل والميزانية والتدفقات', 'M6 3h9l4 4v14H6zM14 3v5h5M9 13h7M9 17h7'],
+      acct: ['اليومية والأستاذ وميزان المراجعة', 'M4 5h16v14H4zM4 10h16M10 10v9'], sales: ['المبيعات حسب الصنف والعميل والفترة', 'M3 4h2l2.4 11h11L21 7H6.2M9 20h.01M18 20h.01'],
+      reps: ['أداء المناديب وفئاتهم', 'M8 11a4 4 0 100-8 4 4 0 000 8zM2 21v-1a6 6 0 0112 0v1M17 11a3 3 0 100-6M22 21v-1a5 5 0 00-4-4.9'],
+      cust: ['تحليل العملاء وتقييمهم وأسعارهم', 'M12 12a4 4 0 100-8 4 4 0 000 8zM4 21v-1a8 8 0 0116 0v1'], cust1: ['كل شيء عن عميل واحد', 'M12 11a3.5 3.5 0 100-7 3.5 3.5 0 000 7zM5 20a7 7 0 0114 0M19 4l2 2-2 2'],
+      cgrp: ['الوكلاء والفروع ومجموعات العملاء', 'M3 7l9-4 9 4-9 4zM3 12l9 4 9-4M3 17l9 4 9-4'], debts: ['المديونيات وأعمارها والتحصيل', 'M3 6h18v12H3zM3 10h18M7 15h3'],
+      cash: ['الصناديق والبنوك والسندات', 'M3 10l9-6 9 6M5 10v8m4-8v8m6-8v8m4-8v8M3 20h18'], items: ['الأصناف وربحيتها وتحليلها', 'M21 8l-9-5-9 5 9 5zM3 8v8l9 5 9-5V8M12 13v8'],
+      analytics: ['إحصاءات وتوقعات وتوزيعات', 'M12 3v9l7 4M21 12a9 9 0 11-9-9'], purch: ['المشتريات والموردون', 'M3 7h13v10H3zM16 10h3l2 3v4h-5M7 20a2 2 0 100-4 2 2 0 000 4zM18 20a2 2 0 100-4 2 2 0 000 4z'],
+      stock: ['المخزون والحركة والتغطية', 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z'], admin: ['المستخدمون وسجل التعديلات', 'M12 15a3 3 0 100-6 3 3 0 000 6zM19 12l2-1-1-3-2 .5-1.5-1.5L17 5l-3-1-1 2h-2L10 4 7 5l.5 2L6 8.5 4 8l-1 3 2 1v2l-2 1 1 3 2-.5L7.5 18 7 20l3 1 1-2h2l1 2 3-1-.5-2 1.5-1.5 2 .5 1-3-2-1z'],
+      mine: ['التقارير التي صممتها وحفظتها', 'M12 3l2.7 5.5 6 .9-4.4 4.2 1 6L12 16.8 6.7 19.6l1-6L3.3 9.4l6-.9z']
+    };
+    function catHomeHTML() {
+      var cnt = {}; Object.keys(R).forEach(function (k) { cnt[R[k].cat] = (cnt[R[k].cat] || 0) + 1; }); cnt.mine = F.reports.length;
+      var cats = (F.reports.length || canEdit() ? [['mine', 'تقاريري']] : []).concat(CATS.filter(function (c) { return c[0] !== 'mine' && cnt[c[0]]; }));
+      var icon = function (k) { var d = (CAT_INFO[k] || ['', 'M4 4h16v16H4z'])[1]; return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="' + d + '"/></svg>'; };
+      var names = function (k) { return Object.keys(R).filter(function (r) { return R[r].cat === k; }).slice(0, 3).map(function (r) { return R[r].name; }).join(' · '); };
+      return '<div class="cat-home">' + cats.map(function (c) {
+        return '<button class="cat-card' + (c[0] === 'mine' ? ' mine' : '') + '" data-jump="' + c[0] + '"><span class="cat-ic">' + icon(c[0]) + '</span><span class="cat-tx"><b>' + esc(c[1]) + '</b><span class="cat-sub">' + esc((CAT_INFO[c[0]] || [''])[0]) + '</span>' +
+          '<span class="cat-ex">' + esc(c[0] === 'mine' ? (cnt.mine ? F.reports.slice(0, 3).map(function (r) { return r.name; }).join(' · ') : 'لم تحفظ تقارير بعد') : names(c[0])) + '</span></span><span class="cat-cnt">' + fk(cnt[c[0]] || 0) + '</span></button>';
+      }).join('') + '</div><div class="row" style="justify-content:center;margin-top:14px"><button class="btn ghost" data-jump="all">عرض كل التقارير (' + Object.keys(R).length + ') في قائمة واحدة</button></div>';
+    }
     function bindCatalog(m) {
       var inp = q('#rq', m);
       var apply = function () {
         var t = normAr(inp.value); F.rq = inp.value.trim();
-        if (t && F.rcat && F.rcat !== 'all') { F.rcat = 'all'; A.render(); var ni = q('#rq'); if (ni) { ni.focus(); ni.setSelectionRange(ni.value.length, ni.value.length); } return; }
+        if (t && (F.rcat || 'home') !== 'all') { F.rcatPrev = F.rcat || 'home'; F.rcat = 'all'; A.render(); var ni = q('#rq'); if (ni) { ni.focus(); ni.setSelectionRange(ni.value.length, ni.value.length); } return; }
+        if (!t && F.rcatPrev && F.rcat === 'all') { F.rcat = F.rcatPrev; F.rcatPrev = null; A.render(); var n2 = q('#rq'); if (n2) n2.focus(); return; }
         qa('.rep-tile', m).forEach(function (b) { b.hidden = !!t && normAr(b.dataset.s).indexOf(t) < 0; });
         qa('.fin-catsec', m).forEach(function (s) { s.hidden = !!t && !qa('.rep-tile', s).some(function (b) { return !b.hidden; }); });
       };
       inp.oninput = apply; if (F.rq) apply();
-      qa('[data-jump]', m).forEach(function (b) { b.onclick = function () { F.rcat = b.dataset.jump; inp.value = ''; F.rq = ''; A.render(); }; });
+      qa('[data-jump]', m).forEach(function (b) { b.onclick = function () { F.rcat = b.dataset.jump; F.rcatPrev = null; inp.value = ''; F.rq = ''; A.render(); window.scrollTo(0, 0); }; });
       qa('[data-newrep]', m).forEach(function (b) { b.onclick = function () { F.custom = null; go('builder'); }; });
       var np = q('[data-newpair]', m); if (np) np.onclick = function () { F.custom = { name: '', cat: 'تقاريري', def: ST_TPL[0][3]() }; go('builder'); };
       qa('[data-redit]', m).forEach(function (b) { b.onclick = function () { var r = F.reports.filter(function (x) { return x.id === b.dataset.redit; })[0]; if (!r) return; if (r.def.kind === 'ready') { F.vpOpen = true; openReport('c:' + r.id); return; } F.custom = JSON.parse(JSON.stringify(r)); go('builder'); }; });

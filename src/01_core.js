@@ -430,6 +430,9 @@
     function recvIds() { return grpIds('recv'); }
     function payIds() { return grpIds('pay'); }
     // صناديق الفرع المعروض فقط (حساب الصندوق موجود في نموذجه)
+    // أنواع السندات المعروضة لكل صندوق (فارغ = كل الأنواع)
+    function boxTypeMap() { var m = {}; F.boxes.forEach(function (b) { if (b.active && b.types && b.types.length) m[b.acc] = b.types.map(String); }); return m; }
+    function boxLinePass(l, m) { var t = (m || boxTypeMap())[l.a]; return !t || t.indexOf(String(l.bt)) >= 0; }
     function activeBoxes(kind) { return F.boxes.filter(function (b) { return b.active && (!kind || b.kind === kind || b.name.indexOf(kind) >= 0) && (!multiBr() || !!T().acc[b.acc]); }); }
     function boxIds(kind) { return activeBoxes(kind).map(function (b) { return b.acc; }); }
     function counterpart(l, ids) {

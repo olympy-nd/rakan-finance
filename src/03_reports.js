@@ -234,18 +234,20 @@
 
     /* ---------- محاسبية ---------- */
     function ancestorAt(id, lvl) { var a = acc(id), g = 0; while (a && a.lvl > lvl && acc(a.parent) && g++ < 10) a = acc(a.parent); return a ? a.name : '—'; }
-    function statement(ids, p, title) {
-      var all = [];
+    function statement(ids, p, title, pass) {
+      var all = [], hid = { dr: 0, cr: 0, n: 0 };
       ids.forEach(function (id) { (F.D.byAcc[id] || []).forEach(function (l) { if (l.d >= p.from && l.d <= p.to) all.push(l); }); });
       all.sort(cmpLine);
       var b = balance(ids, p.from, p.to), bal = b.open;
       var rows = [{ d: '', no: '', type: '', desc: 'رصيد أول المدة', cp: '', dr: '', cr: '', bal: b.open, _b: true }];
       all.forEach(function (l) {
         bal += l.dr - l.cr;
+        if (pass && !pass(l)) { hid.dr += l.dr; hid.cr += l.cr; hid.n++; return; }
         rows.push({ d: l.d, no: l.no, type: l.btn, desc: l.ld || l.ed || '', cp: counterpart(l, ids), dr: l.dr || '', cr: l.cr || '', bal: bal, _acc: ids.length > 1 ? l.a : null });
       });
       return { title: title, cols: [C('d', 'التاريخ'), C('no', 'رقم القيد'), C('type', 'النوع'), C('desc', 'البيان'), C('cp', 'الحساب المقابل'), C('dr', 'مدين', 'money'), C('cr', 'دائن', 'money'), C('bal', 'الرصيد', 'money')],
-        rows: rows, total: { desc: 'الإجمالي ورصيد آخر المدة', dr: b.dr, cr: b.cr, bal: b.close } };
+        rows: rows, total: { desc: 'الإجمالي ورصيد آخر المدة', dr: b.dr - hid.dr, cr: b.cr - hid.cr, bal: b.close },
+        note: hid.n ? 'يُعرض فقط أنواع السندات المحددة لهذا الصندوق. أُخفيت ' + hid.n + ' حركة (مدين ' + fm(hid.dr) + '، دائن ' + fm(hid.cr) + ')، والرصيد يشملها.' : '' };
     }
     R.journal = { cat: 'acct', name: 'دفتر اليومية العامة', desc: 'كل القيود بأسطرها مرتبة بالتاريخ', params: ['period', 'etype'],
       run: function (p) {
@@ -561,10 +563,16 @@
       run: function (p) {
         var bx = activeBoxes();
         if (!bx.length) return { cols: [C('m', '')], rows: [], empty: 'لم تُعرّف صناديق أو بنوك بعد. عرّفها من «الصناديق والإعدادات».' };
-        if (p.box && p.box !== 'all') { var b = bx.filter(function (x) { return x.acc === p.box; })[0]; return statement([p.box], p, (b ? b.name : accName(p.box))); }
-        var rows = bx.map(function (b) { var r = balance([b.acc], p.from, p.to); return { name: b.name, kind: b.kind, open: r.open, inn: r.dr, out: r.cr, close: r.close, _box: b.acc }; });
-        var cols = [C('name', 'الاسم'), C('kind', 'النوع'), C('open', 'رصيد أول المدة', 'money'), C('inn', 'الداخل (مدين)', 'money'), C('out', 'الخارج (دائن)', 'money'), C('close', 'الرصيد', 'money')];
-        return { cols: cols, rows: rows, total: sumRow(rows, cols), chart: { type: 'hbar', x: 'name', y: ['close'], yl: ['الرصيد'] }, note: 'اضغط على أي صندوق أو بنك لعرض حركته التفصيلية برصيد تراكمي' };
+        var tm = boxTypeMap();
+        if (p.box && p.box !== 'all') { var b = bx.filter(function (x) { return x.acc === p.box; })[0]; return statement([p.box], p, (b ? b.name : accName(p.box)), tm[p.box] ? function (l) { return boxLinePass(l, tm); } : null); }
+        var anyT = Object.keys(tm).length;
+        var rows = bx.map(function (b) {
+          var r = balance([b.acc], p.from, p.to), o = { name: b.name, kind: b.kind, open: r.open, inn: r.dr, out: r.cr, other: 0, close: r.close, _box: b.acc };
+          if (tm[b.acc]) { var inn = 0, out = 0; (F.D.byAcc[b.acc] || []).forEach(function (l) { if (l.d >= p.from && l.d <= p.to && boxLinePass(l, tm)) { inn += l.dr; out += l.cr; } }); o.other = (r.dr - r.cr) - (inn - out); o.inn = inn; o.out = out; }
+          return o;
+        });
+        var cols = [C('name', 'الاسم'), C('kind', 'النوع'), C('open', 'رصيد أول المدة', 'money'), C('inn', 'الداخل (مدين)', 'money'), C('out', 'الخارج (دائن)', 'money')].concat(anyT ? [C('other', 'صافي سندات غير معروضة', 'money')] : []).concat([C('close', 'الرصيد', 'money')]);
+        return { cols: cols, rows: rows, total: sumRow(rows, cols), chart: { type: 'hbar', x: 'name', y: ['close'], yl: ['الرصيد'] }, note: 'اضغط على أي صندوق أو بنك لعرض حركته التفصيلية برصيد تراكمي' + (anyT ? ' · لبعض الصناديق أنواع سندات محددة في الإعدادات؛ عمود «غير معروضة» يبيّن صافي باقي الحركات حتى يبقى الرصيد صحيحاً' : '') };
       } };
     R.box_daily = { cat: 'cash', name: 'الحركة اليومية للصناديق والبنوك', desc: 'الداخل والخارج والرصيد لكل يوم', params: ['period', 'boxkind'],
       run: function (p) {
@@ -572,10 +580,11 @@
         if (!ids.length) return { cols: [C('m', '')], rows: [], empty: 'لم تُعرّف صناديق أو بنوك من هذا النوع.' };
         var set = {}, g = {}; ids.forEach(function (x) { set[x] = 1; });
         var bal = balance(ids, p.from, p.to).open, rows = [];
-        T().jl.forEach(function (l) { if (!set[l.a] || l.d < p.from || l.d > p.to) return; var r = g[l.d] || (g[l.d] = { inn: 0, out: 0 }); r.inn += l.dr; r.out += l.cr; });
-        Object.keys(g).sort().forEach(function (d) { var r = g[d]; rows.push({ name: d, open: bal, inn: r.inn, out: r.out, close: bal + r.inn - r.out }); bal += r.inn - r.out; });
-        var cols = [C('name', 'اليوم'), C('open', 'أول اليوم', 'money'), C('inn', 'الداخل', 'money'), C('out', 'الخارج', 'money'), C('close', 'آخر اليوم', 'money')];
-        var t = sumRow(rows, [C('inn', '', 'money'), C('out', '', 'money')]); t.close = bal;
+        var tm = boxTypeMap(), anyT = ids.some(function (x) { return tm[x]; });
+        T().jl.forEach(function (l) { if (!set[l.a] || l.d < p.from || l.d > p.to) return; var r = g[l.d] || (g[l.d] = { inn: 0, out: 0, other: 0 }); if (boxLinePass(l, tm)) { r.inn += l.dr; r.out += l.cr; } else r.other += l.dr - l.cr; });
+        Object.keys(g).sort().forEach(function (d) { var r = g[d]; rows.push({ name: d, open: bal, inn: r.inn, out: r.out, other: r.other, close: bal + r.inn - r.out + r.other }); bal += r.inn - r.out + r.other; });
+        var cols = [C('name', 'اليوم'), C('open', 'أول اليوم', 'money'), C('inn', 'الداخل', 'money'), C('out', 'الخارج', 'money')].concat(anyT ? [C('other', 'سندات غير معروضة', 'money')] : []).concat([C('close', 'آخر اليوم', 'money')]);
+        var t = sumRow(rows, [C('inn', '', 'money'), C('out', '', 'money'), C('other', '', 'money')]); t.close = bal;
         return { cols: cols, rows: rows, total: t, chart: { type: 'line', x: 'name', y: ['close'], yl: ['الرصيد'] } };
       } };
     R.receipts = { cat: 'cash', name: 'سندات القبض', desc: 'كل سند قبض بمبلغه ومصدره، أو مجمّعة', params: ['period', 'vby', 'flt'], fdims: ['cust', 'xcust'], run: function (p) { return withNote(vouchers('r', p), p); } };

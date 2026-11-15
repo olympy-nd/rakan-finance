@@ -223,3 +223,52 @@
         });
       };
     }
+
+    /* ---------- تجميع صفوف العملاء حسب الحسابات أو المجموعات المحددة في التصفية ---------- */
+    // عند اختيار أكثر من حساب عملاء (أو مجموعة) في التصفية، تُعرض كل مجموعة بعنوان وإجمالي وتحتها عملاؤها
+    var GRP_NOSUM = /^(margin|share|rp|cr|ch|chp|diffp|odp|pch|use|avg|avgp|avgc|avgi|ppi|upp|score|grade|dso|pd|gap|since|ratio|pmin|pmax|mn|mx|lim|cov|mratio|p|lp|up|s_\w+)$/;
+    function custNameMap() {
+      if (F.cache.cnm) return F.cache.cnm;
+      var m = {}; F.D.invs.forEach(function (v) { if (v.name && !m[v.name]) m[v.name] = v.ck; });
+      recvIds().forEach(function (id) { var a = acc(id); if (a && !m[a.name]) m[a.name] = id; });
+      return (F.cache.cnm = m);
+    }
+    function groupBySel(res, flt) {
+      var f = parseFilter(flt);
+      if (!res || res.empty || !res.rows || !res.rows.length || !f) return res;
+      var kind = f.cacc && f.cacc.length > 1 ? 'cacc' : f.cgrp && f.cgrp.length > 1 ? 'cgrp' : '';
+      if (!kind || res.rows.some(function (r) { return r._b || r._lvl; })) return res;
+      var sel = f[kind].map(function (x) { return String(x).replace(/^@/, ''); }), nm = custNameMap();
+      // عمود العميل: أول عمود نصي تُعرف قيمه كعملاء
+      var textCols = res.cols.filter(function (c) { return !isNum(c); }), ccol = null, best = 0;
+      textCols.slice(0, 3).forEach(function (c) { var n = res.rows.filter(function (r) { return r._c1 || r._ck || r._acc || nm[plain(r[c.k]).trim()]; }).length; if (n > best) { best = n; ccol = c; } });
+      if (!ccol || best < res.rows.length * 0.6) return res;
+      var ckOf = function (r) { return r._c1 || r._ck || (r._acc && acc(r._acc) ? r._acc : null) || nm[plain(r[ccol.k]).trim()]; };
+      var whichSel = function (ck) {
+        if (!ck) return -1;
+        if (kind === 'cgrp') { for (var i = 0; i < sel.length; i++) if (cgIn(ck, sel[i])) return i; return -1; }
+        var an = ancOf(ck).map(function (a) { return a.id; }), bi = -1, bd = 1e9;
+        sel.forEach(function (id, i) { var d = an.indexOf(id); if (d >= 0 && d < bd) { bd = d; bi = i; } });   // الأقرب للعميل (الأدق) يفوز
+        return bi;
+      };
+      var groups = sel.map(function () { return []; }), other = [];
+      res.rows.forEach(function (r) { var i = whichSel(ckOf(r)); (i >= 0 ? groups[i] : other).push(r); });
+      var label = function (i) { var id = sel[i]; if (kind === 'cgrp') return cgName(id); var a = acc(id); return a ? a.code + ' · ' + a.name : id; };
+      var nums = res.cols.filter(function (c) { return isNum(c) && c.t !== 'pct' && !GRP_NOSUM.test(c.k); });
+      var head = function (name, list, gi) {
+        var h = { _b: true, _hl: true, _g: gi, _gh: 1 }; h[ccol.k] = name + ' (' + list.length + ')';
+        nums.forEach(function (c) { h[c.k] = list.reduce(function (s, r) { return s + (Number(r[c.k]) || 0); }, 0); });
+        if ('margin' in (list[0] || {}) && 'profit' in h && 'net' in h) h.margin = pct(h.profit, h.net);
+        if ('ch' in (list[0] || {}) && 'cur' in h && 'prev' in h) h.ch = h.prev ? (h.cur - h.prev) / Math.abs(h.prev) * 100 : null;
+        if ('chp' in (list[0] || {}) && 'net' in h && 'pnet' in h) h.chp = h.pnet ? (h.net - h.pnet) / Math.abs(h.pnet) * 100 : '';
+        if ('share' in (list[0] || {})) h.share = list.reduce(function (s, r) { return s + (Number(r.share) || 0); }, 0);
+        return h;
+      };
+      var rows = [];
+      groups.forEach(function (list, i) { if (!list.length) return; rows.push(head(label(i), list, i)); list.forEach(function (r) { rows.push(Object.assign({}, r, { _lvl: 1, _g: i })); }); });
+      if (other.length) { rows.push(head('أخرى', other, sel.length)); other.forEach(function (r) { rows.push(Object.assign({}, r, { _lvl: 1, _g: sel.length })); }); }
+      var out = Object.assign({}, res, { rows: rows, _lvlc: res.cols.indexOf(ccol), _grouped: true });
+      if (res.chart && !res.chart.rowsOverride) { var hs = rows.filter(function (r) { return r._gh; }).map(function (r) { var o = Object.assign({}, r); if (res.chart.x && res.chart.x !== ccol.k) o[res.chart.x] = r[ccol.k]; return o; }); out.chart = Object.assign({}, res.chart, { rowsOverride: hs, limit: 0 }); }
+      out.note = (res.note ? res.note + ' · ' : '') + 'مجمّع حسب ' + (kind === 'cgrp' ? 'مجموعات العملاء' : 'حسابات العملاء') + ' المحددة في التصفية';
+      return out;
+    }

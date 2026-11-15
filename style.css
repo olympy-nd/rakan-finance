@@ -772,3 +772,40 @@ body:has(.bnav) .toast { bottom: calc(var(--bnav) + 16px + env(safe-area-inset-b
 .cg-ord { width: 26px; height: 26px; border-radius: 50%; background: var(--blue); color: #fff; display: grid; place-items: center; font-weight: 800; font-size: 13px; flex: none; }
 .cg-name { flex: 1; min-width: 0; font-weight: 700; }
 .cg-accs { align-items: center; }
+
+/* ===== أقسام التقارير ===== */
+.cat-home { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; margin-top: 14px; }
+.cat-card { display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: start; text-align: start; padding: 16px; border: 1px solid var(--line); border-radius: var(--r, 16px); background: var(--card); color: var(--ink); font: inherit; cursor: pointer; box-shadow: var(--shadow); transition: border-color .15s, transform .15s; }
+.cat-card:hover { border-color: var(--blue); transform: translateY(-1px); }
+.cat-card.mine { background: color-mix(in srgb, var(--orange-soft) 55%, var(--card)); }
+.cat-ic { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; background: var(--blue-soft); color: var(--blue); }
+.cat-card.mine .cat-ic { background: var(--orange-soft); color: var(--orange); }
+.cat-ic svg { width: 24px; height: 24px; }
+.cat-tx { display: grid; gap: 3px; min-width: 0; }
+.cat-tx b { font-size: 16px; color: var(--blue-deep); }
+.cat-sub { font-size: 13px; color: var(--ink); }
+.cat-ex { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cat-cnt { min-width: 34px; padding: 3px 9px; border-radius: 999px; background: var(--tint); color: var(--blue-deep); font-weight: 800; font-size: 13px; text-align: center; }
+.cat-nav { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+.cat-nav .cat-filter { margin: 0; flex: 1; min-width: 0; }
+.cat-back { flex: none; }
+@media (max-width: 560px) { .cat-home { grid-template-columns: 1fr; gap: 8px; } .cat-card { padding: 12px; } .cat-ic { width: 38px; height: 38px; } }
+
+/* ===== محرّر بند التقرير اليومي ===== */
+.dc-list { display: grid; gap: 8px; }
+.dc-row { display: grid; grid-template-columns: 40px 1fr auto auto; gap: 8px; align-items: start; padding: 8px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); }
+.dc-row.minus { border-color: color-mix(in srgb, var(--err) 45%, var(--line)); background: color-mix(in srgb, var(--err) 5%, var(--card)); }
+.dc-sign { width: 40px; height: 40px; border-radius: 10px; border: 0; background: var(--blue); color: #fff; font-size: 22px; font-weight: 800; cursor: pointer; line-height: 1; }
+.dc-row.minus .dc-sign { background: var(--err); }
+.dc-main { display: grid; gap: 6px; min-width: 0; }
+.dc-accs { align-items: center; }
+.dc-num { display: grid; gap: 2px; }
+.dc-val { padding-top: 10px; font-weight: 700; color: var(--muted); white-space: nowrap; font-size: 13px; }
+.dc-add { flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+@media (max-width: 560px) { .dc-row { grid-template-columns: 36px 1fr auto; } .dc-val { grid-column: 2; padding-top: 0; } .dc-sign { width: 36px; height: 36px; } }
+
+/* ===== الصناديق حسب الفرع ===== */
+.box-brh { display: flex; align-items: center; gap: 8px; border-bottom: 2px solid var(--blue-soft); padding-bottom: 8px; }
+.box-sug { margin-top: 12px; border-top: 1px dashed var(--line); padding-top: 10px; }
+.box-sug summary { cursor: pointer; font-weight: 700; color: var(--blue-deep); }
+.bt-list { max-height: 260px; overflow: auto; }
