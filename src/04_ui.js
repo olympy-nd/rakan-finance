@@ -418,45 +418,104 @@
 
     /* ---------- الرسوم ---------- */
     var COLORS = ['#0C4CA2', '#F15C22', '#2E9E6A', '#7A5AF8', '#C2410C'];
+    /* ---------- الرسوم البيانية: تُرسم بالعرض الفعلي للبطاقة حتى لا تتداخل النصوص ---------- */
+    var CHARTS = {}, chartSeq = 0, measCtx = null;
     function chartSVG(ch, rows) {
       if (ch.rowsOverride) rows = ch.rowsOverride;
       rows = rows.filter(function (r) { return !r._b || ch.type !== 'hbar'; }).slice(0, ch.limit || rows.length);
       if (!rows.length) return '';
+      var id = 'ch' + (++chartSeq); CHARTS[id] = { ch: ch, rows: rows };
+      var legend = ch.y.length > 1 ? '<div class="legend">' + ch.y.map(function (k, i) { return '<span><i style="background:' + COLORS[i % COLORS.length] + '"></i>' + esc(ch.yl[i]) + '</span>'; }).join('') + '</div>' : '';
+      return legend + '<div class="chart-box" data-cid="' + id + '">' + drawChart(ch, rows, 640) + '</div>';
+    }
+    function textW(t, px, bold) {
+      try { if (typeof document !== 'undefined') { measCtx = measCtx || document.createElement('canvas').getContext('2d'); measCtx.font = (bold ? '700 ' : '400 ') + px + 'px RkNum, Tajawal, sans-serif'; return measCtx.measureText(String(t)).width; } } catch (e) {}
+      return String(t).length * px * 0.56;
+    }
+    function fitText(t, px, maxW) { t = String(t); if (textW(t, px) <= maxW) return t; while (t.length > 2 && textW(t + '…', px) > maxW) t = t.slice(0, -1); return t + '…'; }
+    function niceTicks(min, max, n) {
+      if (min === max) { if (max === 0) max = 1; else if (max > 0) min = 0; else max = 0; }
+      var raw = (max - min) / n, mag = Math.pow(10, Math.floor(Math.log(raw) / Math.LN10)), e = raw / mag;
+      var step = (e >= 7.5 ? 10 : e >= 3.5 ? 5 : e >= 1.5 ? 2 : 1) * mag, lo = Math.floor(min / step + 1e-9) * step, hi = Math.ceil(max / step - 1e-9) * step, out = [];
+      for (var v = lo; v <= hi + step / 2; v += step) out.push(Math.abs(v) < step / 1e6 ? 0 : v);
+      return out;
+    }
+    function axisUnit(maxAbs) { return maxAbs >= 1e6 ? [1e6, 'بالمليون'] : maxAbs >= 1e4 ? [1e3, 'بالألف'] : [1, '']; }
+    function unitNum(v, u) { var x = v / u; return (Math.abs(x) >= 100 || u === 1 ? Math.round(x) : Math.round(x * 10) / 10).toLocaleString('en-US'); }
+    function svgEsc(t) { return esc(String(t)); }
+    function drawChart(ch, rows, W) {
+      W = Math.max(260, Math.round(W)); var small = W < 480, fs = small ? 11.5 : 12.5, C0 = COLORS;
       var vals = []; rows.forEach(function (r) { ch.y.forEach(function (k) { vals.push(Number(r[k]) || 0); }); });
-      var max = Math.max.apply(null, vals.concat([0])), min = Math.min.apply(null, vals.concat([0])), span = (max - min) || 1;
-      var legend = ch.y.length > 1 ? '<div class="legend">' + ch.y.map(function (k, i) { return '<span><i style="background:' + COLORS[i] + '"></i>' + esc(ch.yl[i]) + '</span>'; }).join('') + '</div>' : '';
+      var max = Math.max.apply(null, vals.concat([0])), min = Math.min.apply(null, vals.concat([0])), maxAbs = Math.max(Math.abs(max), Math.abs(min));
+      var tipOf = function (r, k, v) { return svgEsc(r[ch.x]) + (ch.y.length > 1 ? ' · ' + svgEsc(ch.yl[ch.y.indexOf(k)] || '') : '') + ': ' + fk(v); };
       if (ch.type === 'hbar') {
-        var hh = rows.length * 30 + 6;
-        return legend + '<svg class="chart hb" viewBox="0 0 600 ' + hh + '" role="img" direction="rtl">' + rows.map(function (r, i) {
-          var v = Number(r[ch.y[0]]) || 0, w = Math.max(1, Math.abs(v) / (Math.max(Math.abs(max), Math.abs(min)) || 1) * 280);
-          var lb = String(r[ch.x]); if (lb.length > 24) lb = lb.slice(0, 23) + '…';
-          return '<text x="596" y="' + (i * 30 + 20) + '" text-anchor="start" class="cl">' + esc(lb) + '<title>' + esc(r[ch.x]) + '</title></text>' +
-            '<rect x="' + (370 - w) + '" y="' + (i * 30 + 6) + '" width="' + w + '" height="18" rx="4" fill="' + (v < 0 ? COLORS[1] : COLORS[0]) + '"></rect>' +
-            '<text x="' + (366 - w) + '" y="' + (i * 30 + 19) + '" text-anchor="end" class="cv">' + fk(v) + '</text>';
-        }).join('') + '</svg>';
+        var rh = small ? 30 : 32, vw = textW(fk(maxAbs), fs) + 10, lw = Math.min(Math.max.apply(null, rows.map(function (r) { return textW(r[ch.x], fs); })) + 8, W * (small ? 0.42 : 0.36)), bx = W - lw - 8, area = Math.max(40, bx - vw - 4);
+        var out = rows.map(function (r, i) {
+          var v = Number(r[ch.y[0]]) || 0, w = Math.max(2, Math.abs(v) / (maxAbs || 1) * area), yy = i * rh;
+          return '<g><title>' + tipOf(r, ch.y[0], v) + '</title><text x="' + (W - 2) + '" y="' + (yy + rh / 2 + 4) + '" text-anchor="start" class="cl" style="direction:rtl;unicode-bidi:plaintext">' + svgEsc(fitText(r[ch.x], fs, lw - 6)) + '</text>' +
+            '<rect x="' + (bx - w) + '" y="' + (yy + 7) + '" width="' + w + '" height="' + (rh - 14) + '" rx="4" fill="' + (v < 0 ? C0[1] : C0[0]) + '"></rect>' +
+            '<text x="' + (bx - w - 6) + '" y="' + (yy + rh / 2 + 4) + '" text-anchor="end" class="cv">' + fk(v) + '</text></g>';
+        }).join('');
+        var hh = rows.length * rh;
+        return '<svg class="chart hb" width="100%" viewBox="0 0 ' + W + ' ' + hh + '" role="img" direction="ltr" style="direction:ltr;font-size:' + fs + 'px">' + out + '</svg>';
       }
-      var W = 600, H = 230, pl = 56, pb = 34, pt = 10, iw = W - pl - 10, ih = H - pb - pt;
-      var y = function (v) { return pt + ih - (v - min) / span * ih; };
-      var ticks = [min, min + span / 2, max].map(function (v) { return '<line x1="' + pl + '" x2="' + (W - 10) + '" y1="' + y(v) + '" y2="' + y(v) + '" class="gl"></line><text x="' + (pl - 6) + '" y="' + (y(v) + 4) + '" text-anchor="end" class="cv">' + short(v) + '</text>'; }).join('');
-      var n = rows.length, bw = iw / n, lblEvery = Math.ceil(n / 12);
-      var xl = rows.map(function (r, i) { return i % lblEvery ? '' : '<text x="' + (pl + bw * i + bw / 2) + '" y="' + (H - 12) + '" text-anchor="middle" class="cl">' + esc(String(r[ch.x]).replace(/^أسبوع /, '').slice(0, 12)) + '</text>'; }).join('');
-      var body = '';
+      var ticks = niceTicks(min, max, small ? 4 : 5), tmin = ticks[0], tmax = ticks[ticks.length - 1], u = axisUnit(Math.max(Math.abs(tmin), Math.abs(tmax)));
+      var tl = ticks.map(function (v) { return unitNum(v, u[0]); }), pl = Math.max.apply(null, tl.map(function (t) { return textW(t, fs - 0.5); })) + 12, pr = 10, pt = u[1] ? 22 : 12;
+      // تسميات المحور الأفقي: نحذف السنة إن كانت واحدة لكل الأعمدة، ونميل التسميات أو نتخطى بعضها إذا ضاق المكان
+      var labels = rows.map(function (r) { return String(r[ch.x] == null ? '' : r[ch.x]).replace(/^أسبوع /, ''); }), yearCap = '';
+      // تواريخ: أسبوع «من – إلى» أو يوم ← يوم/شهر، والسنة في العنوان
+      var dm = labels.map(function (l) { return l.match(/^(\d{4})-(\d\d)-(\d\d)(?:\s*[–-]\s*\d{4}-\d\d-\d\d)?$/); });
+      if (labels.length > 1 && dm.every(Boolean)) { labels = dm.map(function (m) { return +m[3] + '/' + +m[2]; }); if (dm.every(function (m) { return m[1] === dm[0][1]; })) yearCap = dm[0][1]; }
+      var ym = labels.map(function (l) { var m = l.match(/^(.+?)\s+(\d{4})$/); return m ? m : null; });
+      if (ym.every(Boolean) && ym.every(function (m) { return m[2] === ym[0][2]; }) && labels.length > 1) { labels = ym.map(function (m) { return m[1]; }); yearCap = ym[0][2]; }
+      var n = rows.length, iw = W - pl - pr, bw = iw / n, lwMax = Math.max.apply(null, labels.map(function (l) { return textW(l, fs); }));
+      var rot = lwMax + 10 > bw, step = rot ? Math.max(1, Math.ceil((fs + 4) / (bw * 0.574))) : 1, cut = small ? 86 : 120;
+      var lab = labels.map(function (l) { return rot ? fitText(l, fs, cut) : l; }), lw2 = Math.max.apply(null, lab.map(function (l) { return textW(l, fs); }));
+      var pb = rot ? Math.ceil(lw2 * 0.574 + fs * 0.82 + 14) : fs + 16, H = (small ? 190 : 230) + pb + pt, ih = H - pt - pb;
+      var y = function (v) { return pt + ih - (v - tmin) / ((tmax - tmin) || 1) * ih; };
+      var g = ticks.map(function (v, i) { var yy = y(v); return '<line x1="' + pl + '" x2="' + (W - pr) + '" y1="' + yy + '" y2="' + yy + '" class="' + (v === 0 ? 'gl0' : 'gl') + '"></line><text x="' + (pl - 7) + '" y="' + (yy + 4) + '" text-anchor="end" class="cv">' + tl[i] + '</text>'; }).join('');
+      var cap = (u[1] || yearCap) ? '<text x="' + (W - pr) + '" y="13" text-anchor="start" class="cap" style="direction:rtl;unicode-bidi:plaintext">' + svgEsc([u[1] ? 'القيم ' + u[1] : '', yearCap ? 'سنة ' + yearCap : ''].filter(Boolean).join(' · ')) + '</text>' : '';
+      var cx = function (i) { return pl + bw * i + bw / 2; }, base = H - pb + fs + 6;
+      var xl = lab.map(function (l, i) {
+        if (i % step && i !== n - 1) return ''; if (i === n - 1 && i % step && (n - 1) % step < step / 2 && n > step) return '';
+        return rot ? '<text x="' + cx(i) + '" y="' + (H - pb + 12) + '" text-anchor="start" class="cl" transform="rotate(-35 ' + cx(i) + ' ' + (H - pb + 12) + ')" style="direction:rtl;unicode-bidi:plaintext">' + svgEsc(l) + '</text>'
+          : '<text x="' + cx(i) + '" y="' + base + '" text-anchor="middle" class="cl" style="direction:rtl;unicode-bidi:plaintext">' + svgEsc(l) + '</text>';
+      }).join('');
+      var body = '', ns = ch.y.length;
       if (ch.type === 'line') {
         ch.y.forEach(function (k, j) {
-          var pts = rows.map(function (r, i) { return (pl + bw * i + bw / 2) + ',' + y(Number(r[k]) || 0); }).join(' ');
-          body += '<polyline points="' + pts + '" fill="none" stroke="' + COLORS[j] + '" stroke-width="2.5"></polyline>';
-          if (n <= 40) rows.forEach(function (r, i) { body += '<circle cx="' + (pl + bw * i + bw / 2) + '" cy="' + y(Number(r[k]) || 0) + '" r="3" fill="' + COLORS[j] + '"><title>' + esc(r[ch.x]) + ': ' + fk(r[k]) + '</title></circle>'; });
+          var pts = rows.map(function (r, i) { return cx(i).toFixed(1) + ',' + y(Number(r[k]) || 0).toFixed(1); }).join(' ');
+          body += '<polyline points="' + pts + '" fill="none" stroke="' + C0[j % C0.length] + '" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"></polyline>';
+          if (n <= 60) rows.forEach(function (r, i) { var v = Number(r[k]) || 0; body += '<circle cx="' + cx(i) + '" cy="' + y(v) + '" r="' + (n <= 24 ? 3.5 : 2.5) + '" fill="#fff" stroke="' + C0[j % C0.length] + '" stroke-width="2"><title>' + tipOf(r, k, v) + '</title></circle>'; });
         });
       } else {
-        var gw = bw * 0.78, sw = gw / ch.y.length;
+        var gw = Math.min(bw * 0.74, 46 * ns), sw = gw / ns, showV = ns === 1 && sw >= 26 && n <= 16, y0 = y(0 < tmin ? tmin : 0 > tmax ? tmax : 0);
         rows.forEach(function (r, i) {
           ch.y.forEach(function (k, j) {
-            var v = Number(r[k]) || 0, y0 = y(Math.max(0, min)), y1 = y(v);
-            body += '<rect x="' + (pl + bw * i + (bw - gw) / 2 + sw * j) + '" y="' + Math.min(y0, y1) + '" width="' + Math.max(1, sw - 1) + '" height="' + Math.max(1, Math.abs(y1 - y0)) + '" rx="2" fill="' + COLORS[j] + '"><title>' + esc(r[ch.x]) + ': ' + fk(v) + '</title></rect>';
+            var v = Number(r[k]) || 0, y1 = y(v), x0 = pl + bw * i + (bw - gw) / 2 + sw * j;
+            body += '<rect x="' + x0.toFixed(1) + '" y="' + Math.min(y0, y1).toFixed(1) + '" width="' + Math.max(1, sw - (ns > 1 ? 2 : 0)).toFixed(1) + '" height="' + Math.max(1, Math.abs(y1 - y0)).toFixed(1) + '" rx="3" fill="' + (ns === 1 && v < 0 ? C0[1] : C0[j % C0.length]) + '"><title>' + tipOf(r, k, v) + '</title></rect>';
+            if (showV && v) { var tv = unitNum(v, u[0]); if (textW(tv, fs - 1) < sw + 6) body += '<text x="' + (x0 + sw / 2) + '" y="' + (v >= 0 ? y1 - 5 : y1 + fs + 2) + '" text-anchor="middle" class="cvb">' + tv + '</text>'; }
           });
         });
       }
-      return legend + '<svg class="chart" viewBox="0 0 ' + W + ' ' + H + '" role="img" direction="ltr">' + ticks + body + xl + '</svg>';
+      return '<svg class="chart" width="100%" viewBox="0 0 ' + W + ' ' + H + '" role="img" direction="ltr" style="direction:ltr;font-size:' + fs + 'px">' + cap + g + body + xl + '</svg>';
+    }
+    function fitCharts() {
+      if (typeof document === 'undefined') return;
+      var live = {};
+      qa('.chart-box[data-cid]', document).forEach(function (el) {
+        var id = el.dataset.cid, sp = CHARTS[id]; live[id] = 1; if (!sp) return;
+        var w = el.clientWidth; if (!w || Math.abs(w - (el._w || 0)) < 3) return;
+        el._w = w; el.innerHTML = drawChart(sp.ch, sp.rows, w);
+      });
+      Object.keys(CHARTS).forEach(function (k) { if (!live[k] && +k.slice(2) < chartSeq - 40) delete CHARTS[k]; });
+    }
+    if (typeof document !== 'undefined' && typeof MutationObserver !== 'undefined' && !window.__rkChartObs) {
+      var fitQ = 0, queueFit = function () { if (fitQ) return; fitQ = 1; requestAnimationFrame(function () { fitQ = 0; fitCharts(); }); };
+      window.__rkChartObs = new MutationObserver(function (ms) { for (var i = 0; i < ms.length; i++) if (ms[i].addedNodes.length) { queueFit(); return; } });
+      window.__rkChartObs.observe(document.body || document.documentElement, { childList: true, subtree: true });
+      window.addEventListener('resize', queueFit);
+      if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { qa('.chart-box', document).forEach(function (el) { el._w = 0; }); fitCharts(); });
     }
     function short(v) { var a = Math.abs(v); return (a >= 1e6 ? (v / 1e6).toFixed(1) + 'م' : a >= 1e3 ? (v / 1e3).toFixed(0) + 'أ' : fk(v)); }
 
