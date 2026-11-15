@@ -1,4 +1,7 @@
 /* راكان · تطبيق التتبع — هوية راكان: أزرق #0C4CA2 وبرتقالي #F15C22 وخط تجوال */
+@font-face { font-family: RkNum; src: url(fonts/RkNum-400.woff2) format('woff2'); font-weight: 400; font-display: swap; unicode-range: U+0030-0039, U+002C, U+002E, U+0025, U+002D, U+2212, U+002B; }
+@font-face { font-family: RkNum; src: url(fonts/RkNum-700.woff2) format('woff2'); font-weight: 700; font-display: swap; unicode-range: U+0030-0039, U+002C, U+002E, U+0025, U+002D, U+2212, U+002B; }
+@font-face { font-family: RkNum; src: url(fonts/RkNum-800.woff2) format('woff2'); font-weight: 800; font-display: swap; unicode-range: U+0030-0039, U+002C, U+002E, U+0025, U+002D, U+2212, U+002B; }
 @font-face { font-family: Tajawal; src: url(fonts/Tajawal-Regular.ttf); font-weight: 400; font-display: swap; }
 @font-face { font-family: Tajawal; src: url(fonts/Tajawal-Bold.ttf); font-weight: 700; font-display: swap; }
 @font-face { font-family: Tajawal; src: url(fonts/Tajawal-ExtraBold.ttf); font-weight: 800; font-display: swap; }
@@ -7,7 +10,7 @@
   --bg: #EEF2F8; --card: #FFFFFF; --ink: #1B2433; --muted: #5B6678; --line: #DCE3EE; --tint: #F2F6FC;
   --blue: #0C4CA2; --blue-deep: #08386F; --blue-soft: #E5EEFA; --orange: #F15C22; --orange-soft: #FEEDE5;
   --ok: #157347; --ok-soft: #E3F4EA; --warn: #A15C00; --warn-soft: #FFF3D6; --err: #B23E10; --err-soft: #FEF1EB;
-  --font: Tajawal, "Segoe UI", Tahoma, sans-serif; --mono: ui-monospace, Consolas, monospace;
+  --font: RkNum, Tajawal, "Segoe UI", Tahoma, sans-serif; --mono: ui-monospace, Consolas, monospace;
   --r: 14px; --shadow: 0 1px 2px rgba(16, 30, 60, .06);
   color-scheme: light;
 }
@@ -32,6 +35,7 @@ body { background: var(--bg); color: var(--ink); font-family: var(--font); font-
   -webkit-tap-highlight-color: transparent; min-height: 100vh; }
 button, input, select, textarea { font: inherit; color: inherit; }
 .num, .ltr { direction: ltr; unicode-bidi: isolate; font-variant-numeric: tabular-nums; }
+.tbl td.n, .tbl th.n, .num, table.daily td { font-variant-numeric: tabular-nums; letter-spacing: .01em; }
 .muted { color: var(--muted); }
 .small { font-size: 13.5px; }
 [hidden] { display: none !important; }
