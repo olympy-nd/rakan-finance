@@ -458,6 +458,8 @@
     function short(v) { var a = Math.abs(v); return (a >= 1e6 ? (v / 1e6).toFixed(1) + 'م' : a >= 1e3 ? (v / 1e3).toFixed(0) + 'أ' : fk(v)); }
 
     function openReport(id, params) {
+      // نحفظ موضع قائمة التقارير لنعود إليه عند الرجوع
+      if (!F.cur) F.catY = A.st.tab === 'reports' ? (window.scrollY || 0) : 0;
       var def = id.indexOf('c:') === 0 ? F.reports.filter(function (r) { return 'c:' + r.id === id; })[0] : null;
       if (!def && !R[id]) { toast('التقرير غير موجود', true); return; }
       var t = today();
@@ -534,10 +536,21 @@
 
     /* ---------- التصفية (عملاء، أصناف، مخازن…) ---------- */
     // البُعد ← مفتاح التصفية، والعنوان، ونص زر الإضافة
-    var DIM = { cust: ['cust', 'العملاء', 'عميل'], supp: ['cust', 'الموردون', 'مورد'], item: ['item', 'الأصناف', 'صنف'], st: ['st', 'المخازن', 'مخزن'], ag: ['ag', 'المناديب', 'مندوب'],
-      cat: ['cat', 'فئات المناديب', 'فئة مندوب'], xcat: ['xcat', 'استثناء فئات', 'استثناء فئة'], u: ['u', 'المستخدمون', 'مستخدم'], xcust: ['xcust', 'استثناء العملاء', 'استثناء عميل'], xitem: ['xitem', 'استثناء الأصناف', 'استثناء صنف'] };
+    var DIM = { cust: ['cust', 'العملاء', 'عميل', 'عملاء محددون بالاسم'], supp: ['cust', 'الموردون', 'مورد', 'موردون محددون بالاسم'], item: ['item', 'الأصناف', 'صنف', 'أصناف محددة'], st: ['st', 'المخازن', 'مخزن', 'مخزن أو سيارة'], ag: ['ag', 'المناديب', 'مندوب', 'مناديب محددون'],
+      cacc: ['cacc', 'حسابات العملاء', 'حساب عملاء', 'كل العملاء تحت حساب رئيسي أو فرعي من الدليل'], cgrp: ['cgrp', 'مجموعات العملاء', 'مجموعة عملاء', 'المجموعات المعرّفة في الإعدادات'],
+      cat: ['cat', 'فئات المناديب', 'فئة مندوب', 'جملة، تجزئة، أسواق…'], u: ['u', 'المستخدمون', 'مستخدم', 'من أدخل الفاتورة'],
+      xcust: ['xcust', 'استثناء العملاء', 'استثناء عميل', 'إخفاء عملاء محددين'], xcacc: ['xcacc', 'استثناء حسابات العملاء', 'استثناء حساب عملاء', 'إخفاء كل العملاء تحت حساب'], xcgrp: ['xcgrp', 'استثناء مجموعات العملاء', 'استثناء مجموعة', 'إخفاء مجموعة عملاء'],
+      xcat: ['xcat', 'استثناء فئات المناديب', 'استثناء فئة', 'إخفاء فئة مناديب'], xitem: ['xitem', 'استثناء الأصناف', 'استثناء صنف', 'إخفاء أصناف محددة'] };
     var FDIMS = {}; Object.keys(DIM).forEach(function (k) { FDIMS[k] = DIM[k][1]; });
-    function fdimsFor(def) { return def.fdims || (def.cat === 'stock' ? ['item', 'st', 'xitem'] : def.cat === 'purch' ? ['supp', 'item', 'st', 'u'] : ['cust', 'item', 'st', 'ag', 'cat', 'u', 'xcust', 'xitem']); }
+    function fdimsFor(def) { return normDims(def.fdims || (def.cat === 'stock' ? ['item', 'st', 'xitem'] : def.cat === 'purch' ? ['supp', 'item', 'st', 'u'] : ['cust', 'item', 'st', 'ag', 'cat', 'u', 'xcust', 'xitem'])); }
+    // كل تقرير فيه تصفية العميل يأخذ معها حسابات العملاء ومجموعاتهم، وكل تقرير فيه المندوب يأخذ فئات المناديب
+    function normDims(d) {
+      var o = d.slice(), add = function (after, k) { if (o.indexOf(k) >= 0) return; var i = o.indexOf(after); o.splice(i < 0 ? o.length : i + 1, 0, k); };
+      if (o.indexOf('cust') >= 0) { add('cust', 'cacc'); add('cacc', 'cgrp'); }
+      if (o.indexOf('xcust') >= 0) { add('xcust', 'xcacc'); add('xcacc', 'xcgrp'); }
+      if (o.indexOf('ag') >= 0) { add('ag', 'cat'); if (o.indexOf('xcust') >= 0 || o.indexOf('xitem') >= 0) add(o.indexOf('xitem') >= 0 ? 'xitem' : 'xcgrp', 'xcat'); }
+      return o;
+    }
     function fltOptions(dim) {
       var Tt = T(), out = [], seen = {};
       var addAcc = function (id, name) { if (seen[id] || !id) return; seen[id] = 1; var a = acc(id); out.push({ id: '@' + id, name: name || (a ? a.name : id), sub: a ? a.code : '' }); };
@@ -549,42 +562,48 @@
       } else if (dim === 'st') Object.keys(Tt.st).forEach(function (id) { out.push({ id: '@' + id, name: storeName(id) }); });
       else if (dim === 'ag') Object.keys(Tt.ag).forEach(function (id) { out.push({ id: '@' + id, name: repName(id) }); });
       else if (dim === 'cat' || dim === 'xcat') repCats().forEach(function (c) { out.push({ id: '@' + c, name: c }); });
+      else if (dim === 'cgrp' || dim === 'xcgrp') { cgList().forEach(function (g, i) { out.push({ id: '@' + g.id, name: g.name, sub: (g.codes || []).join('، '), ord: i }); }); out.push({ id: '@' + CG_NONE, name: 'بدون مجموعة', ord: 999 }); return out; }
+      else if (dim === 'cacc' || dim === 'xcacc') { var tr = custTreeAccs(), base = tr.length ? Math.min.apply(null, tr.map(function (a) { return a.lvl; })) : 1; return tr.map(function (a) { return { id: '@' + a.id, name: a.name, sub: a.code + ' · ' + a.kids.length + ' فرع', lvl: a.lvl - base }; }); }
       else if (dim === 'u') Object.keys(Tt.us).forEach(function (id) { out.push({ id: '@' + id, name: userName(id) }); });
       return out.sort(function (a, b) { return String(a.name).localeCompare(String(b.name), 'ar'); });
     }
     function fObj(f) { return f && typeof f === 'object' ? f : (parseFilter(f) || {}); }
     function fCount(f) { f = fObj(f); return Object.keys(f).reduce(function (n, k) { return n + ((f[k] && f[k].length) || 0); }, 0); }
-    // لوحة التصفية: أزرار إضافة، وتحتها كل ما تم اختياره بالاسم مع زر حذف لكل واحد
+    // شريط التصفية: كل تصفية مطبّقة مجموعة بعنوانها وقيمها (كل قيمة تُحذف وحدها)، وزر «إضافة تصفية» يفتح قائمة مرتبة: عرض فقط / استثناء
     function fltPanelHTML(dims, f, key) {
       f = fObj(f);
       var applied = dims.filter(function (d) { var v = f[DIM[d][0]]; return v && v.length; });
       applied = applied.filter(function (d, i) { return applied.map(function (x) { return DIM[x][0]; }).indexOf(DIM[d][0]) === i; });
-      var open = applied.length || (F.fpOpen && F.fpOpen[key]);
-      return '<details class="fp" data-fp="' + key + '"' + (open ? ' open' : '') + '><summary class="fp-sum"><span class="fp-t">' + ICON_FILTER + ' تصفية</span>' + (applied.length ? '<span class="fp-cnt">' + fCount(f) + ' محدد</span>' : '<span class="small muted">عميل، صنف، مخزن… (اختياري)</span>') + '<i class="car">▾</i></summary><div class="fp-head">' + dims.map(function (d) {
-        var n = (f[DIM[d][0]] || []).length;
-        return '<button class="chip fp-add' + (n ? ' on' : '') + (/^x/.test(d) ? ' fp-x' : '') + '" data-fadd="' + key + '|' + d + '">' + (/^x/.test(d) ? '− ' : '+ ') + esc(DIM[d][2]) + (n ? ' <span class="fp-n">' + n + '</span>' : '') + '</button>';
-      }).join('') + '</div>' +
-        (applied.length ? '<div class="fp-applied">' + applied.map(function (d) {
+      var inc = dims.filter(function (d) { return !/^x/.test(d); }), exc = dims.filter(function (d) { return /^x/.test(d); });
+      var tile = function (d) { var n = (f[DIM[d][0]] || []).length; return '<button class="fx-tile' + (/^x/.test(d) ? ' x' : '') + (n ? ' on' : '') + '" data-fadd="' + key + '|' + d + '"><b>' + esc(DIM[d][1]) + (n ? ' <span class="fx-n">' + n + '</span>' : '') + '</b><span>' + esc(DIM[d][3] || '') + '</span></button>'; };
+      var open = F.fpOpen && F.fpOpen[key];
+      return '<div class="fx' + (applied.length ? ' has' : '') + '"><div class="fx-bar"><span class="fx-t">' + ICON_FILTER + ' التصفية' + (applied.length ? ' <span class="fp-cnt">' + fCount(f) + '</span>' : '') + '</span>' +
+        (applied.length ? '<div class="fp-applied fx-list">' + applied.map(function (d) {
           var k = DIM[d][0], v = f[k];
-          return '<div class="fp-row"><span class="fp-lbl">' + esc(DIM[d][1]) + ' (' + v.length + '):</span>' + v.map(function (x, i) {
+          return '<div class="fx-grp' + (/^x/.test(k) ? ' x' : '') + '"><button class="fx-k" data-fedit="' + key + '|' + d + '" title="تعديل">' + esc(DIM[d][1]) + ' ▾</button>' + v.map(function (x, i) {
             return '<span class="fp-tag' + (/^x/.test(k) ? ' x' : '') + '">' + esc(fltName(k, x)) + '<button aria-label="إزالة" data-frm="' + key + '|' + k + '|' + i + '">×</button></span>';
           }).join('') + '</div>';
-        }).join('') + '<button class="btn sm ghost fp-clear" data-fclr="' + key + '">✕ إلغاء كل التصفية</button></div>'
-          : '<div class="fp-none small muted">بدون تصفية: يُعرض الكل.</div>') + '</details>';
+        }).join('') + '</div>' : '<span class="fx-none small muted">بدون تصفية: يُعرض الكل</span>') +
+        '<details class="fp fx-menu" data-fp="' + key + '"' + (open ? ' open' : '') + '><summary class="fx-add">+ إضافة تصفية</summary><div class="fx-pop">' +
+        '<div class="fx-sec">عرض فقط</div><div class="fx-tiles">' + inc.map(tile).join('') + '</div>' +
+        (exc.length ? '<div class="fx-sec x">استثناء (إخفاء)</div><div class="fx-tiles">' + exc.map(tile).join('') + '</div>' : '') + '</div></details>' +
+        (applied.length ? '<button class="fx-clear" data-fclr="' + key + '">مسح الكل</button>' : '') + '</div></div>';
     }
     function bindFltPanel(m, key, dims, getF, setF) {
       var dt = q('[data-fp="' + key + '"]', m); if (dt) dt.addEventListener('toggle', function () { F.fpOpen = F.fpOpen || {}; F.fpOpen[key] = dt.open; });
-      qa('[data-fadd^="' + key + '|"]', m).forEach(function (b) {
-        b.onclick = function () {
-          var d = b.dataset.fadd.split('|')[1], k = DIM[d][0], f = Object.assign({}, fObj(getF()));
-          pickMulti({ title: 'اختر ' + DIM[d][1], options: fltOptions(d), value: f[k] || [] }).then(function (v) { if (!v) return; f[k] = v; if (!v.length) delete f[k]; setF(fCount(f) ? f : null); });
-        };
-      });
+      var pick = function (d) {
+        var k = DIM[d][0], f = Object.assign({}, fObj(getF()));
+        F.fpOpen = F.fpOpen || {}; F.fpOpen[key] = false;
+        pickMulti({ title: (/^x/.test(d) ? '' : 'عرض فقط: ') + DIM[d][1], hint: DIM[d][3], options: fltOptions(d), value: f[k] || [] }).then(function (v) { if (!v) { A.render(); return; } f[k] = v; if (!v.length) delete f[k]; setF(fCount(f) ? f : null); });
+      };
+      qa('[data-fadd^="' + key + '|"], [data-fedit^="' + key + '|"]', m).forEach(function (b) { b.onclick = function (e) { e.preventDefault(); pick((b.dataset.fadd || b.dataset.fedit).split('|')[1]); }; });
       qa('[data-frm^="' + key + '|"]', m).forEach(function (b) {
         b.onclick = function () { var p2 = b.dataset.frm.split('|'), f = Object.assign({}, fObj(getF())); f[p2[1]] = (f[p2[1]] || []).filter(function (x, i) { return i !== Number(p2[2]); }); if (!f[p2[1]].length) delete f[p2[1]]; setF(fCount(f) ? f : null); };
       });
       var c = q('[data-fclr="' + key + '"]', m);
       if (c) c.onclick = function () { setF(null); };
+      // إغلاق القائمة عند الضغط خارجها
+      if (dt && dt.open) setTimeout(function () { var h = function (e) { if (!dt.contains(e.target)) { dt.open = false; document.removeEventListener('click', h, true); } }; document.addEventListener('click', h, true); }, 0);
     }
     var ICON_FILTER = '<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" style="vertical-align:-3px"><path fill="currentColor" d="M3 5h18l-7 8v6l-4 2v-8z"/></svg>';
 
@@ -668,7 +687,7 @@
     function bindReport(m) {
       var c = F.cur, p = c.p, def = curDef();
       var save = function () { st.finParams = st.finParams || {}; st.finParams[c.id] = Object.assign({}, p); try { localStorage.setItem('rk.finParams', JSON.stringify(st.finParams)); } catch (e) {} };
-      q('[data-back]', m).onclick = function () { F.cur = null; A.render(); };
+      q('[data-back]', m).onclick = function () { var y = F.catY || 0; F.cur = null; A.render(); var go2 = function (n) { window.scrollTo(0, y); if (n && Math.abs(window.scrollY - y) > 2) requestAnimationFrame(function () { go2(n - 1); }); }; requestAnimationFrame(function () { go2(5); }); };
       bindPeriod(m, 'rep', function () { return p; }, function (ps) { Object.assign(p, ps); save(); A.render(); }, def.params.indexOf('period') >= 0);
       qa('[data-pk]', m).forEach(function (el) {
         el.addEventListener('change', function () { p[el.dataset.pk] = el.value; if (el.dataset.pk === 'from' || el.dataset.pk === 'to') p.preset = 'custom'; save(); A.render(); });
@@ -791,7 +810,7 @@
         var sel = (opts.value || []).map(String), byId = {}, onlySel = false;
         opts.options.forEach(function (o) { byId[String(o.id)] = o; });
         var nameOf = function (id) { var o = byId[id] || byId['@' + id] || byId[String(id).replace(/^@/, '')]; return o ? o.name : String(id).replace(/^@/, ''); };
-        sheet(opts.title || 'اختر', '<div class="pm-sel" id="pms"></div><input class="input" id="mq" placeholder="اكتب للبحث بالاسم أو الرمز…">' +
+        sheet(opts.title || 'اختر', (opts.hint ? '<p class="small muted" style="margin:0 0 6px">' + esc(opts.hint) + '</p>' : '') + '<div class="pm-sel" id="pms"></div><input class="input" id="mq" placeholder="اكتب للبحث بالاسم أو الرمز…">' +
           '<div class="row small pm-tools"><label class="chk"><input type="checkbox" id="mso"> المحدد فقط</label><span class="grow"></span><button class="btn sm ghost" data-all>تحديد كل الظاهر</button><button class="btn sm ghost" data-none>إلغاء التحديد</button></div>' +
           '<div class="list acc-list pm-list" id="ml"></div><button class="btn primary big" data-ok></button>', function (s) {
           var inp = q('#mq', s.el), ml = q('#ml', s.el), shown = [];
@@ -805,7 +824,7 @@
             var t = inp.value.trim();
             var list = opts.options.filter(function (o) { return (!onlySel || sel.indexOf(String(o.id)) >= 0) && (!t || (o.name + ' ' + (o.sub || '')).indexOf(t) >= 0); });
             shown = list.slice(0, 400);
-            ml.innerHTML = shown.map(function (o) { var on = sel.indexOf(String(o.id)) >= 0; return '<button class="item tap pm-it' + (on ? ' sel' : '') + '" data-o="' + esc(o.id) + '"><span class="pm-box">' + (on ? '✓' : '') + '</span><div class="main"><b>' + esc(o.name) + '</b>' + (o.sub ? '<div class="meta"><span class="num">' + esc(o.sub) + '</span></div>' : '') + '</div></button>'; }).join('') +
+            ml.innerHTML = shown.map(function (o) { var on = sel.indexOf(String(o.id)) >= 0; return '<button class="item tap pm-it' + (on ? ' sel' : '') + '" data-o="' + esc(o.id) + '"' + (o.lvl && !t ? ' style="padding-inline-start:' + (10 + o.lvl * 16) + 'px"' : '') + '><span class="pm-box">' + (on ? '✓' : '') + '</span><div class="main"><b>' + esc(o.name) + '</b>' + (o.sub ? '<div class="meta"><span class="num">' + esc(o.sub) + '</span></div>' : '') + '</div></button>'; }).join('') +
               (list.length > shown.length ? '<p class="small muted">يظهر ' + shown.length + ' من ' + list.length + '، اكتب في البحث لتضييق القائمة</p>' : '') || '<p class="muted">لا نتائج</p>';
             qa('[data-o]', ml).forEach(function (b) { b.onclick = function () { var id = b.dataset.o, i = sel.indexOf(id); if (i >= 0) sel.splice(i, 1); else sel.push(id); draw(); }; });
             drawSel();
@@ -1085,7 +1104,7 @@
     }
 
     /* ---------- الإعدادات ---------- */
-    var SET_TABS = [['boxes', 'الصناديق والبنوك'], ['cards', 'بطاقات لوحة المؤشرات'], ['daily', 'التقرير اليومي'], ['groups', 'مجموعات الحسابات'], ['reps', 'المندوبون وفئاتهم'], ['data', 'البيانات']];
+    var SET_TABS = [['boxes', 'الصناديق والبنوك'], ['cards', 'بطاقات لوحة المؤشرات'], ['daily', 'التقرير اليومي'], ['groups', 'مجموعات الحسابات'], ['cgroups', 'مجموعات العملاء'], ['reps', 'المندوبون وفئاتهم'], ['data', 'البيانات']];
     function boxSuggestions() {
       var defined = {}; F.boxes.forEach(function (b) { defined[b.acc] = 1; });
       return F.D.accList.filter(function (a) {
@@ -1128,6 +1147,8 @@
           listEditorHTML('daily', dd.rows, { from: d0, to: d0 }) +
           '<div class="row" style="margin-top:10px"><button class="btn" data-dadd>+ سطر</button><button class="btn ghost" data-dsep>+ عنوان قسم</button><span class="grow"></span><button class="btn ghost" data-dreset>استعادة الافتراضي</button><button class="btn accent" data-dsave' + (F.dirtyKeys && F.dirtyKeys.daily ? '' : ' disabled') + '>حفظ التغييرات</button></div></div>' +
           '<div class="card"><h3>ملاحظة عن Sell-Out</h3><p class="small" style="margin:0">«Total Sell-Out» افتراضياً = الكمية المباعة لكل العملاء. لحصره في عملاء أو أصناف أو مخزن معين: اضغط «تعديل» على السطر، ثم «كل العملاء» أو «كل الأصناف» واختر ما تريد.</p></div>';
+      } else if (tab === 'cgroups') {
+        h += cgSettingsHTML();
       } else if (tab === 'reps') {
         h += repsSettingsHTML();
       } else if (tab === 'groups') {
@@ -1195,6 +1216,8 @@
         q('[data-dsep]', m).onclick = function () { editItem({ name: '', f: '' }, 'row', { from: d0, to: d0 }).then(function (o) { if (o) { dd.rows.push(o); chd(); } }); };
         q('[data-dsave]', m).onclick = function () { saveConfig('daily', { title: dd.title, rows: dd.rows }, this); };
         q('[data-dreset]', m).onclick = function () { A.confirmBox('استعادة الافتراضي', 'استبدال أسطر التقرير اليومي بالأسطر الافتراضية (مثل نموذج الإدارة)؟', 'استعادة').then(function (y) { if (y) saveConfig('daily', null); }); };
+      } else if (tab === 'cgroups') {
+        bindCgSettings(m);
       } else if (tab === 'reps') {
         bindRepsSettings(m);
       } else if (tab === 'groups') {

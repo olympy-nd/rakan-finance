@@ -473,16 +473,21 @@
     // حسابات العملاء بعد تصفية العميل (للمديونية والتحصيل وأعمار الديون)
     function partyFilter(ids, flt) {
       var f = parseFilter(flt);
-      if (!f || !((f.cust && f.cust.length) || (f.xcust && f.xcust.length))) return ids;
+      if (!f || !CUST_KEYS.some(function (k) { return f[k] && f[k].length; })) return ids;
       return ids.filter(function (id) {
         var a = acc(id), nm = a ? a.name : '', cd = a ? a.code : '';
         if (f.cust && f.cust.length && !matchAny(f.cust, id, nm, cd)) return false;
         if (f.xcust && f.xcust.length && matchAny(f.xcust, id, nm, cd)) return false;
+        if (f.cacc && f.cacc.length && !caccMatch(f.cacc, id)) return false;
+        if (f.xcacc && f.xcacc.length && caccMatch(f.xcacc, id)) return false;
+        if (f.cgrp && f.cgrp.length && !cgMatch(f.cgrp, id)) return false;
+        if (f.xcgrp && f.xcgrp.length && cgMatch(f.xcgrp, id)) return false;
         return true;
       });
     }
     function recvFor(flt) { return partyFilter(recvIds(), flt); }
-    function hasCustF(flt) { var f = parseFilter(flt); return !!(f && ((f.cust && f.cust.length) || (f.xcust && f.xcust.length))); }
+    var CUST_KEYS = ['cust', 'xcust', 'cacc', 'xcacc', 'cgrp', 'xcgrp'];
+    function hasCustF(flt) { var f = parseFilter(flt); return !!(f && CUST_KEYS.some(function (k) { return f[k] && f[k].length; })); }
     function matchAny(list, id, name, code) {
       return list.some(function (x) {
         x = String(x);
@@ -497,6 +502,10 @@
       if (!f) return true;
       if (f.cust && f.cust.length && !custMatch(f.cust, v)) return false;
       if (f.xcust && f.xcust.length && custMatch(f.xcust, v)) return false;
+      if (f.cacc && f.cacc.length && !caccMatch(f.cacc, v.ck)) return false;
+      if (f.xcacc && f.xcacc.length && caccMatch(f.xcacc, v.ck)) return false;
+      if (f.cgrp && f.cgrp.length && !cgMatch(f.cgrp, v.ck)) return false;
+      if (f.xcgrp && f.xcgrp.length && cgMatch(f.xcgrp, v.ck)) return false;
       if (f.ag && f.ag.length && !matchAny(f.ag, v.ag, (T().ag[v.ag] || {}).name)) return false;
       if (f.cat && f.cat.length && f.cat.map(function (x) { return String(x).replace(/^@/, ''); }).indexOf(repCat(v.ag)) < 0) return false;
       if (f.xcat && f.xcat.length && f.xcat.map(function (x) { return String(x).replace(/^@/, ''); }).indexOf(repCat(v.ag)) >= 0) return false;
@@ -858,11 +867,11 @@
     function storeName(id) { return (T().st[id] || {}).name || (id ? 'مخزن ' + id : 'بدون'); }
     function repName(id) { return (T().ag[id] || {}).name || 'بدون مندوب'; }
     function userName(id) { return (T().us[id] || {}).name || 'غير معروف'; }
-    function noteF(p) { var f = parseFilter(p.flt); if (!f) return ''; var parts = []; Object.keys(f).forEach(function (k) { if (f[k] && f[k].length) parts.push(FLT_LABEL[k] + ': ' + f[k].map(function (x) { return fltName(k, x); }).join('، ')); }); return parts.length ? 'التصفية: ' + parts.join(' · ') : ''; }
-    var FLT_LABEL = { cust: 'العميل', item: 'الصنف', st: 'المخزن', ag: 'المندوب', u: 'المستخدم', xcust: 'بدون العميل', xitem: 'بدون الصنف', xst: 'بدون المخزن', type: 'النوع' };
-    function fltName(k, x) { x = String(x).replace(/^@/, ''); return k === 'cust' || k === 'xcust' ? (acc(x) ? acc(x).name : x) : k === 'item' || k === 'xitem' ? (T().item[x] ? itemName(x) : x) : k === 'st' || k === 'xst' ? (T().st[x] ? storeName(x) : x) : k === 'ag' ? (T().ag[x] ? repName(x) : x) : k === 'u' ? (T().us[x] ? userName(x) : x) : x; }
+    function noteF(p) { var f = parseFilter(p.flt); if (!f) return ''; var parts = []; Object.keys(f).forEach(function (k) { if (f[k] && f[k].length) parts.push((FLT_LABEL[k] || k) + ': ' + f[k].map(function (x) { return fltName(k, x); }).join('، ')); }); return parts.length ? 'التصفية: ' + parts.join(' · ') : ''; }
+    var FLT_LABEL = { cust: 'العميل', item: 'الصنف', st: 'المخزن', ag: 'المندوب', u: 'المستخدم', xcust: 'بدون العميل', xitem: 'بدون الصنف', xst: 'بدون المخزن', type: 'النوع', cat: 'فئة المندوب', xcat: 'بدون فئة المندوب', cacc: 'حساب العملاء', xcacc: 'بدون حساب العملاء', cgrp: 'مجموعة العملاء', xcgrp: 'بدون مجموعة العملاء' };
+    function fltName(k, x) { x = String(x).replace(/^@/, ''); if (k === 'cgrp' || k === 'xcgrp') return cgName(x); if (k === 'cacc' || k === 'xcacc') return acc(x) ? acc(x).code + ' ' + acc(x).name : x; return k === 'cust' || k === 'xcust' ? (acc(x) ? acc(x).name : x) : k === 'item' || k === 'xitem' ? (T().item[x] ? itemName(x) : x) : k === 'st' || k === 'xst' ? (T().st[x] ? storeName(x) : x) : k === 'ag' ? (T().ag[x] ? repName(x) : x) : k === 'u' ? (T().us[x] ? userName(x) : x) : x; }
     function hasItemF(flt) { var f = parseFilter(flt); return !!(f && ((f.item && f.item.length) || (f.xitem && f.xitem.length) || (f.st && f.st.length))); }
-    function custKeys(flt) { if (!hasCustF(flt)) return null; var ok = {}, f = parseFilter(flt); F.D.invs.forEach(function (v) { if ((v.c === SALE || v.c === SRET) && invPass(v, { cust: f.cust, xcust: f.xcust })) ok[v.ck] = 1; }); return ok; }
+    function custKeys(flt) { if (!hasCustF(flt)) return null; var ok = {}, f = parseFilter(flt); F.D.invs.forEach(function (v) { if ((v.c === SALE || v.c === SRET) && invPass(v, { cust: f.cust, xcust: f.xcust, cacc: f.cacc, xcacc: f.xcacc, cgrp: f.cgrp, xcgrp: f.xcgrp })) ok[v.ck] = 1; }); return ok; }
     function withNote(res, p) { var n = noteF(p); if (n) res.note = (res.note ? res.note + ' · ' : '') + n; return res; }
 
     // تجميع المبيعات حسب مفتاح (من أسطر الفواتير، فتعمل معها تصفية الصنف والمخزن)
@@ -1992,6 +2001,8 @@
     function short(v) { var a = Math.abs(v); return (a >= 1e6 ? (v / 1e6).toFixed(1) + 'م' : a >= 1e3 ? (v / 1e3).toFixed(0) + 'أ' : fk(v)); }
 
     function openReport(id, params) {
+      // نحفظ موضع قائمة التقارير لنعود إليه عند الرجوع
+      if (!F.cur) F.catY = A.st.tab === 'reports' ? (window.scrollY || 0) : 0;
       var def = id.indexOf('c:') === 0 ? F.reports.filter(function (r) { return 'c:' + r.id === id; })[0] : null;
       if (!def && !R[id]) { toast('التقرير غير موجود', true); return; }
       var t = today();
@@ -2068,10 +2079,21 @@
 
     /* ---------- التصفية (عملاء، أصناف، مخازن…) ---------- */
     // البُعد ← مفتاح التصفية، والعنوان، ونص زر الإضافة
-    var DIM = { cust: ['cust', 'العملاء', 'عميل'], supp: ['cust', 'الموردون', 'مورد'], item: ['item', 'الأصناف', 'صنف'], st: ['st', 'المخازن', 'مخزن'], ag: ['ag', 'المناديب', 'مندوب'],
-      cat: ['cat', 'فئات المناديب', 'فئة مندوب'], xcat: ['xcat', 'استثناء فئات', 'استثناء فئة'], u: ['u', 'المستخدمون', 'مستخدم'], xcust: ['xcust', 'استثناء العملاء', 'استثناء عميل'], xitem: ['xitem', 'استثناء الأصناف', 'استثناء صنف'] };
+    var DIM = { cust: ['cust', 'العملاء', 'عميل', 'عملاء محددون بالاسم'], supp: ['cust', 'الموردون', 'مورد', 'موردون محددون بالاسم'], item: ['item', 'الأصناف', 'صنف', 'أصناف محددة'], st: ['st', 'المخازن', 'مخزن', 'مخزن أو سيارة'], ag: ['ag', 'المناديب', 'مندوب', 'مناديب محددون'],
+      cacc: ['cacc', 'حسابات العملاء', 'حساب عملاء', 'كل العملاء تحت حساب رئيسي أو فرعي من الدليل'], cgrp: ['cgrp', 'مجموعات العملاء', 'مجموعة عملاء', 'المجموعات المعرّفة في الإعدادات'],
+      cat: ['cat', 'فئات المناديب', 'فئة مندوب', 'جملة، تجزئة، أسواق…'], u: ['u', 'المستخدمون', 'مستخدم', 'من أدخل الفاتورة'],
+      xcust: ['xcust', 'استثناء العملاء', 'استثناء عميل', 'إخفاء عملاء محددين'], xcacc: ['xcacc', 'استثناء حسابات العملاء', 'استثناء حساب عملاء', 'إخفاء كل العملاء تحت حساب'], xcgrp: ['xcgrp', 'استثناء مجموعات العملاء', 'استثناء مجموعة', 'إخفاء مجموعة عملاء'],
+      xcat: ['xcat', 'استثناء فئات المناديب', 'استثناء فئة', 'إخفاء فئة مناديب'], xitem: ['xitem', 'استثناء الأصناف', 'استثناء صنف', 'إخفاء أصناف محددة'] };
     var FDIMS = {}; Object.keys(DIM).forEach(function (k) { FDIMS[k] = DIM[k][1]; });
-    function fdimsFor(def) { return def.fdims || (def.cat === 'stock' ? ['item', 'st', 'xitem'] : def.cat === 'purch' ? ['supp', 'item', 'st', 'u'] : ['cust', 'item', 'st', 'ag', 'cat', 'u', 'xcust', 'xitem']); }
+    function fdimsFor(def) { return normDims(def.fdims || (def.cat === 'stock' ? ['item', 'st', 'xitem'] : def.cat === 'purch' ? ['supp', 'item', 'st', 'u'] : ['cust', 'item', 'st', 'ag', 'cat', 'u', 'xcust', 'xitem'])); }
+    // كل تقرير فيه تصفية العميل يأخذ معها حسابات العملاء ومجموعاتهم، وكل تقرير فيه المندوب يأخذ فئات المناديب
+    function normDims(d) {
+      var o = d.slice(), add = function (after, k) { if (o.indexOf(k) >= 0) return; var i = o.indexOf(after); o.splice(i < 0 ? o.length : i + 1, 0, k); };
+      if (o.indexOf('cust') >= 0) { add('cust', 'cacc'); add('cacc', 'cgrp'); }
+      if (o.indexOf('xcust') >= 0) { add('xcust', 'xcacc'); add('xcacc', 'xcgrp'); }
+      if (o.indexOf('ag') >= 0) { add('ag', 'cat'); if (o.indexOf('xcust') >= 0 || o.indexOf('xitem') >= 0) add(o.indexOf('xitem') >= 0 ? 'xitem' : 'xcgrp', 'xcat'); }
+      return o;
+    }
     function fltOptions(dim) {
       var Tt = T(), out = [], seen = {};
       var addAcc = function (id, name) { if (seen[id] || !id) return; seen[id] = 1; var a = acc(id); out.push({ id: '@' + id, name: name || (a ? a.name : id), sub: a ? a.code : '' }); };
@@ -2083,42 +2105,48 @@
       } else if (dim === 'st') Object.keys(Tt.st).forEach(function (id) { out.push({ id: '@' + id, name: storeName(id) }); });
       else if (dim === 'ag') Object.keys(Tt.ag).forEach(function (id) { out.push({ id: '@' + id, name: repName(id) }); });
       else if (dim === 'cat' || dim === 'xcat') repCats().forEach(function (c) { out.push({ id: '@' + c, name: c }); });
+      else if (dim === 'cgrp' || dim === 'xcgrp') { cgList().forEach(function (g, i) { out.push({ id: '@' + g.id, name: g.name, sub: (g.codes || []).join('، '), ord: i }); }); out.push({ id: '@' + CG_NONE, name: 'بدون مجموعة', ord: 999 }); return out; }
+      else if (dim === 'cacc' || dim === 'xcacc') { var tr = custTreeAccs(), base = tr.length ? Math.min.apply(null, tr.map(function (a) { return a.lvl; })) : 1; return tr.map(function (a) { return { id: '@' + a.id, name: a.name, sub: a.code + ' · ' + a.kids.length + ' فرع', lvl: a.lvl - base }; }); }
       else if (dim === 'u') Object.keys(Tt.us).forEach(function (id) { out.push({ id: '@' + id, name: userName(id) }); });
       return out.sort(function (a, b) { return String(a.name).localeCompare(String(b.name), 'ar'); });
     }
     function fObj(f) { return f && typeof f === 'object' ? f : (parseFilter(f) || {}); }
     function fCount(f) { f = fObj(f); return Object.keys(f).reduce(function (n, k) { return n + ((f[k] && f[k].length) || 0); }, 0); }
-    // لوحة التصفية: أزرار إضافة، وتحتها كل ما تم اختياره بالاسم مع زر حذف لكل واحد
+    // شريط التصفية: كل تصفية مطبّقة مجموعة بعنوانها وقيمها (كل قيمة تُحذف وحدها)، وزر «إضافة تصفية» يفتح قائمة مرتبة: عرض فقط / استثناء
     function fltPanelHTML(dims, f, key) {
       f = fObj(f);
       var applied = dims.filter(function (d) { var v = f[DIM[d][0]]; return v && v.length; });
       applied = applied.filter(function (d, i) { return applied.map(function (x) { return DIM[x][0]; }).indexOf(DIM[d][0]) === i; });
-      var open = applied.length || (F.fpOpen && F.fpOpen[key]);
-      return '<details class="fp" data-fp="' + key + '"' + (open ? ' open' : '') + '><summary class="fp-sum"><span class="fp-t">' + ICON_FILTER + ' تصفية</span>' + (applied.length ? '<span class="fp-cnt">' + fCount(f) + ' محدد</span>' : '<span class="small muted">عميل، صنف، مخزن… (اختياري)</span>') + '<i class="car">▾</i></summary><div class="fp-head">' + dims.map(function (d) {
-        var n = (f[DIM[d][0]] || []).length;
-        return '<button class="chip fp-add' + (n ? ' on' : '') + (/^x/.test(d) ? ' fp-x' : '') + '" data-fadd="' + key + '|' + d + '">' + (/^x/.test(d) ? '− ' : '+ ') + esc(DIM[d][2]) + (n ? ' <span class="fp-n">' + n + '</span>' : '') + '</button>';
-      }).join('') + '</div>' +
-        (applied.length ? '<div class="fp-applied">' + applied.map(function (d) {
+      var inc = dims.filter(function (d) { return !/^x/.test(d); }), exc = dims.filter(function (d) { return /^x/.test(d); });
+      var tile = function (d) { var n = (f[DIM[d][0]] || []).length; return '<button class="fx-tile' + (/^x/.test(d) ? ' x' : '') + (n ? ' on' : '') + '" data-fadd="' + key + '|' + d + '"><b>' + esc(DIM[d][1]) + (n ? ' <span class="fx-n">' + n + '</span>' : '') + '</b><span>' + esc(DIM[d][3] || '') + '</span></button>'; };
+      var open = F.fpOpen && F.fpOpen[key];
+      return '<div class="fx' + (applied.length ? ' has' : '') + '"><div class="fx-bar"><span class="fx-t">' + ICON_FILTER + ' التصفية' + (applied.length ? ' <span class="fp-cnt">' + fCount(f) + '</span>' : '') + '</span>' +
+        (applied.length ? '<div class="fp-applied fx-list">' + applied.map(function (d) {
           var k = DIM[d][0], v = f[k];
-          return '<div class="fp-row"><span class="fp-lbl">' + esc(DIM[d][1]) + ' (' + v.length + '):</span>' + v.map(function (x, i) {
+          return '<div class="fx-grp' + (/^x/.test(k) ? ' x' : '') + '"><button class="fx-k" data-fedit="' + key + '|' + d + '" title="تعديل">' + esc(DIM[d][1]) + ' ▾</button>' + v.map(function (x, i) {
             return '<span class="fp-tag' + (/^x/.test(k) ? ' x' : '') + '">' + esc(fltName(k, x)) + '<button aria-label="إزالة" data-frm="' + key + '|' + k + '|' + i + '">×</button></span>';
           }).join('') + '</div>';
-        }).join('') + '<button class="btn sm ghost fp-clear" data-fclr="' + key + '">✕ إلغاء كل التصفية</button></div>'
-          : '<div class="fp-none small muted">بدون تصفية: يُعرض الكل.</div>') + '</details>';
+        }).join('') + '</div>' : '<span class="fx-none small muted">بدون تصفية: يُعرض الكل</span>') +
+        '<details class="fp fx-menu" data-fp="' + key + '"' + (open ? ' open' : '') + '><summary class="fx-add">+ إضافة تصفية</summary><div class="fx-pop">' +
+        '<div class="fx-sec">عرض فقط</div><div class="fx-tiles">' + inc.map(tile).join('') + '</div>' +
+        (exc.length ? '<div class="fx-sec x">استثناء (إخفاء)</div><div class="fx-tiles">' + exc.map(tile).join('') + '</div>' : '') + '</div></details>' +
+        (applied.length ? '<button class="fx-clear" data-fclr="' + key + '">مسح الكل</button>' : '') + '</div></div>';
     }
     function bindFltPanel(m, key, dims, getF, setF) {
       var dt = q('[data-fp="' + key + '"]', m); if (dt) dt.addEventListener('toggle', function () { F.fpOpen = F.fpOpen || {}; F.fpOpen[key] = dt.open; });
-      qa('[data-fadd^="' + key + '|"]', m).forEach(function (b) {
-        b.onclick = function () {
-          var d = b.dataset.fadd.split('|')[1], k = DIM[d][0], f = Object.assign({}, fObj(getF()));
-          pickMulti({ title: 'اختر ' + DIM[d][1], options: fltOptions(d), value: f[k] || [] }).then(function (v) { if (!v) return; f[k] = v; if (!v.length) delete f[k]; setF(fCount(f) ? f : null); });
-        };
-      });
+      var pick = function (d) {
+        var k = DIM[d][0], f = Object.assign({}, fObj(getF()));
+        F.fpOpen = F.fpOpen || {}; F.fpOpen[key] = false;
+        pickMulti({ title: (/^x/.test(d) ? '' : 'عرض فقط: ') + DIM[d][1], hint: DIM[d][3], options: fltOptions(d), value: f[k] || [] }).then(function (v) { if (!v) { A.render(); return; } f[k] = v; if (!v.length) delete f[k]; setF(fCount(f) ? f : null); });
+      };
+      qa('[data-fadd^="' + key + '|"], [data-fedit^="' + key + '|"]', m).forEach(function (b) { b.onclick = function (e) { e.preventDefault(); pick((b.dataset.fadd || b.dataset.fedit).split('|')[1]); }; });
       qa('[data-frm^="' + key + '|"]', m).forEach(function (b) {
         b.onclick = function () { var p2 = b.dataset.frm.split('|'), f = Object.assign({}, fObj(getF())); f[p2[1]] = (f[p2[1]] || []).filter(function (x, i) { return i !== Number(p2[2]); }); if (!f[p2[1]].length) delete f[p2[1]]; setF(fCount(f) ? f : null); };
       });
       var c = q('[data-fclr="' + key + '"]', m);
       if (c) c.onclick = function () { setF(null); };
+      // إغلاق القائمة عند الضغط خارجها
+      if (dt && dt.open) setTimeout(function () { var h = function (e) { if (!dt.contains(e.target)) { dt.open = false; document.removeEventListener('click', h, true); } }; document.addEventListener('click', h, true); }, 0);
     }
     var ICON_FILTER = '<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" style="vertical-align:-3px"><path fill="currentColor" d="M3 5h18l-7 8v6l-4 2v-8z"/></svg>';
 
@@ -2202,7 +2230,7 @@
     function bindReport(m) {
       var c = F.cur, p = c.p, def = curDef();
       var save = function () { st.finParams = st.finParams || {}; st.finParams[c.id] = Object.assign({}, p); try { localStorage.setItem('rk.finParams', JSON.stringify(st.finParams)); } catch (e) {} };
-      q('[data-back]', m).onclick = function () { F.cur = null; A.render(); };
+      q('[data-back]', m).onclick = function () { var y = F.catY || 0; F.cur = null; A.render(); var go2 = function (n) { window.scrollTo(0, y); if (n && Math.abs(window.scrollY - y) > 2) requestAnimationFrame(function () { go2(n - 1); }); }; requestAnimationFrame(function () { go2(5); }); };
       bindPeriod(m, 'rep', function () { return p; }, function (ps) { Object.assign(p, ps); save(); A.render(); }, def.params.indexOf('period') >= 0);
       qa('[data-pk]', m).forEach(function (el) {
         el.addEventListener('change', function () { p[el.dataset.pk] = el.value; if (el.dataset.pk === 'from' || el.dataset.pk === 'to') p.preset = 'custom'; save(); A.render(); });
@@ -2325,7 +2353,7 @@
         var sel = (opts.value || []).map(String), byId = {}, onlySel = false;
         opts.options.forEach(function (o) { byId[String(o.id)] = o; });
         var nameOf = function (id) { var o = byId[id] || byId['@' + id] || byId[String(id).replace(/^@/, '')]; return o ? o.name : String(id).replace(/^@/, ''); };
-        sheet(opts.title || 'اختر', '<div class="pm-sel" id="pms"></div><input class="input" id="mq" placeholder="اكتب للبحث بالاسم أو الرمز…">' +
+        sheet(opts.title || 'اختر', (opts.hint ? '<p class="small muted" style="margin:0 0 6px">' + esc(opts.hint) + '</p>' : '') + '<div class="pm-sel" id="pms"></div><input class="input" id="mq" placeholder="اكتب للبحث بالاسم أو الرمز…">' +
           '<div class="row small pm-tools"><label class="chk"><input type="checkbox" id="mso"> المحدد فقط</label><span class="grow"></span><button class="btn sm ghost" data-all>تحديد كل الظاهر</button><button class="btn sm ghost" data-none>إلغاء التحديد</button></div>' +
           '<div class="list acc-list pm-list" id="ml"></div><button class="btn primary big" data-ok></button>', function (s) {
           var inp = q('#mq', s.el), ml = q('#ml', s.el), shown = [];
@@ -2339,7 +2367,7 @@
             var t = inp.value.trim();
             var list = opts.options.filter(function (o) { return (!onlySel || sel.indexOf(String(o.id)) >= 0) && (!t || (o.name + ' ' + (o.sub || '')).indexOf(t) >= 0); });
             shown = list.slice(0, 400);
-            ml.innerHTML = shown.map(function (o) { var on = sel.indexOf(String(o.id)) >= 0; return '<button class="item tap pm-it' + (on ? ' sel' : '') + '" data-o="' + esc(o.id) + '"><span class="pm-box">' + (on ? '✓' : '') + '</span><div class="main"><b>' + esc(o.name) + '</b>' + (o.sub ? '<div class="meta"><span class="num">' + esc(o.sub) + '</span></div>' : '') + '</div></button>'; }).join('') +
+            ml.innerHTML = shown.map(function (o) { var on = sel.indexOf(String(o.id)) >= 0; return '<button class="item tap pm-it' + (on ? ' sel' : '') + '" data-o="' + esc(o.id) + '"' + (o.lvl && !t ? ' style="padding-inline-start:' + (10 + o.lvl * 16) + 'px"' : '') + '><span class="pm-box">' + (on ? '✓' : '') + '</span><div class="main"><b>' + esc(o.name) + '</b>' + (o.sub ? '<div class="meta"><span class="num">' + esc(o.sub) + '</span></div>' : '') + '</div></button>'; }).join('') +
               (list.length > shown.length ? '<p class="small muted">يظهر ' + shown.length + ' من ' + list.length + '، اكتب في البحث لتضييق القائمة</p>' : '') || '<p class="muted">لا نتائج</p>';
             qa('[data-o]', ml).forEach(function (b) { b.onclick = function () { var id = b.dataset.o, i = sel.indexOf(id); if (i >= 0) sel.splice(i, 1); else sel.push(id); draw(); }; });
             drawSel();
@@ -2619,7 +2647,7 @@
     }
 
     /* ---------- الإعدادات ---------- */
-    var SET_TABS = [['boxes', 'الصناديق والبنوك'], ['cards', 'بطاقات لوحة المؤشرات'], ['daily', 'التقرير اليومي'], ['groups', 'مجموعات الحسابات'], ['reps', 'المندوبون وفئاتهم'], ['data', 'البيانات']];
+    var SET_TABS = [['boxes', 'الصناديق والبنوك'], ['cards', 'بطاقات لوحة المؤشرات'], ['daily', 'التقرير اليومي'], ['groups', 'مجموعات الحسابات'], ['cgroups', 'مجموعات العملاء'], ['reps', 'المندوبون وفئاتهم'], ['data', 'البيانات']];
     function boxSuggestions() {
       var defined = {}; F.boxes.forEach(function (b) { defined[b.acc] = 1; });
       return F.D.accList.filter(function (a) {
@@ -2662,6 +2690,8 @@
           listEditorHTML('daily', dd.rows, { from: d0, to: d0 }) +
           '<div class="row" style="margin-top:10px"><button class="btn" data-dadd>+ سطر</button><button class="btn ghost" data-dsep>+ عنوان قسم</button><span class="grow"></span><button class="btn ghost" data-dreset>استعادة الافتراضي</button><button class="btn accent" data-dsave' + (F.dirtyKeys && F.dirtyKeys.daily ? '' : ' disabled') + '>حفظ التغييرات</button></div></div>' +
           '<div class="card"><h3>ملاحظة عن Sell-Out</h3><p class="small" style="margin:0">«Total Sell-Out» افتراضياً = الكمية المباعة لكل العملاء. لحصره في عملاء أو أصناف أو مخزن معين: اضغط «تعديل» على السطر، ثم «كل العملاء» أو «كل الأصناف» واختر ما تريد.</p></div>';
+      } else if (tab === 'cgroups') {
+        h += cgSettingsHTML();
       } else if (tab === 'reps') {
         h += repsSettingsHTML();
       } else if (tab === 'groups') {
@@ -2729,6 +2759,8 @@
         q('[data-dsep]', m).onclick = function () { editItem({ name: '', f: '' }, 'row', { from: d0, to: d0 }).then(function (o) { if (o) { dd.rows.push(o); chd(); } }); };
         q('[data-dsave]', m).onclick = function () { saveConfig('daily', { title: dd.title, rows: dd.rows }, this); };
         q('[data-dreset]', m).onclick = function () { A.confirmBox('استعادة الافتراضي', 'استبدال أسطر التقرير اليومي بالأسطر الافتراضية (مثل نموذج الإدارة)؟', 'استعادة').then(function (y) { if (y) saveConfig('daily', null); }); };
+      } else if (tab === 'cgroups') {
+        bindCgSettings(m);
       } else if (tab === 'reps') {
         bindRepsSettings(m);
       } else if (tab === 'groups') {
@@ -4749,12 +4781,238 @@
         return withNote(topN({ cols: cols, rows: rows, total: t, note: 'أصناف الشركة النشطة في الفترة: ' + act }, p), p);
       } };
 
+    /* ===================== مجموعات العملاء =====================
+       مجموعة = اسم + حساب أو أكثر من دليل العملاء (رئيسي أو فرعي)، مثل «وكلاء المنطقة الشرقية» أو «الفروع».
+       كل عميل تحت أي حساب في المجموعة يتبعها. إن وقع العميل في أكثر من مجموعة يتبع الأدق (الحساب الأعمق)، ثم الأسبق ترتيباً.
+       وبدون تعريف مجموعات تعمل التقارير «حسب الحساب الرئيسي الأب» مباشرة من الدليل. */
+    (function () {
+      var ci = CATS.map(function (c) { return c[0]; }).indexOf('cust1');
+      CATS.splice(ci + 1, 0, ['cgrp', 'مجموعات العملاء']);
+    })();
+    var CG_NONE = '~';
+    function cgList() {
+      var l = F.config && Array.isArray(F.config.cgroups) ? F.config.cgroups : null;
+      if (!l) { try { l = JSON.parse(localStorage.getItem('rk.finCgroups') || 'null'); } catch (e) { l = null; } }
+      return (l || []).filter(function (g) { return g && g.id && g.name; });
+    }
+    // سلسلة الحسابات من العميل صعوداً إلى أعلى الدليل
+    function ancOf(id) {
+      var c = F.cache.anc || (F.cache.anc = {});
+      if (c[id]) return c[id];
+      var out = [], a = acc(id), guard = 0;
+      while (a && guard++ < 20) { out.push(a); a = a.parent ? acc(a.parent) : null; }
+      return (c[id] = out);
+    }
+    // مجموعة العميل (للتقارير التي تقسم المجموع على المجموعات)
+    function cgOf(ck) {
+      var c = F.cache.cgOf || (F.cache.cgOf = {});
+      if (c[ck] !== undefined) return c[ck];
+      var best = CG_NONE, bestLvl = -1, gs = cgList(), an = ancOf(ck);
+      gs.forEach(function (g) {
+        an.forEach(function (a) { if ((g.codes || []).indexOf(String(a.code)) >= 0 && a.lvl > bestLvl) { best = g.id; bestLvl = a.lvl; } });
+      });
+      return (c[ck] = best);
+    }
+    function cgIn(ck, gid) {
+      if (gid === CG_NONE) return cgOf(ck) === CG_NONE;
+      var g = cgList().filter(function (x) { return x.id === gid; })[0]; if (!g) return false;
+      return ancOf(ck).some(function (a) { return (g.codes || []).indexOf(String(a.code)) >= 0; });
+    }
+    function cgName(gid) { if (gid === CG_NONE) return 'بدون مجموعة'; var g = cgList().filter(function (x) { return x.id === gid; })[0]; return g ? g.name : gid; }
+    function cgMatch(list, ck) { return list.some(function (x) { return cgIn(ck, String(x).replace(/^@/, '')); }); }
+    // تصفية «حساب عملاء رئيسي أو فرعي»: العميل نفسه أو أي حساب فوقه
+    function caccMatch(list, ck) { var ids = ancOf(ck).map(function (a) { return a.id; }); return list.some(function (x) { return ids.indexOf(String(x).replace(/^@/, '')) >= 0; }); }
+    // الحسابات الرئيسية في دليل العملاء (بين حسابات العملاء المحددة في الإعدادات وحسابات العملاء الفرعية)
+    function custTreeAccs() {
+      if (F.cache.ctree) return F.cache.ctree;
+      var leaves = recvIds(), roots = {}, seen = {};
+      leaves.forEach(function (id) {
+        var an = ancOf(id).slice(1), s = settings(), codes = String((s && s.recv) || '1601').split(',');
+        var cut = an.length; for (var i = 0; i < an.length; i++) if (codes.indexOf(String(an[i].code)) >= 0) { cut = i + 1; roots[an[i].id] = 1; break; }
+        an.slice(0, cut).forEach(function (a) { seen[a.id] = 1; });
+      });
+      return (F.cache.ctree = F.D.accList.filter(function (a) { return seen[a.id]; }));
+    }
+    function settings() { return (F.meta && F.meta.settings) || {}; }
+    // مفتاح التجميع: المجموعات المعرّفة، أو الحساب الأب مباشرة
+    function cgKeyFn(p) {
+      if (cgBy(p) === 'grp') return { key: function (ck) { return cgOf(ck); }, name: cgName, label: 'المجموعة' };
+      return { key: function (ck) { var a = acc(ck); return a && a.parent ? a.parent : CG_NONE; }, name: function (k) { return k === CG_NONE ? 'بدون حساب' : (acc(k) ? acc(k).name : k); }, label: 'الحساب الأب' };
+    }
+    function cgBy(p) { return p.cgby === 'parent' || !cgList().length ? 'parent' : 'grp'; }
+    var CG_SEL = [['cgby', 'التجميع حسب', [['grp', 'المجموعات المعرّفة'], ['parent', 'الحساب الأب في الدليل']]]];
+    var CG_F = ['cust', 'cacc', 'cgrp', 'item', 'st', 'ag', 'cat', 'xcust', 'xcgrp', 'xitem'];
+    function cgNote(p) { return cgBy(p) === 'grp' ? 'التجميع حسب مجموعات العملاء المعرّفة في الإعدادات' : (cgList().length ? 'التجميع حسب الحساب الرئيسي الأب لكل عميل' : 'لم تُعرَّف مجموعات عملاء بعد، فالتجميع حسب الحساب الرئيسي الأب لكل عميل. عرّف المجموعات من الإعدادات ← مجموعات العملاء.'); }
+    function cgOrder(keys, p) {
+      if (cgBy(p) === 'grp') { var ord = cgList().map(function (g) { return g.id; }).concat([CG_NONE]); return keys.sort(function (a, b) { return ord.indexOf(a) - ord.indexOf(b); }); }
+      return keys;
+    }
+
+    // المؤشرات الأساسية لكل مجموعة: مبيعات وربح وعملاء وتحصيل وأرصدة
+    function cgAgg(p) {
+      var K = cgKeyFn(p), g = {};
+      var mk = function (k) { return g[k] || (g[k] = { k: k, name: K.name(k), sales: 0, ret: 0, profit: 0, cost: 0, qty: 0, inv: {}, cust: {}, items: {}, coll: 0, bal: 0, od: 0, ncust: 0, pnet: 0 }); };
+      facts('s', p.from, p.to, p.flt).forEach(function (x) {
+        var r = mk(K.key(x.v.ck));
+        if (x.s > 0) { r.sales += x.val; r.inv[x.v.id] = 1; r.cust[x.v.ck] = 1; r.items[x.l.item] = 1; } else r.ret += x.val;
+        r.profit += x.s * x.profit; r.cost += x.s * x.cost; r.qty += x.s * x.qty;
+      });
+      var pr = prevRange(p.from, p.to, p.preset);
+      facts('s', pr[0], pr[1], p.flt).forEach(function (x) { mk(K.key(x.v.ck)).pnet += x.s * x.val; });
+      var coll = collections(p.from, p.to, '', true), ids = recvFor(p.flt);
+      ids.forEach(function (id) {
+        var r = mk(K.key(id)), b = balance([id], null, p.to).close;
+        r.ncust++; r.bal += b; r.coll += coll[id] || 0; if (b > 0.0005) r.od += overdue(id, p.to, 90);
+      });
+      return cgOrder(Object.keys(g), p).map(function (k) {
+        var r = g[k], net = r.sales - r.ret, n = Object.keys(r.inv).length, act = Object.keys(r.cust).length;
+        return { k: k, name: r.name, ncust: r.ncust, act: act, n: n, sales: r.sales, ret: r.ret, rp: pct(r.ret, r.sales), net: net, profit: r.profit, margin: pct(r.profit, net), qty: r.qty, items: Object.keys(r.items).length,
+          avgc: act ? net / act : 0, avgi: n ? r.sales / n : 0, coll: r.coll, cr: pct(r.coll, net), bal: r.bal, od: r.od, odp: pct(r.od, r.bal), pnet: r.pnet, ch: net - r.pnet, chp: r.pnet ? (net - r.pnet) / Math.abs(r.pnet) * 100 : '' };
+      }).filter(function (r) { return r.net || r.ncust || r.bal || r.pnet; });
+    }
+
+    R.cg_summary = { cat: 'cgrp', name: 'ملخص مجموعات العملاء', desc: 'لكل مجموعة (مثل وكلاء المنطقة الشرقية والغربية والفروع): العملاء والنشطون والفواتير والمبيعات والربح والهامش والحصة والتحصيل والأرصدة والدين القديم', params: ['period', 'flt'], fdims: CG_F, sel: CG_SEL,
+      run: function (p) {
+        var rows = cgAgg(p), tn = sum(rows, 'net'); rows.forEach(function (r) { r.share = pct(r.net, tn); });
+        var K = cgKeyFn(p);
+        var cols = [C('name', K.label), C('ncust', 'العملاء', 'int'), C('act', 'النشطون', 'int'), C('n', 'الفواتير', 'int'), C('net', 'صافي المبيعات', 'money'), C('share', 'الحصة', 'pct'), C('profit', 'مجمل الربح', 'money'), C('margin', 'الهامش', 'pct'),
+          C('rp', 'المرتجعات %', 'pct'), C('avgc', 'متوسط العميل', 'money'), C('coll', 'التحصيل', 'money'), C('cr', 'التحصيل %', 'pct'), C('bal', 'الأرصدة', 'money'), C('od', 'دين +90 يوماً', 'money'), C('chp', 'التغير عن السابقة', 'pct')];
+        var t = sumRow(rows, cols); t.share = 100; t.avgc = t.act ? t.net / t.act : 0; t.cr = pct(t.coll, t.net); var tp = sum(rows, 'pnet'); t.chp = tp ? (t.net - tp) / Math.abs(tp) * 100 : '';
+        return withNote({ cols: cols, rows: rows, total: t, note: cgNote(p), chart: { type: 'hbar', x: 'name', y: ['net'], yl: ['صافي المبيعات'] } }, p);
+      } };
+    R.cg_month = { cat: 'cgrp', name: 'مجموعات العملاء شهرياً', desc: 'جدول: صف لكل مجموعة وعمود لكل شهر، بالقيمة أو الربح أو الكمية أو عدد الفواتير', params: ['period', 'rmeas', 'flt'], fdims: CG_F, sel: CG_SEL,
+      run: function (p) { var K = cgKeyFn(p); var r = repPivot(p, function (x) { return K.key(x.v.ck); }, function (x, k) { return K.name(k || K.key(x.v.ck)); }, function (x) { return x.d.slice(0, 7); }, function (x) { return monthLabel(x.d.slice(0, 7)); }, p.rmeas, function (a, b) { return a.k < b.k ? -1 : 1; }); r.cols[0].l = K.label; r.note = cgNote(p); return withNote(r, p); } };
+    R.cg_customers = { cat: 'cgrp', name: 'عملاء كل مجموعة', desc: 'كل مجموعة وتحتها عملاؤها: المبيعات والربح والهامش والفواتير والتحصيل والرصيد وآخر شراء', params: ['period', 'flt'], fdims: CG_F, sel: CG_SEL.concat([['cact', 'العملاء', [['act', 'من اشترى في الفترة'], ['all', 'كل العملاء (مع الأرصدة)']]]]),
+      run: function (p) {
+        var K = cgKeyFn(p), cm = custMetrics(p), by = {}, seen = {};
+        cm.forEach(function (o) { if (!o.net && !o.sales) return; seen[o.k] = 1; (by[K.key(o.k)] = by[K.key(o.k)] || []).push({ name: o.name, n: o.n, net: o.net, profit: o.profit, margin: o.margin, coll: o.coll, bal: o.bal, last: o.last, _c1: o.k }); });
+        if (p.cact === 'all') recvFor(p.flt).forEach(function (id) { if (seen[id]) return; var b = balance([id], null, p.to).close; if (Math.abs(b) < 0.0005) return; (by[K.key(id)] = by[K.key(id)] || []).push({ name: accName(id), n: 0, net: 0, profit: 0, margin: 0, coll: 0, bal: b, last: '', _c1: id }); });
+        var rows = [];
+        cgOrder(Object.keys(by), p).forEach(function (k) {
+          var l = by[k].sort(function (a, b) { return b.net - a.net || (Number(b.bal) || 0) - (Number(a.bal) || 0); }), h = { name: K.name(k) + ' (' + l.length + ' عميل)', n: sum(l, 'n'), net: sum(l, 'net'), profit: sum(l, 'profit'), coll: sum(l, 'coll'), bal: sum(l, function (r) { return Number(r.bal) || 0; }), _b: true, _hl: true };
+          h.margin = pct(h.profit, h.net); rows.push(h); l.forEach(function (r) { r.name = '   ' + r.name; rows.push(r); });
+        });
+        var cols = [C('name', K.label + ' / العميل'), C('n', 'الفواتير', 'int'), C('net', 'صافي المبيعات', 'money'), C('profit', 'مجمل الربح', 'money'), C('margin', 'الهامش', 'pct'), C('coll', 'التحصيل', 'money'), C('bal', 'الرصيد', 'money'), C('last', 'آخر شراء')];
+        var hs = rows.filter(function (r) { return r._b; }), t = { name: 'الإجمالي', _b: true, n: sum(hs, 'n'), net: sum(hs, 'net'), profit: sum(hs, 'profit'), coll: sum(hs, 'coll'), bal: sum(hs, 'bal') }; t.margin = pct(t.profit, t.net);
+        return withNote({ cols: cols, rows: rows, total: t, note: cgNote(p) }, p);
+      } };
+    R.cg_items = { cat: 'cgrp', name: 'المجموعات × الأصناف', desc: 'جدول: صف لكل صنف وعمود لكل مجموعة، بالقيمة أو الربح أو الكمية أو عدد الفواتير', params: ['period', 'rmeas', 'top', 'flt'], fdims: CG_F, sel: CG_SEL,
+      run: function (p) { var K = cgKeyFn(p); var r = repPivot(p, function (x) { return x.l.item; }, function (x) { return itemName(x.l.item); }, function (x) { return K.key(x.v.ck); }, function (x) { return K.name(K.key(x.v.ck)); }, p.rmeas); r.cols[0].l = 'الصنف'; r.note = cgNote(p); return withNote(topN(r, p), p); } };
+    R.cg_compare = { cat: 'cgrp', name: 'مقارنة المجموعات بالفترة السابقة', desc: 'لكل مجموعة: المبيعات الآن وفي الفترة السابقة والتغير ونسبته، والربح والهامش والعملاء النشطون', params: ['period', 'flt'], fdims: CG_F, sel: CG_SEL,
+      run: function (p) {
+        var rows = cgAgg(p).map(function (r) { return { name: r.name, net: r.net, pnet: r.pnet, ch: r.ch, chp: r.chp, profit: r.profit, margin: r.margin, act: r.act, _hl: r.ch < 0 }; }).sort(function (a, b) { return a.ch - b.ch; });
+        var pr = prevRange(p.from, p.to, p.preset), K = cgKeyFn(p);
+        var cols = [C('name', K.label), C('net', 'الآن', 'money'), C('pnet', 'الفترة السابقة', 'money'), C('ch', 'التغير', 'money'), C('chp', 'التغير %', 'pct'), C('profit', 'مجمل الربح', 'money'), C('margin', 'الهامش', 'pct'), C('act', 'العملاء النشطون', 'int')];
+        var t = sumRow(rows, cols); t.chp = t.pnet ? (t.net - t.pnet) / Math.abs(t.pnet) * 100 : '';
+        return withNote({ cols: cols, rows: rows, total: t, note: cgNote(p) + ' · الفترة السابقة: ' + pr[0] + ' إلى ' + pr[1], chart: { type: 'bar', x: 'name', y: ['net', 'pnet'], yl: ['الآن', 'السابقة'] } }, p);
+      } };
+    R.cg_collect = { cat: 'cgrp', name: 'تحصيل وأرصدة المجموعات', desc: 'لكل مجموعة: المبيعات والتحصيل ونسبته والأرصدة والدين الأقدم من 90 يوماً ونسبته وعدد العملاء المدينين', params: ['period', 'flt'], fdims: ['cust', 'cacc', 'cgrp', 'xcust', 'xcgrp'], sel: CG_SEL,
+      run: function (p) {
+        var K = cgKeyFn(p), deb = {}; recvFor(p.flt).forEach(function (id) { if (balance([id], null, p.to).close > 0.0005) deb[K.key(id)] = (deb[K.key(id)] || 0) + 1; });
+        var rows = cgAgg(p).map(function (r) { return { name: r.name, net: r.net, coll: r.coll, cr: r.cr, bal: r.bal, od: r.od, odp: r.odp, ncust: r.ncust, deb: deb[r.k] || 0, _hl: r.odp > 30 }; });
+        var cols = [C('name', K.label), C('ncust', 'العملاء', 'int'), C('deb', 'المدينون', 'int'), C('net', 'صافي المبيعات', 'money'), C('coll', 'التحصيل', 'money'), C('cr', 'التحصيل %', 'pct'), C('bal', 'الأرصدة', 'money'), C('od', 'دين +90 يوماً', 'money'), C('odp', 'نسبته من الرصيد', 'pct')];
+        var t = sumRow(rows, cols); t.cr = pct(t.coll, t.net); t.odp = pct(t.od, t.bal);
+        return withNote({ cols: cols, rows: rows, total: t, note: cgNote(p), chart: { type: 'hbar', x: 'name', y: ['bal'], yl: ['الأرصدة'] } }, p);
+      } };
+    R.cg_reps = { cat: 'cgrp', name: 'المجموعات × المناديب', desc: 'جدول: صف لكل مجموعة وعمود لكل مندوب، بالقيمة أو الربح أو الكمية أو عدد الفواتير', params: ['period', 'rmeas', 'flt'], fdims: CG_F, sel: CG_SEL,
+      run: function (p) { var K = cgKeyFn(p); var r = repPivot(p, function (x) { return K.key(x.v.ck); }, function (x) { return K.name(K.key(x.v.ck)); }, function (x) { return x.v.ag || '0'; }, function (x) { return repName(x.v.ag || '0'); }, p.rmeas); r.cols[0].l = K.label; r.note = cgNote(p); return withNote(r, p); } };
+    R.cg_cats = { cat: 'cgrp', name: 'المجموعات × فئات المناديب', desc: 'جدول: صف لكل مجموعة وعمود لكل فئة مندوب (جملة، تجزئة، أسواق…)', params: ['period', 'rmeas', 'flt'], fdims: CG_F, sel: CG_SEL,
+      run: function (p) { var K = cgKeyFn(p); var r = repPivot(p, function (x) { return K.key(x.v.ck); }, function (x) { return K.name(K.key(x.v.ck)); }, function (x) { return repCat(x.v.ag); }, function (x) { return repCat(x.v.ag); }, p.rmeas); r.cols[0].l = K.label; r.note = cgNote(p); return withNote(r, p); } };
+    R.cg_eval = { cat: 'cgrp', name: 'تقييم المجموعات', desc: 'لكل مجموعة: متوسط درجة التعامل مع عملائها وتوزيعهم على التقديرات، والعملاء المتوقفون', params: ['period', 'flt'], fdims: CG_F, sel: CG_SEL,
+      run: function (p) {
+        var K = cgKeyFn(p), g = {}, gr = ['ممتاز', 'جيد جداً', 'جيد', 'مقبول', 'ضعيف', 'متوقف'];
+        custMetrics(p).forEach(function (o) { if (!(o.net > 0 || o.prevOnly)) return; var k = K.key(o.k), r = g[k] || (g[k] = { k: k, n: 0, sc: 0, act: 0, net: 0 }); r.n++; r[o.grade] = (r[o.grade] || 0) + 1; r.net += o.net; if (o.net > 0) { r.act++; r.sc += o.score * o.net; } });
+        var rows = cgOrder(Object.keys(g), p).map(function (k) { var r = g[k], o = { name: K.name(k), n: r.n, net: r.net, avg: r.net > 0 ? r.sc / r.net : 0 }; o.grade = grade(o.avg); gr.forEach(function (x, i) { o['g' + i] = r[x] || 0; }); return o; });
+        var cols = [C('name', K.label), C('n', 'العملاء', 'int'), C('net', 'صافي المبيعات', 'money'), C('avg', 'متوسط الدرجة (موزون)', 'int'), C('grade', 'التقدير')].concat(gr.map(function (x, i) { return C('g' + i, x, 'int'); }));
+        var t = sumRow(rows, cols); t.avg = ''; t.grade = '';
+        return withNote({ cols: cols, rows: rows, total: t, note: cgNote(p) + ' · متوسط الدرجة موزون بمبيعات كل عميل', chart: { type: 'hbar', x: 'name', y: ['avg'], yl: ['متوسط الدرجة'] } }, p);
+      } };
+    R.cg_item_price = { cat: 'cgrp', name: 'سعر الصنف في كل مجموعة', desc: 'لأعلى الأصناف (أو صنف تختاره): متوسط سعر البيع في كل مجموعة والفرق عن متوسط الشركة وأقل وأعلى سعر', params: ['period', 'flt'], fdims: CG_F, sel: CG_SEL,
+      run: function (p) {
+        var K = cgKeyFn(p), byItem = {}, g = {};
+        facts('s', p.from, p.to, p.flt).forEach(function (x) { var up = unitPrice(x); if (up === null) return; var it = byItem[x.l.item] || (byItem[x.l.item] = { v: 0, q: 0 }); it.v += x.val; it.q += x.qty;
+          var k = x.l.item + '|' + K.key(x.v.ck), r = g[k] || (g[k] = { item: x.l.item, gk: K.key(x.v.ck), v: 0, q: 0, pf: 0, mn: null, mx: null }); r.v += x.val; r.q += x.qty; r.pf += x.profit; if (r.mn === null || up < r.mn) r.mn = up; if (r.mx === null || up > r.mx) r.mx = up; });
+        var items = Object.keys(byItem).sort(function (a, b) { return byItem[b].v - byItem[a].v; }), rows = [], lim = hasItemF(p.flt) ? items.length : Math.min(15, items.length);
+        items.slice(0, lim).forEach(function (it) {
+          var avg = byItem[it].q ? byItem[it].v / byItem[it].q : 0, sub = Object.keys(g).filter(function (k) { return g[k].item === it; }).map(function (k) { return g[k]; });
+          rows.push({ name: itemName(it) + ' (' + unitOf(it) + ')', avgp: avg, q: byItem[it].q, v: byItem[it].v, _b: true, _hl: true });
+          sub.sort(function (a, b) { return a.v / a.q - b.v / b.q; }).forEach(function (r) { var ap = r.q ? r.v / r.q : 0; rows.push({ name: '   ' + K.name(r.gk), avgp: ap, diff: ap - avg, diffp: avg ? (ap - avg) / avg * 100 : 0, mn: r.mn, mx: r.mx, q: r.q, v: r.v, margin: pct(r.pf, r.v) }); });
+        });
+        var cols = [C('name', 'الصنف / ' + K.label), C('avgp', 'متوسط السعر', 'money'), C('diff', 'الفرق عن متوسط الشركة', 'money'), C('diffp', 'الفرق %', 'pct'), C('mn', 'أقل سعر', 'money'), C('mx', 'أعلى سعر', 'money'), C('q', 'الكمية', 'qty'), C('v', 'القيمة', 'money'), C('margin', 'الهامش', 'pct')];
+        return withNote({ cols: cols, rows: rows, note: cgNote(p) + (hasItemF(p.flt) ? '' : ' · يعرض أعلى 15 صنفاً؛ اختر صنفاً من التصفية لعرضه وحده') }, p);
+      } };
+
+    /* ---------- إعدادات مجموعات العملاء ---------- */
+    function cgDraft() { if (!F.cgDraft) F.cgDraft = JSON.parse(JSON.stringify(cgList())); return F.cgDraft; }
+    function cgStats() {
+      var y0 = addD(today(), -365), s = {}; F.D.invs.forEach(function (v) { if (v.c !== SALE || v.d < y0) return; var k = cgOf(v.ck), o = s[k] || (s[k] = { n: {}, v: 0 }); o.n[v.ck] = 1; o.v += v.net; });
+      return s;
+    }
+    function cgSettingsHTML() {
+      var d = cgDraft(), live = !F.cgDirty, st = live ? cgStats() : {};
+      var h = '<div class="card"><h2>مجموعات العملاء</h2><p class="small muted" style="margin:0 0 10px">اجمع العملاء في مجموعات تختار لكل منها حساباً أو أكثر من دليل العملاء (رئيسياً أو فرعياً)، مثل «وكلاء المنطقة الشرقية» أو «الفروع». كل العملاء تحت هذه الحسابات يتبعون المجموعة، وتظهر التقارير حسبها في قسم «مجموعات العملاء»، ويمكن التصفية بها في كل التقارير.</p>';
+      if (!d.length) h += '<div class="empty" style="margin:0 0 10px">لا توجد مجموعات بعد. أنشئها يدوياً، أو اضغط «إنشاء من الحسابات الرئيسية» لتُنشأ مجموعة لكل حساب رئيسي تحت العملاء.</div>';
+      h += '<div class="cg-list">' + d.map(function (g, i) {
+        var o = st[g.id];
+        return '<div class="cg-item"><div class="cg-top"><span class="cg-ord">' + (i + 1) + '</span><input class="input cg-name" data-cgname="' + i + '" value="' + esc(g.name) + '" placeholder="اسم المجموعة">' +
+          '<button class="btn sm ghost" data-cgup="' + i + '"' + (i ? '' : ' disabled') + ' aria-label="أعلى">▲</button><button class="btn sm ghost" data-cgdn="' + i + '"' + (i < d.length - 1 ? '' : ' disabled') + ' aria-label="أسفل">▼</button><button class="btn sm ghost danger" data-cgdel="' + i + '">حذف</button></div>' +
+          '<div class="st-pills cg-accs">' + (g.codes || []).map(function (c, j) { var a = F.D.byCode[c]; return '<span class="col-pill"><b class="num">' + esc(c) + '</b> ' + esc(a ? a.name : '(غير موجود)') + '<button type="button" data-cgrm="' + i + '|' + j + '" aria-label="إزالة">×</button></span>'; }).join('') +
+          '<button class="btn sm" data-cgacc="' + i + '">+ حسابات</button></div>' +
+          (o ? '<div class="small muted">آخر سنة: ' + fk(Object.keys(o.n).length) + ' عميل اشترى · مبيعات ' + fm(o.v) + '</div>' : (live && (g.codes || []).length ? '<div class="small muted">لا مبيعات لعملاء هذه المجموعة في آخر سنة</div>' : '')) + '</div>';
+      }).join('') + '</div>';
+      var none = st[CG_NONE];
+      if (live && d.length && none) h += '<p class="small" style="margin:8px 0 0">عملاء خارج كل المجموعات (آخر سنة): ' + fk(Object.keys(none.n).length) + ' · مبيعات ' + fm(none.v) + '</p>';
+      h += '<div class="row" style="margin-top:12px;flex-wrap:wrap;gap:8px"><button class="btn" data-cgadd>+ مجموعة جديدة</button><button class="btn ghost" data-cgauto>إنشاء من الحسابات الرئيسية</button><span class="grow small muted">' + (F.cgDirty ? 'لديك تعديلات غير محفوظة' : '') + '</span>' +
+        (F.cgDirty ? '<button class="btn ghost" data-cgundo>تراجع</button>' : '') + '<button class="btn primary" data-cgsave' + (canEdit() ? '' : ' disabled') + '>حفظ</button></div>' +
+        '<p class="small muted" style="margin:10px 0 0">إن وقع عميل تحت حسابات أكثر من مجموعة، يتبع المجموعة ذات الحساب الأدق (الأعمق في الدليل)، ثم الأعلى في هذه القائمة.</p></div>';
+      return h;
+    }
+    function bindCgSettings(m) {
+      var d = cgDraft(), dirty = function () { F.cgDirty = true; };
+      qa('[data-cgname]', m).forEach(function (el) { el.oninput = function () { d[Number(el.dataset.cgname)].name = el.value; dirty(); }; });
+      qa('[data-cgdel]', m).forEach(function (b) { b.onclick = function () { d.splice(Number(b.dataset.cgdel), 1); dirty(); A.render(); }; });
+      qa('[data-cgup]', m).forEach(function (b) { b.onclick = function () { var i = Number(b.dataset.cgup); d.splice(i - 1, 0, d.splice(i, 1)[0]); dirty(); A.render(); }; });
+      qa('[data-cgdn]', m).forEach(function (b) { b.onclick = function () { var i = Number(b.dataset.cgdn); d.splice(i + 1, 0, d.splice(i, 1)[0]); dirty(); A.render(); }; });
+      qa('[data-cgrm]', m).forEach(function (b) { b.onclick = function () { var x = b.dataset.cgrm.split('|'); d[Number(x[0])].codes.splice(Number(x[1]), 1); dirty(); A.render(); }; });
+      var tree = custTreeAccs().map(function (a) { return a.id; }), leaves = {}; recvIds().forEach(function (id) { leaves[id] = 1; });
+      var inTree = function (a) { return tree.indexOf(a.id) >= 0 || leaves[a.id]; };
+      qa('[data-cgacc]', m).forEach(function (b) {
+        b.onclick = function () {
+          var g = d[Number(b.dataset.cgacc)];
+          pickAccount({ multi: true, value: (g.codes || []).slice(), title: 'حسابات «' + (g.name || 'المجموعة') + '»', hint: 'اختر حساباً رئيسياً (فيدخل كل العملاء تحته) أو حسابات عملاء فرعية بعينها. يمكن اختيار أكثر من حساب.', filter: inTree })
+            .then(function (codes) { if (!codes) return; g.codes = codes; if (!g.name && codes.length === 1 && F.D.byCode[codes[0]]) g.name = F.D.byCode[codes[0]].name; dirty(); A.render(); });
+        };
+      });
+      q('[data-cgadd]', m).onclick = function () { d.push({ id: 'g' + Date.now().toString(36), name: '', codes: [] }); dirty(); A.render(); setTimeout(function () { var el = qa('[data-cgname]', document).pop(); if (el) el.focus(); }, 30); };
+      q('[data-cgauto]', m).onclick = function () {
+        // حساب رئيسي لكل مجموعة: الأبناء المباشرون لحسابات العملاء التي لها عملاء تحتها
+        var s = settings(), roots = String(s.recv || '1601').split(','), have = {}; d.forEach(function (g) { (g.codes || []).forEach(function (c) { have[c] = 1; }); });
+        var added = 0;
+        custTreeAccs().forEach(function (a) { var p0 = a.parent ? acc(a.parent) : null; if (!a.leaf && p0 && roots.indexOf(String(p0.code)) >= 0 && !have[a.code]) { d.push({ id: 'g' + Date.now().toString(36) + added, name: a.name, codes: [String(a.code)] }); have[a.code] = 1; added++; } });
+        if (!added) { toast('لا توجد حسابات رئيسية جديدة تحت حسابات العملاء'); return; }
+        dirty(); toast('أُضيفت ' + added + ' مجموعة، راجعها ثم احفظ'); A.render();
+      };
+      var un = q('[data-cgundo]', m); if (un) un.onclick = function () { F.cgDraft = null; F.cgDirty = false; A.render(); };
+      q('[data-cgsave]', m).onclick = function () {
+        var bad = d.filter(function (g) { return !String(g.name || '').trim() || !(g.codes || []).length; })[0];
+        if (bad) { toast('لكل مجموعة اسم وحساب واحد على الأقل', true); return; }
+        var val = d.map(function (g) { return { id: g.id, name: String(g.name).trim().slice(0, 60), codes: g.codes.slice(0, 200) }; }), b = this; busy(b, true);
+        var done = function (local) { F.cgDraft = null; F.cgDirty = false; resetCache(); toast(local ? 'حُفظت على هذا الجهاز فقط حتى يُحدَّث الخادم' : 'حُفظت مجموعات العملاء'); A.render(); };
+        call('fin_config_save', { key: 'cgroups', value: val.length ? val : null }).then(function (r) {
+          F.config = r.config || {}; if (!val.length) delete F.config.cgroups; S.set('fin:aux', { boxes: F.boxes, reports: F.reports, config: F.config }); try { localStorage.removeItem('rk.finCgroups'); } catch (e) {} done(false);
+        }).catch(function (e) {
+          if (!/غير معروف/.test(e.message)) { busy(b, false); toast(e.message, true); return; }
+          try { localStorage.setItem('rk.finCgroups', JSON.stringify(val)); } catch (x) {} if (F.config) delete F.config.cgroups; done(true);
+        });
+      };
+    }
+
     // عند الخروج: مسح البيانات المالية من الجهاز
     A.onLogout(function () { var pk = Object.keys((F.pks && F.pks.list) || {}); F.packs = {}; F.pks = null; F.rows = null; F.D = null; F.Dby = null; F.Dcache = null; F.br = undefined; F.rev = 0; F.meta = null; F.cur = null; F.edit = null; F.dirtyKeys = null; F.dirty = false; return Promise.all([S.del('fin:rows'), S.del('fin:rev'), S.del('fin:meta'), S.del('fin:aux'), S.del('fin:pks')].concat(pk.map(function (n) { return S.del('fin:pk:' + n); }))); });
     try { st.finParams = JSON.parse(localStorage.getItem('rk.finParams') || '{}'); } catch (e) { st.finParams = {}; }
 
     // للاختبارات: الوصول للمحرّك
-    window.__rkfin = { F: F, R: R, runCustom: runCustom, runPair: runPair, runFree: runFree, applyView: applyView, CATS: CATS, repCat: repCat, repCollections: repCollections, SRC: SRC, normAr: normAr, build: rebuild, buildOne: build, useBr: useBr, setBr: setBr, withBr: withBr, branches: branches, recvIds: recvIds, runCur: runCur, balance: balance, salesStats: salesStats, evalFormula: evalFormula, tryFormula: tryFormula, evalList: evalList,
+    window.__rkfin = { F: F, R: R, custTreeAccs: custTreeAccs, resetCache: resetCache, cgOf: cgOf, runCustom: runCustom, runPair: runPair, runFree: runFree, applyView: applyView, CATS: CATS, repCat: repCat, repCollections: repCollections, SRC: SRC, normAr: normAr, build: rebuild, buildOne: build, useBr: useBr, setBr: setBr, withBr: withBr, branches: branches, recvIds: recvIds, runCur: runCur, balance: balance, salesStats: salesStats, evalFormula: evalFormula, tryFormula: tryFormula, evalList: evalList,
       stockTotals: stockTotals, collections: collections, termsToF: termsToF, fToTerms: fToTerms, itemText: function (x) { return itemText(x); }, fltOptions: function (d) { return fltOptions(d); }, dailyData: function () { return dailyData(); }, cards: cards, dailyDef: dailyDef };
   };
 })();

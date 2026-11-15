@@ -473,16 +473,21 @@
     // حسابات العملاء بعد تصفية العميل (للمديونية والتحصيل وأعمار الديون)
     function partyFilter(ids, flt) {
       var f = parseFilter(flt);
-      if (!f || !((f.cust && f.cust.length) || (f.xcust && f.xcust.length))) return ids;
+      if (!f || !CUST_KEYS.some(function (k) { return f[k] && f[k].length; })) return ids;
       return ids.filter(function (id) {
         var a = acc(id), nm = a ? a.name : '', cd = a ? a.code : '';
         if (f.cust && f.cust.length && !matchAny(f.cust, id, nm, cd)) return false;
         if (f.xcust && f.xcust.length && matchAny(f.xcust, id, nm, cd)) return false;
+        if (f.cacc && f.cacc.length && !caccMatch(f.cacc, id)) return false;
+        if (f.xcacc && f.xcacc.length && caccMatch(f.xcacc, id)) return false;
+        if (f.cgrp && f.cgrp.length && !cgMatch(f.cgrp, id)) return false;
+        if (f.xcgrp && f.xcgrp.length && cgMatch(f.xcgrp, id)) return false;
         return true;
       });
     }
     function recvFor(flt) { return partyFilter(recvIds(), flt); }
-    function hasCustF(flt) { var f = parseFilter(flt); return !!(f && ((f.cust && f.cust.length) || (f.xcust && f.xcust.length))); }
+    var CUST_KEYS = ['cust', 'xcust', 'cacc', 'xcacc', 'cgrp', 'xcgrp'];
+    function hasCustF(flt) { var f = parseFilter(flt); return !!(f && CUST_KEYS.some(function (k) { return f[k] && f[k].length; })); }
     function matchAny(list, id, name, code) {
       return list.some(function (x) {
         x = String(x);
@@ -497,6 +502,10 @@
       if (!f) return true;
       if (f.cust && f.cust.length && !custMatch(f.cust, v)) return false;
       if (f.xcust && f.xcust.length && custMatch(f.xcust, v)) return false;
+      if (f.cacc && f.cacc.length && !caccMatch(f.cacc, v.ck)) return false;
+      if (f.xcacc && f.xcacc.length && caccMatch(f.xcacc, v.ck)) return false;
+      if (f.cgrp && f.cgrp.length && !cgMatch(f.cgrp, v.ck)) return false;
+      if (f.xcgrp && f.xcgrp.length && cgMatch(f.xcgrp, v.ck)) return false;
       if (f.ag && f.ag.length && !matchAny(f.ag, v.ag, (T().ag[v.ag] || {}).name)) return false;
       if (f.cat && f.cat.length && f.cat.map(function (x) { return String(x).replace(/^@/, ''); }).indexOf(repCat(v.ag)) < 0) return false;
       if (f.xcat && f.xcat.length && f.xcat.map(function (x) { return String(x).replace(/^@/, ''); }).indexOf(repCat(v.ag)) >= 0) return false;
