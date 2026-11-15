@@ -121,13 +121,15 @@
       }) : Promise.resolve()).then(function () {
         if (!navigator.onLine) throw new Error('لا يوجد اتصال بالإنترنت');
         return sync(force).then(function () { return Promise.all([call('fin_boxes'), call('fin_reports'), call('fin_config').catch(function () { return { config: F.config }; })]); }).then(function (r) {
-          F.boxes = r[0].boxes; F.reports = r[1].reports; F.config = r[2].config || {}; F.error = null; F.lastPull = Date.now();
+          F.boxes = r[0].boxes; F.reports = r[1].reports; F.config = r[2].config || {}; F.error = null; F.syncErr = null; F.lastPull = Date.now();
           return S.set('fin:aux', { boxes: F.boxes, reports: F.reports, config: F.config });
         });
       }).catch(function (e) {
         if (!F.D) { F.error = e.message; throw e; }
+        F.syncErr = e.message;
         if (!F.quiet) toast('تعذّر تحديث البيانات المالية (' + e.message + ')، تُعرض آخر بيانات محفوظة', true);
-      }).finally(function () { F.loading = null; F.progress = ''; });
+      }).finally(function () { F.loading = null; F.progress = ''; paintSync(); });
+      paintSync();
       return F.loading;
     }
 
@@ -190,7 +192,20 @@
       });
     }
 
-    function paintProgress() { var el = q('#finprog'); if (el) el.textContent = F.progress; }
+    function paintProgress() { var el = q('#finprog'); if (el) el.textContent = F.progress; paintSync(); }
+    // مؤشر حالة البيانات أعلى الشاشة بجانب «متصل»: جارٍ التحميل (مع التقدم) ← مكتملة
+    function paintSync() {
+      var el = q('#dsync'); if (!el) return;
+      if (!A.st.user) { el.hidden = true; return; }
+      var cls = 'dsync', txt, tip = '';
+      var m = /(\d[\d,]*)\s*من\s*(\d[\d,]*)/.exec(F.progress || '');
+      if (F.loading) { cls += ' busy'; txt = (F.D ? 'جارٍ تحديث البيانات' : 'جارٍ تحميل البيانات') + (m ? ' ' + m[1] + ' من ' + m[2] : '…'); }
+      else if (F.error && !F.D) { cls += ' err'; txt = 'تعذّر تحميل البيانات'; tip = F.error; }
+      else if (F.D && F.syncErr) { cls += ' warn'; txt = 'تعذّر التحديث · بيانات محفوظة'; tip = F.syncErr; }
+      else if (F.D) { cls += ' ok'; txt = 'البيانات مكتملة ✓'; tip = 'آخر تحديث ' + (F.lastPull ? new Date(F.lastPull).toLocaleTimeString('ar-LY', { hour: '2-digit', minute: '2-digit' }) : '—') + (F.meta && F.meta.last ? ' · آخر بيانات من سراج ' + F.meta.last : ''); }
+      else { el.hidden = true; return; }
+      el.hidden = false; el.className = cls; el.textContent = txt; el.title = tip;
+    }
 
     /* ===================== بناء نموذج البيانات ===================== */
     var SALE = 102, SRET = 104, PUR = 105, PRET = 107, OPEN_STOCK = 101, TRANSFER = 108, ISSUE = 110;
@@ -5358,6 +5373,7 @@
     }
 
     // عند الخروج: مسح البيانات المالية من الجهاز
+    A.paintSync = paintSync;
     A.onLogout(function () { var pk = Object.keys((F.pks && F.pks.list) || {}); F.packs = {}; F.pks = null; F.rows = null; F.D = null; F.Dby = null; F.Dcache = null; F.br = undefined; F.rev = 0; F.meta = null; F.cur = null; F.edit = null; F.dirtyKeys = null; F.dirty = false; return Promise.all([S.del('fin:rows'), S.del('fin:rev'), S.del('fin:meta'), S.del('fin:aux'), S.del('fin:pks')].concat(pk.map(function (n) { return S.del('fin:pk:' + n); }))); });
     try { st.finParams = JSON.parse(localStorage.getItem('rk.finParams') || '{}'); } catch (e) { st.finParams = {}; }
 

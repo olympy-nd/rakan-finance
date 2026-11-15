@@ -210,7 +210,7 @@
     $app.innerHTML = '<div class="strip"></div><div class="shell ' + (phone ? 'has-bnav' : 'has-side') + '">' + (phone ? '' : nav) +
       '<div class="shell-b"><header class="top"><div class="top-in">' + (phone ? '<img class="logo" src="logo.png" alt="راكان">' : '') +
       '<div class="who"><h1 id="ptitle"></h1><span id="psub"></span></div>' +
-      '<span class="net" id="net"></span><button class="iconbtn" id="lo" aria-label="خروج" title="خروج">' + ICON.out + '</button></div></header>' +
+      '<span class="dsync" id="dsync" hidden></span><span class="net" id="net"></span><button class="iconbtn" id="lo" aria-label="خروج" title="خروج">' + ICON.out + '</button></div></header>' +
       '<main id="main"></main></div>' + (phone ? nav : '') + '</div>';
     q('#lo').onclick = function () { confirmBox('خروج', 'هل تريد الخروج؟ تُمسح البيانات المالية من هذا الجهاز.', 'خروج').then(function (y) { if (y) logout(); }); };
     var pb = q('#pinb'); if (pb) pb.onclick = pinSheet;
@@ -249,7 +249,9 @@
     var mb = q('[data-more]'); if (mb) mb.classList.toggle('on', (st.moreTabs || []).some(function (x) { return x[0] === st.tab; }));
   }
 
+  var FINAPI = null;
   function netUI() {
+    if (FINAPI && FINAPI.paintSync) FINAPI.paintSync();
     var n = q('#net');
     if (!n) return;
     n.className = 'net' + (st.online ? '' : ' off');
@@ -364,7 +366,7 @@
 
   // محرّك التقارير وشاشاتها (fin.js)
   if (window.RKFIN) try {
-    window.RKFIN({ esc: esc, q: q, qa: qa, call: call, sheet: sheet, toast: toast, busy: busy, ICON: ICON, st: st,
+    window.RKFIN(FINAPI = { esc: esc, q: q, qa: qa, call: call, sheet: sheet, toast: toast, busy: busy, ICON: ICON, st: st,
       VIEWS: VIEWS, render: render, go: go, N: N, withXLSX: withXLSX, saveBook: saveBook, confirmBox: confirmBox,
       onLogout: function (f) { window.RKFIN_RESET = f; } });
   } catch (e) { if (window.console) console.error(e); }

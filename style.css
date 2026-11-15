@@ -830,3 +830,13 @@ body:has(.bnav) .toast { bottom: calc(var(--bnav) + 16px + env(safe-area-inset-b
 .grp-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 10px 14px; border-bottom: 1px solid var(--colline); background: var(--card); position: sticky; inset-inline-start: 0; }
 .grp-t { font-size: 13px; font-weight: 800; color: var(--blue-deep); margin-inline-end: 4px; }
 .grp-bar .chip { padding: 4px 12px; font-size: 13px; }
+
+/* مؤشر حالة البيانات بجانب «متصل» */
+.dsync { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: 12.5px; font-weight: 700; white-space: nowrap; margin-inline-end: 6px; }
+.dsync.busy { background: var(--orange-soft); color: var(--orange); }
+.dsync.busy::before { content: ''; width: 10px; height: 10px; border-radius: 50%; border: 2px solid currentColor; border-top-color: transparent; animation: dspin .8s linear infinite; }
+.dsync.ok { background: var(--ok-soft); color: var(--ok); }
+.dsync.warn { background: var(--warn-soft); color: var(--warn); }
+.dsync.err { background: var(--err-soft); color: var(--err); }
+@keyframes dspin { to { transform: rotate(360deg); } }
+@media (max-width: 560px) { .dsync { font-size: 11.5px; padding: 3px 8px; max-width: 46vw; overflow: hidden; text-overflow: ellipsis; } }
