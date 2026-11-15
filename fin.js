@@ -1155,17 +1155,22 @@
         var tot = sumRow(rows, cols);
         return { cols: cols, rows: rows, total: tot, note: Math.abs(tot.dr - tot.cr) < 0.01 ? 'الميزان متوازن: إجمالي الحركة المدينة = الدائنة' : 'تنبيه: الميزان غير متوازن بفرق ' + fm(tot.dr - tot.cr) };
       } };
-    R.trial_bal = { cat: 'acct', name: 'ميزان المراجعة بالأرصدة', desc: 'الرصيد المدين أو الدائن لكل حساب في تاريخ محدد', params: ['asof', 'level'],
+    R.trial_bal = { cat: 'acct', name: 'ميزان المراجعة بالأرصدة', desc: 'الرصيد المدين أو الدائن لكل حساب من تاريخ إلى تاريخ: الرصيد التراكمي في نهاية الفترة، أو صافي حركة الفترة فقط', params: ['asof', 'level'],
+      sel: [['tbm', 'الأرصدة', [['close', 'الرصيد في نهاية الفترة (تراكمي)'], ['move', 'صافي حركة الفترة فقط (بدون أول المدة)']]]],
       run: function (p) {
-        var rows = trialRows({ from: null, to: p.asof }, Number(p.level || 4)).map(function (r) { return { code: r.code, name: r.name, cdr: r.cdr, ccr: r.ccr, _acc: r._acc }; }).filter(function (r) { return r.cdr || r.ccr; });
+        var mv = p.tbm === 'move', from = p.from || p.asof;
+        var rows = trialRows({ from: from, to: p.asof }, Number(p.level || 4)).map(function (r) {
+          var net = mv ? r.dr - r.cr : r.cdr - r.ccr;
+          return { code: r.code, name: r.name, cdr: net > 0 ? net : 0, ccr: net < 0 ? -net : 0, _acc: r._acc };
+        }).filter(function (r) { return r.cdr > 0.0005 || r.ccr > 0.0005; });
         var cols = [C('code', 'الرمز'), C('name', 'الحساب'), C('cdr', 'مدين', 'money'), C('ccr', 'دائن', 'money')];
-        return { cols: cols, rows: rows, total: sumRow(rows, cols) };
+        return { cols: cols, rows: rows, total: sumRow(rows, cols), subtitle: mv ? 'صافي حركة الفترة من ' + from + ' إلى ' + p.asof : 'الأرصدة في ' + p.asof };
       } };
     R.coa = { cat: 'acct', name: 'دليل الحسابات بالأرصدة', desc: 'شجرة الحسابات كاملة مع رصيد كل حساب', params: ['asof', 'level'],
       run: function (p) {
         var lvl = Number(p.level || 6), rows = [];
-        F.D.accList.forEach(function (a) { if (a.lvl > lvl) return; var b = balance(descend(a.id), null, p.asof); rows.push({ code: a.code, name: a.name, lvl: a.lvl, kind: a.leaf ? 'فرعي' : 'رئيسي', bal: b.close, _lvl: a.lvl - 1, _b: a.lvl === 1, _acc: a.id }); });
-        return { cols: [C('code', 'الرمز'), C('name', 'الحساب'), C('kind', 'النوع'), C('bal', 'الرصيد (مدين +)', 'money')], rows: rows };
+        F.D.accList.forEach(function (a) { if (a.lvl > lvl) return; var b = balance(descend(a.id), p.from || null, p.asof); rows.push({ code: a.code, name: a.name, lvl: a.lvl, kind: a.leaf ? 'فرعي' : 'رئيسي', open: b.open, dr: b.dr, cr: b.cr, bal: b.close, _lvl: a.lvl - 1, _b: a.lvl === 1, _acc: a.id }); });
+        return { cols: [C('code', 'الرمز'), C('name', 'الحساب'), C('kind', 'النوع'), C('open', 'أول المدة', 'money'), C('dr', 'مدين الفترة', 'money'), C('cr', 'دائن الفترة', 'money'), C('bal', 'الرصيد (مدين +)', 'money')], rows: rows };
       } };
     function accMonthly(p, rootFilter, label, sign, anyLevel) {
       var months = [], m = p.from.slice(0, 7);
@@ -1324,15 +1329,16 @@
     function partyBalances(ids, p, sign, label) {
       var rows = [];
       ids.forEach(function (id) {
-        var b = balance([id], null, p.asof), v = sign * b.close;
-        if (p.nonzero !== 'all' && Math.abs(v) < 0.0005) return;
+        var b = balance([id], p.from || null, p.asof), v = sign * b.close;
+        if (p.nonzero !== 'all' && Math.abs(v) < 0.0005 && !(p.nonzero === 'mv' && (b.dr || b.cr))) return;
+        if (p.nonzero === 'mv' && !b.dr && !b.cr) return;
         var lim = sign > 0 ? custLimit(id) : 0;
-        rows.push({ code: acc(id).code, name: accName(id), v: v, last: lastMove(id, p.asof), lastCr: sign > 0 ? lastCredit(id, p.asof) : '', lim: lim || '', over: lim && v > lim ? 'تجاوز الحد' : '', _acc: id });
+        rows.push({ code: acc(id).code, name: accName(id), open: sign * b.open, inc: sign > 0 ? b.dr : b.cr, dec: sign > 0 ? b.cr : b.dr, v: v, last: lastMove(id, p.asof), lastCr: sign > 0 ? lastCredit(id, p.asof) : '', lim: lim || '', over: lim && v > lim ? 'تجاوز الحد' : '', _acc: id });
       });
       rows.sort(function (a, b) { return b.v - a.v; });
-      var cols = [C('code', 'الرمز'), C('name', label), C('v', 'الرصيد', 'money'), C('last', 'آخر حركة')];
+      var cols = [C('code', 'الرمز'), C('name', label), C('open', 'رصيد أول المدة', 'money'), C('inc', sign > 0 ? 'الزيادة (مدين)' : 'الزيادة (دائن)', 'money'), C('dec', sign > 0 ? 'التحصيل والخصم (دائن)' : 'السداد (مدين)', 'money'), C('v', 'الرصيد في نهاية الفترة', 'money'), C('last', 'آخر حركة')];
       if (sign > 0) cols.push(C('lastCr', 'آخر تحصيل'), C('lim', 'حد الائتمان', 'money'), C('over', 'تنبيه'));
-      return { cols: cols, rows: rows, total: sumRow(rows, [C('v', '', 'money')]), chart: { type: 'hbar', x: 'name', y: ['v'], yl: ['الرصيد'], limit: 12 }, note: 'مجموعة الحسابات تُضبط من «الصناديق والإعدادات»' };
+      return { cols: cols, rows: rows, total: sumRow(rows, [C('open', '', 'money'), C('inc', '', 'money'), C('dec', '', 'money'), C('v', '', 'money')]), chart: { type: 'hbar', x: 'name', y: ['v'], yl: ['الرصيد'], limit: 12 }, note: 'مجموعة الحسابات تُضبط من «الصناديق والإعدادات»' };
     }
     R.recv_balances = { cat: 'debts', name: 'أرصدة العملاء (المديونيات)', desc: 'ما على كل عميل في تاريخ محدد مع آخر حركة وآخر تحصيل', params: ['asof', 'nonzero', 'flt'], fdims: ['cust', 'xcust'], run: function (p) { return withNote(partyBalances(recvFor(p.flt), p, 1, 'العميل'), p); } };
     R.pay_balances = { cat: 'debts', name: 'أرصدة الموردين', desc: 'ما للموردين على الشركة في تاريخ محدد', params: ['asof', 'nonzero', 'flt'], fdims: ['supp'], run: function (p) { return withNote(partyBalances(partyFilter(payIds(), p.flt), p, -1, 'المورد'), p); } };
@@ -2037,6 +2043,8 @@
       var saved = (st.finParams || {})[id] || {};
       if (def) (def.def.kind === 'ready' && R[def.def.base] ? R[def.def.base].sel || [] : []).forEach(function (x) { base[x[0]] = x[2][0][0]; });
       else (R[id].sel || []).forEach(function (x) { base[x[0]] = x[2][0][0]; });
+      var dd0 = def ? (def.def.kind === 'ready' && R[def.def.base] ? R[def.def.base] : { params: ['period'] }) : R[id];
+      if (dd0 && dd0.params.indexOf('asof') >= 0 && dd0.params.indexOf('period') < 0 && !saved.preset) { base.preset = 'year'; base.from = t.slice(0, 4) + '-01-01'; }
       var p = Object.assign(base, def && def.def.p ? def.def.p : {}, saved, params || {});
       var pin = pinnedFilter(), ddef = def ? (def.def.kind === 'ready' && R[def.def.base] ? R[def.def.base] : null) : R[id];
       if (!pin && p._pin) { p.flt = null; delete p._pin; }
@@ -2055,11 +2063,13 @@
       var c = F.cur, p = c.p;
       if (p.preset && p.preset !== 'custom') { var r = presetRange(p.preset, p.from, p.to, p.year, p.month); p.from = r[0]; p.to = r[1]; }
       var fn = function (pp) { return c.custom ? runCustom(c.custom.def, pp) : R[c.id].run(pp); };
+      var dp0 = curDef().params; if (dp0.indexOf('asof') >= 0 && dp0.indexOf('period') < 0 && p.to) p.asof = p.to;
       if (multiBr() && viewBr() === 'cmp') {
         var bs = branches(), pcsB = bs.map(function (b) { return { l: b.name, code: b.code }; });
         var oc = runCompare(function (pp, pc) { return withBr(pc.code, function () { return isCmp(pp.preset) && curDef().params.indexOf('period') >= 0 ? runCompare(fn, pp) : fn(pp); }); }, p, pcsB);
         c.rawCols = oc && oc.cols; return applyView(oc, p.view);
       }
+      var dp = curDef().params; if (dp.indexOf('asof') >= 0 && dp.indexOf('period') < 0 && p.to) p.asof = p.to;
       var out = isCmp(p.preset) && curDef().params.indexOf('period') >= 0 ? runCompare(fn, p) : fn(p);
       if (multiBr() && out && !out.empty) out.note = brNote() + (out.note ? ' · ' + plain(out.note) : '');
       c.rawCols = out && out.cols; return groupBySel(applyView(out, p.view), p.flt, c.id && R[c.id] && R[c.id].cat === 'cgrp' ? 'none' : grpMode(p));
@@ -2183,14 +2193,16 @@
     }
     var ICON_FILTER = '<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" style="vertical-align:-3px"><path fill="currentColor" d="M3 5h18l-7 8v6l-4 2v-8z"/></svg>';
 
+    var ASOF_MOVE = { trial_bal: 1, coa: 1, recv_balances: 1, pay_balances: 1 };
     function paramsHTML(def, p) {
       var h = '';
       var has = function (k) { return def.params.indexOf(k) >= 0; };
       if (has('period')) h += periodHTML(p, 'rep');
+      else if (has('asof')) h += periodHTML(p, 'rep') + '<div class="small muted asof-note">' + (ASOF_MOVE[(F.cur && ((F.cur.custom && F.cur.custom.def.base) || F.cur.id)) || ''] ? 'الفترة من ' + N(p.from || p.asof) + ' إلى ' + N(p.to || p.asof) + ((F.cur && F.cur.id) === 'trial_bal' ? '' : ': رصيد أول المدة وحركة الفترة والرصيد في نهايتها') : 'يُحسب حتى نهاية الفترة: ' + N(p.to || p.asof)) + '</div>';
       var sel = function (k, label, opts) { return '<label class="field fin-param"><span class="lbl">' + label + '</span><select class="input" data-pk="' + k + '">' + opts.map(function (o) { return '<option value="' + esc(o[0]) + '"' + (String(p[k]) === String(o[0]) ? ' selected' : '') + '>' + esc(o[1]) + '</option>'; }).join('') + '</select></label>'; };
       var row = '';
       if (isCmp(p.preset) && F.cur && F.cur.res && F.cur.res.cmp) { if (!p.cmpcol || !F.cur.res.cmp.cols.some(function (c) { return c[0] === p.cmpcol; })) p.cmpcol = F.cur.res.cmp.mk; row += sel('cmpcol', 'الرقم المقارن', F.cur.res.cmp.cols); }
-      if (has('asof')) row += '<label class="field fin-param"><span class="lbl">في تاريخ</span><input type="date" class="input num" data-pk="asof" value="' + p.asof + '"></label>';
+
       if (has('asof2')) row += '<label class="field fin-param"><span class="lbl">مقارنة بتاريخ</span><input type="date" class="input num" data-pk="asof2" value="' + esc(p.asof2 || addD(p.asof.slice(0, 4) + '-01-01', -1)) + '"></label>';
       if (has('gran')) row += sel('gran', 'التجميع', GRAN);
       if (has('level')) row += sel('level', 'المستوى', [[1, 'المستوى 1'], [2, 'المستوى 2'], [3, 'المستوى 3'], [4, 'المستوى 4'], [5, 'المستوى 5'], [6, 'كل المستويات']]);
@@ -2200,7 +2212,7 @@
       if (has('rep')) { var rl = Object.keys(T().ag).map(function (k) { return [k, repName(k) + ' · ' + repCat(k)]; }).sort(function (a, b) { return a[1].localeCompare(b[1], 'ar'); }); if (!p.rep && rl.length) p.rep = rl[0][0]; row += sel('rep', 'المندوب', rl); }
       if (has('rby')) row += sel('rby', 'حسب', [['cust', 'العميل'], ['item', 'الصنف']]);
       if (has('vby')) row += sel('vby', 'العرض', [['none', 'كل سند (تفصيلي)'], ['box', 'مجمّع حسب الصندوق/البنك'], ['party', 'مجمّع حسب الطرف'], ['day', 'مجمّع حسب اليوم']]);
-      if (has('nonzero')) row += sel('nonzero', 'الأرصدة', [['nz', 'غير الصفرية فقط'], ['all', 'الكل']]);
+      if (has('nonzero')) row += sel('nonzero', 'الأرصدة', [['nz', 'غير الصفرية فقط'], ['mv', 'من عليهم حركة في الفترة'], ['all', 'الكل']]);
       if (has('idle')) row += sel('idle', 'بلا شراء منذ', [[15, '15 يوماً'], [30, '30 يوماً'], [60, '60 يوماً'], [90, '90 يوماً'], [180, '180 يوماً']]);
       if (has('etype')) row += sel('etype', 'نوع القيد', [['all', 'الكل'], ['r', 'سندات القبض'], ['p', 'سندات الدفع'], ['j', 'قيود يومية'], ['i', 'قيود الفواتير'], ['o', 'افتتاحي']]);
       if (has('boxkind')) row += sel('boxkind', 'النوع', [['all', 'الصناديق والبنوك'], ['صندوق', 'الصناديق فقط'], ['بنك', 'البنوك فقط']]);
@@ -5214,6 +5226,7 @@
     var GRP_MODES = [['none', 'بدون تجميع'], ['grp', 'حسب مجموعات العملاء'], ['parent', 'حسب الحساب الأب']];
     function grpDefault() { var u = (F.config && F.config.ui) || null; if (!u) { try { u = JSON.parse(localStorage.getItem('rk.finUi') || 'null'); } catch (e) { u = null; } } return (u && u.grp) || 'none'; }
     function grpMode(p) { var m = p && p.cgx && p.cgx !== 'auto' ? p.cgx : grpDefault(); if (m === 'grp' && !cgList().length) m = 'parent'; return m; }
+    function custSet() { if (F.cache.cset) return F.cache.cset; var o = {}, m = custNameMap(); Object.keys(m).forEach(function (k) { o[m[k]] = 1; }); recvIds().forEach(function (id) { o[id] = 1; }); return (F.cache.cset = o); }
     function groupBySel(res, flt, mode) {
       var f = parseFilter(flt) || {};
       if (!res || res.empty || !res.rows || !res.rows.length) return res;
@@ -5221,7 +5234,7 @@
       var nm = custNameMap();
       // عمود العميل: أول عمود نصي تُعرف قيمه كعملاء
       var textCols = res.cols.filter(function (c) { return !isNum(c); }), ccol = null, best = 0;
-      textCols.slice(0, 3).forEach(function (c) { var n = res.rows.filter(function (r) { return r._c1 || r._ck || r._acc || nm[plain(r[c.k]).trim()]; }).length; if (n > best) { best = n; ccol = c; } });
+      var cset = custSet(); textCols.slice(0, 3).forEach(function (c) { var n = res.rows.filter(function (r) { return r._c1 || r._ck || (r._acc && cset[r._acc]) || nm[plain(r[c.k]).trim()]; }).length; if (n > best) { best = n; ccol = c; } });
       if (!ccol || best < res.rows.length * 0.6) return res;
       res._custRows = true;
       var kind = f.cacc && f.cacc.length > 1 ? 'cacc' : f.cgrp && f.cgrp.length > 1 ? 'cgrp' : mode === 'grp' || mode === 'parent' ? mode : '';

@@ -294,17 +294,22 @@
         var tot = sumRow(rows, cols);
         return { cols: cols, rows: rows, total: tot, note: Math.abs(tot.dr - tot.cr) < 0.01 ? 'الميزان متوازن: إجمالي الحركة المدينة = الدائنة' : 'تنبيه: الميزان غير متوازن بفرق ' + fm(tot.dr - tot.cr) };
       } };
-    R.trial_bal = { cat: 'acct', name: 'ميزان المراجعة بالأرصدة', desc: 'الرصيد المدين أو الدائن لكل حساب في تاريخ محدد', params: ['asof', 'level'],
+    R.trial_bal = { cat: 'acct', name: 'ميزان المراجعة بالأرصدة', desc: 'الرصيد المدين أو الدائن لكل حساب من تاريخ إلى تاريخ: الرصيد التراكمي في نهاية الفترة، أو صافي حركة الفترة فقط', params: ['asof', 'level'],
+      sel: [['tbm', 'الأرصدة', [['close', 'الرصيد في نهاية الفترة (تراكمي)'], ['move', 'صافي حركة الفترة فقط (بدون أول المدة)']]]],
       run: function (p) {
-        var rows = trialRows({ from: null, to: p.asof }, Number(p.level || 4)).map(function (r) { return { code: r.code, name: r.name, cdr: r.cdr, ccr: r.ccr, _acc: r._acc }; }).filter(function (r) { return r.cdr || r.ccr; });
+        var mv = p.tbm === 'move', from = p.from || p.asof;
+        var rows = trialRows({ from: from, to: p.asof }, Number(p.level || 4)).map(function (r) {
+          var net = mv ? r.dr - r.cr : r.cdr - r.ccr;
+          return { code: r.code, name: r.name, cdr: net > 0 ? net : 0, ccr: net < 0 ? -net : 0, _acc: r._acc };
+        }).filter(function (r) { return r.cdr > 0.0005 || r.ccr > 0.0005; });
         var cols = [C('code', 'الرمز'), C('name', 'الحساب'), C('cdr', 'مدين', 'money'), C('ccr', 'دائن', 'money')];
-        return { cols: cols, rows: rows, total: sumRow(rows, cols) };
+        return { cols: cols, rows: rows, total: sumRow(rows, cols), subtitle: mv ? 'صافي حركة الفترة من ' + from + ' إلى ' + p.asof : 'الأرصدة في ' + p.asof };
       } };
     R.coa = { cat: 'acct', name: 'دليل الحسابات بالأرصدة', desc: 'شجرة الحسابات كاملة مع رصيد كل حساب', params: ['asof', 'level'],
       run: function (p) {
         var lvl = Number(p.level || 6), rows = [];
-        F.D.accList.forEach(function (a) { if (a.lvl > lvl) return; var b = balance(descend(a.id), null, p.asof); rows.push({ code: a.code, name: a.name, lvl: a.lvl, kind: a.leaf ? 'فرعي' : 'رئيسي', bal: b.close, _lvl: a.lvl - 1, _b: a.lvl === 1, _acc: a.id }); });
-        return { cols: [C('code', 'الرمز'), C('name', 'الحساب'), C('kind', 'النوع'), C('bal', 'الرصيد (مدين +)', 'money')], rows: rows };
+        F.D.accList.forEach(function (a) { if (a.lvl > lvl) return; var b = balance(descend(a.id), p.from || null, p.asof); rows.push({ code: a.code, name: a.name, lvl: a.lvl, kind: a.leaf ? 'فرعي' : 'رئيسي', open: b.open, dr: b.dr, cr: b.cr, bal: b.close, _lvl: a.lvl - 1, _b: a.lvl === 1, _acc: a.id }); });
+        return { cols: [C('code', 'الرمز'), C('name', 'الحساب'), C('kind', 'النوع'), C('open', 'أول المدة', 'money'), C('dr', 'مدين الفترة', 'money'), C('cr', 'دائن الفترة', 'money'), C('bal', 'الرصيد (مدين +)', 'money')], rows: rows };
       } };
     function accMonthly(p, rootFilter, label, sign, anyLevel) {
       var months = [], m = p.from.slice(0, 7);
@@ -463,15 +468,16 @@
     function partyBalances(ids, p, sign, label) {
       var rows = [];
       ids.forEach(function (id) {
-        var b = balance([id], null, p.asof), v = sign * b.close;
-        if (p.nonzero !== 'all' && Math.abs(v) < 0.0005) return;
+        var b = balance([id], p.from || null, p.asof), v = sign * b.close;
+        if (p.nonzero !== 'all' && Math.abs(v) < 0.0005 && !(p.nonzero === 'mv' && (b.dr || b.cr))) return;
+        if (p.nonzero === 'mv' && !b.dr && !b.cr) return;
         var lim = sign > 0 ? custLimit(id) : 0;
-        rows.push({ code: acc(id).code, name: accName(id), v: v, last: lastMove(id, p.asof), lastCr: sign > 0 ? lastCredit(id, p.asof) : '', lim: lim || '', over: lim && v > lim ? 'تجاوز الحد' : '', _acc: id });
+        rows.push({ code: acc(id).code, name: accName(id), open: sign * b.open, inc: sign > 0 ? b.dr : b.cr, dec: sign > 0 ? b.cr : b.dr, v: v, last: lastMove(id, p.asof), lastCr: sign > 0 ? lastCredit(id, p.asof) : '', lim: lim || '', over: lim && v > lim ? 'تجاوز الحد' : '', _acc: id });
       });
       rows.sort(function (a, b) { return b.v - a.v; });
-      var cols = [C('code', 'الرمز'), C('name', label), C('v', 'الرصيد', 'money'), C('last', 'آخر حركة')];
+      var cols = [C('code', 'الرمز'), C('name', label), C('open', 'رصيد أول المدة', 'money'), C('inc', sign > 0 ? 'الزيادة (مدين)' : 'الزيادة (دائن)', 'money'), C('dec', sign > 0 ? 'التحصيل والخصم (دائن)' : 'السداد (مدين)', 'money'), C('v', 'الرصيد في نهاية الفترة', 'money'), C('last', 'آخر حركة')];
       if (sign > 0) cols.push(C('lastCr', 'آخر تحصيل'), C('lim', 'حد الائتمان', 'money'), C('over', 'تنبيه'));
-      return { cols: cols, rows: rows, total: sumRow(rows, [C('v', '', 'money')]), chart: { type: 'hbar', x: 'name', y: ['v'], yl: ['الرصيد'], limit: 12 }, note: 'مجموعة الحسابات تُضبط من «الصناديق والإعدادات»' };
+      return { cols: cols, rows: rows, total: sumRow(rows, [C('open', '', 'money'), C('inc', '', 'money'), C('dec', '', 'money'), C('v', '', 'money')]), chart: { type: 'hbar', x: 'name', y: ['v'], yl: ['الرصيد'], limit: 12 }, note: 'مجموعة الحسابات تُضبط من «الصناديق والإعدادات»' };
     }
     R.recv_balances = { cat: 'debts', name: 'أرصدة العملاء (المديونيات)', desc: 'ما على كل عميل في تاريخ محدد مع آخر حركة وآخر تحصيل', params: ['asof', 'nonzero', 'flt'], fdims: ['cust', 'xcust'], run: function (p) { return withNote(partyBalances(recvFor(p.flt), p, 1, 'العميل'), p); } };
     R.pay_balances = { cat: 'debts', name: 'أرصدة الموردين', desc: 'ما للموردين على الشركة في تاريخ محدد', params: ['asof', 'nonzero', 'flt'], fdims: ['supp'], run: function (p) { return withNote(partyBalances(partyFilter(payIds(), p.flt), p, -1, 'المورد'), p); } };

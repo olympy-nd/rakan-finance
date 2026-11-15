@@ -238,6 +238,7 @@
     var GRP_MODES = [['none', 'بدون تجميع'], ['grp', 'حسب مجموعات العملاء'], ['parent', 'حسب الحساب الأب']];
     function grpDefault() { var u = (F.config && F.config.ui) || null; if (!u) { try { u = JSON.parse(localStorage.getItem('rk.finUi') || 'null'); } catch (e) { u = null; } } return (u && u.grp) || 'none'; }
     function grpMode(p) { var m = p && p.cgx && p.cgx !== 'auto' ? p.cgx : grpDefault(); if (m === 'grp' && !cgList().length) m = 'parent'; return m; }
+    function custSet() { if (F.cache.cset) return F.cache.cset; var o = {}, m = custNameMap(); Object.keys(m).forEach(function (k) { o[m[k]] = 1; }); recvIds().forEach(function (id) { o[id] = 1; }); return (F.cache.cset = o); }
     function groupBySel(res, flt, mode) {
       var f = parseFilter(flt) || {};
       if (!res || res.empty || !res.rows || !res.rows.length) return res;
@@ -245,7 +246,7 @@
       var nm = custNameMap();
       // عمود العميل: أول عمود نصي تُعرف قيمه كعملاء
       var textCols = res.cols.filter(function (c) { return !isNum(c); }), ccol = null, best = 0;
-      textCols.slice(0, 3).forEach(function (c) { var n = res.rows.filter(function (r) { return r._c1 || r._ck || r._acc || nm[plain(r[c.k]).trim()]; }).length; if (n > best) { best = n; ccol = c; } });
+      var cset = custSet(); textCols.slice(0, 3).forEach(function (c) { var n = res.rows.filter(function (r) { return r._c1 || r._ck || (r._acc && cset[r._acc]) || nm[plain(r[c.k]).trim()]; }).length; if (n > best) { best = n; ccol = c; } });
       if (!ccol || best < res.rows.length * 0.6) return res;
       res._custRows = true;
       var kind = f.cacc && f.cacc.length > 1 ? 'cacc' : f.cgrp && f.cgrp.length > 1 ? 'cgrp' : mode === 'grp' || mode === 'parent' ? mode : '';
