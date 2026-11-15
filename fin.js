@@ -2023,6 +2023,9 @@
       if (def) (def.def.kind === 'ready' && R[def.def.base] ? R[def.def.base].sel || [] : []).forEach(function (x) { base[x[0]] = x[2][0][0]; });
       else (R[id].sel || []).forEach(function (x) { base[x[0]] = x[2][0][0]; });
       var p = Object.assign(base, def && def.def.p ? def.def.p : {}, saved, params || {});
+      var pin = pinnedFilter(), ddef = def ? (def.def.kind === 'ready' && R[def.def.base] ? R[def.def.base] : null) : R[id];
+      if (!pin && p._pin) { p.flt = null; delete p._pin; }
+      if (pin && ddef && ddef.params.indexOf('flt') >= 0 && !(params && params.flt)) { var pf = fltFor(pin.flt, fdimsFor(ddef)); if (pf) { p.flt = pf; p._pin = pin.name; } }
       if (def && !saved.view && def.def.view) p.view = JSON.parse(JSON.stringify(def.def.view));
       if (params && params.preset) { p.year = params.year || null; p.month = params.month || null; }
       var dd = def ? (def.def.kind === 'ready' && R[def.def.base] ? R[def.def.base] : { params: ['period'] }) : R[id];
@@ -2044,7 +2047,7 @@
       }
       var out = isCmp(p.preset) && curDef().params.indexOf('period') >= 0 ? runCompare(fn, p) : fn(p);
       if (multiBr() && out && !out.empty) out.note = brNote() + (out.note ? ' · ' + plain(out.note) : '');
-      c.rawCols = out && out.cols; return groupBySel(applyView(out, p.view), p.flt);
+      c.rawCols = out && out.cols; return groupBySel(applyView(out, p.view), p.flt, c.id && R[c.id] && R[c.id].cat === 'cgrp' ? 'none' : grpMode(p));
     }
     // مقارنة الأرباع أو الأشهر: يُشغَّل التقرير لكل فترة، ويُعرض رقم واحد يختاره المستخدم في عمود لكل فترة
     var CMP_PREF = ['net', 'tot', 'v', 'a', 'sales', 'val', 'inn', 'pur', 'qty', 'q', 'dr', 'n'];
@@ -2142,7 +2145,8 @@
         '<details class="fp fx-menu" data-fp="' + key + '"' + (open ? ' open' : '') + '><summary class="fx-add">+ إضافة تصفية</summary><div class="fx-pop">' +
         '<div class="fx-sec">عرض فقط</div><div class="fx-tiles">' + inc.map(tile).join('') + '</div>' +
         (exc.length ? '<div class="fx-sec x">استثناء (إخفاء)</div><div class="fx-tiles">' + exc.map(tile).join('') + '</div>' : '') + '</div></details>' +
-        (applied.length ? '<button class="fx-clear" data-fclr="' + key + '">مسح الكل</button>' : '') + '</div></div>';
+        (savedFilters().length ? '<button class="fx-saved" data-fload="' + key + '">الفلاتر الجاهزة <span class="fx-n">' + savedFilters().length + '</span></button>' : '') +
+        (applied.length ? '<button class="fx-save" data-fsave="' + key + '">☆ حفظ كفلتر جاهز</button><button class="fx-clear" data-fclr="' + key + '">مسح الكل</button>' : '') + '</div></div>';
     }
     function bindFltPanel(m, key, dims, getF, setF) {
       var dt = q('[data-fp="' + key + '"]', m); if (dt) dt.addEventListener('toggle', function () { F.fpOpen = F.fpOpen || {}; F.fpOpen[key] = dt.open; });
@@ -2157,6 +2161,8 @@
       });
       var c = q('[data-fclr="' + key + '"]', m);
       if (c) c.onclick = function () { setF(null); };
+      var sv = q('[data-fsave="' + key + '"]', m); if (sv) sv.onclick = function () { saveCurrentFilter(getF()); };
+      var ld = q('[data-fload="' + key + '"]', m); if (ld) ld.onclick = function () { pickSaved(dims).then(function (x) { if (!x) return; var f = fltFor(x.flt, dims); if (f) { setF(f); toast('طُبّق «' + x.name + '»'); } }); };
       // إغلاق القائمة عند الضغط خارجها
       if (dt && dt.open) setTimeout(function () { var h = function (e) { if (!dt.contains(e.target)) { dt.open = false; document.removeEventListener('click', h, true); } }; document.addEventListener('click', h, true); }, 0);
     }
@@ -2202,12 +2208,12 @@
       var p = c.p;
       var h = '<div class="card head-card"><div class="hc-top"><button class="iconbtn hc-back" data-back aria-label="رجوع إلى التقارير">→</button><div class="grow"><h2>' + esc(res.title || def.name) + '</h2><div class="small muted hc-desc">' + esc(res.subtitle || def.desc || '') + '</div></div>' +
         '<div class="rh-act"><button class="btn sm" data-xls aria-label="Excel">' + ICON_XLS + '<span class="bt-txt">Excel</span></button><button class="btn sm" data-prt aria-label="طباعة">' + ICON.print + '<span class="bt-txt">طباعة</span></button>' + (c.custom && canEdit() ? '<button class="btn sm ' + (c.custom.tmp ? 'accent' : 'ghost') + '" data-edit aria-label="تعديل">' + ICON_EDIT + '<span class="bt-txt">' + (c.custom.tmp ? 'رجوع للتعديل والحفظ' : 'تعديل') + '</span></button>' : '') + '</div></div>' +
-        paramsHTML(def, p) + (res.empty && !hasView(p.view) ? '' : viewPanelHTML(res, p)) +
+        (p._pin && p.flt ? '<div class="pin-note">📌 مُطبَّق الفلتر المثبّت «' + esc(p._pin) + '» · يُلغى من صفحة التقارير ← الفلاتر الجاهزة</div>' : '') + paramsHTML(def, p) + (res.empty && !hasView(p.view) ? '' : viewPanelHTML(res, p)) +
         (res.note ? '<div class="small muted rep-note">' + esc(plain(res.note)) + '</div>' : '') + '</div>';
       if (res.empty) return h + '<div class="card empty">' + esc(res.empty) + '</div>';
       if (res.chart && (res.chart.rowsOverride || res.rows.length > 1)) h += '<div class="card">' + chartSVG(res.chart, res.rows) + '</div>';
       if (!res.rows.length && hasView(p.view)) return h + '<div class="card empty">لا توجد أسطر تطابق شروط التخصيص. عدّل الشروط أو اضغط «إلغاء كل التعديلات».</div>';
-      h += '<div class="card scroll-x fin-table">' + tableHTML(res) + '</div>';
+      h += '<div class="card scroll-x fin-table">' + (res._custRows ? grpBarHTML(res, p) : '') + tableHTML(res) + '</div>';
       return h;
     }
     var FMT_SHORT = { p: 'pct', q: 'qty', n: 'int' };
@@ -2251,7 +2257,8 @@
       if (cp) cp.onclick = function () { pickCustomer(p.cust1).then(function (k) { if (k) { p.cust1 = k; c1Last(k); save(); A.render(); } }); };
       var ap = q('[data-accpick]', m);
       if (ap) ap.onclick = function () { pickAccount({ title: 'اختر الحساب', any: true }).then(function (id) { if (id) { p.account = id; save(); A.render(); } }); };
-      bindFltPanel(m, 'rep', fdimsFor(def), function () { return p.flt; }, function (f) { p.flt = f; save(); A.render(); });
+      bindFltPanel(m, 'rep', fdimsFor(def), function () { return p.flt; }, function (f) { p.flt = f; delete p._pin; save(); A.render(); });
+      bindGrpBar(m, p, save);
       qa('th[data-sort]', m).forEach(function (th) { th.onclick = function () { var k = th.dataset.sort; c.sort = c.sort && c.sort.k === k ? { k: k, dir: -c.sort.dir } : { k: k, dir: -1 }; A.render(); }; });
       qa('tr[data-acc]', m).forEach(function (tr) { tr.onclick = function () { var asof = def.params.indexOf('asof') >= 0; openReport('statement', { account: tr.dataset.acc, preset: asof ? 'custom' : p.preset, from: asof ? p.asof.slice(0, 4) + '-01-01' : p.from, to: asof ? p.asof : p.to }); }; });
       qa('tr[data-c1]', m).forEach(function (tr) { tr.onclick = function () { var asof = def.params.indexOf('asof') >= 0; c1Last(tr.dataset.c1); openReport('c1_card', { cust1: tr.dataset.c1, preset: asof ? 'custom' : p.preset, from: asof ? p.asof.slice(0, 4) + '-01-01' : p.from, to: asof ? p.asof : p.to }); }; });
@@ -3427,7 +3434,7 @@
         (canEdit() ? '<div class="cat-cta"><button class="btn accent" data-newrep>+ إنشاء تقرير</button><button class="btn" data-newpair>حساب مقابل حساب</button></div>' : '') + '</div>' +
         '';
       var view = F.rcat || 'home';
-      if (view === 'home' && !F.rq) return h + catHomeHTML();
+      if (view === 'home' && !F.rq) return h + catHomeHTML() + savedHomeHTML();
       h += '<div class="cat-nav"><button class="btn sm ghost cat-back" data-jump="home">→ كل الأقسام</button><div class="cat-filter" role="group" aria-label="التصنيف">' + [['all', 'الكل']].concat(F.reports.length ? [['mine', 'تقاريري']] : []).concat(CATS.filter(function (c) { return c[0] !== 'mine'; })).map(function (c) { return '<button class="' + (view === c[0] ? 'on' : '') + '" data-jump="' + c[0] + '">' + c[1] + '</button>'; }).join('') + '</div></div>';
       var mine = F.reports.map(function (r) { return { id: 'c:' + r.id, rid: r.id, name: r.name, desc: customDesc(r.def), by: r.by }; });
       var cats = [['mine', 'تقاريري']].concat(CATS.filter(function (c) { return c[0] !== 'mine'; }));
@@ -3477,6 +3484,7 @@
       inp.oninput = apply; if (F.rq) apply();
       qa('[data-jump]', m).forEach(function (b) { b.onclick = function () { F.rcat = b.dataset.jump; F.rcatPrev = null; inp.value = ''; F.rq = ''; A.render(); window.scrollTo(0, 0); }; });
       qa('[data-newrep]', m).forEach(function (b) { b.onclick = function () { F.custom = null; go('builder'); }; });
+      bindSavedHome(m);
       var np = q('[data-newpair]', m); if (np) np.onclick = function () { F.custom = { name: '', cat: 'تقاريري', def: ST_TPL[0][3]() }; go('builder'); };
       qa('[data-redit]', m).forEach(function (b) { b.onclick = function () { var r = F.reports.filter(function (x) { return x.id === b.dataset.redit; })[0]; if (!r) return; if (r.def.kind === 'ready') { F.vpOpen = true; openReport('c:' + r.id); return; } F.custom = JSON.parse(JSON.stringify(r)); go('builder'); }; });
     }
@@ -5157,27 +5165,44 @@
       recvIds().forEach(function (id) { var a = acc(id); if (a && !m[a.name]) m[a.name] = id; });
       return (F.cache.cnm = m);
     }
-    function groupBySel(res, flt) {
-      var f = parseFilter(flt);
-      if (!res || res.empty || !res.rows || !res.rows.length || !f) return res;
-      var kind = f.cacc && f.cacc.length > 1 ? 'cacc' : f.cgrp && f.cgrp.length > 1 ? 'cgrp' : '';
-      if (!kind || res.rows.some(function (r) { return r._b || r._lvl; })) return res;
-      var sel = f[kind].map(function (x) { return String(x).replace(/^@/, ''); }), nm = custNameMap();
+    // التجميع: حسب الحسابات/المجموعات المحددة في التصفية (تلقائي عند اختيار أكثر من واحد)،
+    // أو حسب قالب التجميع المختار للتقرير أو الافتراضي لكل التقارير: مجموعات العملاء أو الحساب الأب
+    var GRP_MODES = [['none', 'بدون تجميع'], ['grp', 'حسب مجموعات العملاء'], ['parent', 'حسب الحساب الأب']];
+    function grpDefault() { var u = (F.config && F.config.ui) || null; if (!u) { try { u = JSON.parse(localStorage.getItem('rk.finUi') || 'null'); } catch (e) { u = null; } } return (u && u.grp) || 'none'; }
+    function grpMode(p) { var m = p && p.cgx && p.cgx !== 'auto' ? p.cgx : grpDefault(); if (m === 'grp' && !cgList().length) m = 'parent'; return m; }
+    function groupBySel(res, flt, mode) {
+      var f = parseFilter(flt) || {};
+      if (!res || res.empty || !res.rows || !res.rows.length) return res;
+      if (res.rows.some(function (r) { return r._b || r._lvl; })) return res;
+      var nm = custNameMap();
       // عمود العميل: أول عمود نصي تُعرف قيمه كعملاء
       var textCols = res.cols.filter(function (c) { return !isNum(c); }), ccol = null, best = 0;
       textCols.slice(0, 3).forEach(function (c) { var n = res.rows.filter(function (r) { return r._c1 || r._ck || r._acc || nm[plain(r[c.k]).trim()]; }).length; if (n > best) { best = n; ccol = c; } });
       if (!ccol || best < res.rows.length * 0.6) return res;
+      res._custRows = true;
+      var kind = f.cacc && f.cacc.length > 1 ? 'cacc' : f.cgrp && f.cgrp.length > 1 ? 'cgrp' : mode === 'grp' || mode === 'parent' ? mode : '';
+      if (!kind) return res;
       var ckOf = function (r) { return r._c1 || r._ck || (r._acc && acc(r._acc) ? r._acc : null) || nm[plain(r[ccol.k]).trim()]; };
-      var whichSel = function (ck) {
-        if (!ck) return -1;
-        if (kind === 'cgrp') { for (var i = 0; i < sel.length; i++) if (cgIn(ck, sel[i])) return i; return -1; }
-        var an = ancOf(ck).map(function (a) { return a.id; }), bi = -1, bd = 1e9;
-        sel.forEach(function (id, i) { var d = an.indexOf(id); if (d >= 0 && d < bd) { bd = d; bi = i; } });   // الأقرب للعميل (الأدق) يفوز
-        return bi;
-      };
-      var groups = sel.map(function () { return []; }), other = [];
-      res.rows.forEach(function (r) { var i = whichSel(ckOf(r)); (i >= 0 ? groups[i] : other).push(r); });
-      var label = function (i) { var id = sel[i]; if (kind === 'cgrp') return cgName(id); var a = acc(id); return a ? a.code + ' · ' + a.name : id; };
+      var keyOf, label, order;
+      if (kind === 'cacc' || kind === 'cgrp') {
+        var sel = f[kind].map(function (x) { return String(x).replace(/^@/, ''); });
+        keyOf = function (ck) {
+          if (!ck) return null;
+          if (kind === 'cgrp') { for (var i = 0; i < sel.length; i++) if (cgIn(ck, sel[i])) return sel[i]; return null; }
+          var an = ancOf(ck).map(function (a) { return a.id; }), bi = null, bd = 1e9;
+          sel.forEach(function (id) { var d = an.indexOf(id); if (d >= 0 && d < bd) { bd = d; bi = id; } });   // الأقرب للعميل (الأدق) يفوز
+          return bi;
+        };
+        label = function (k) { if (kind === 'cgrp') return cgName(k); var a = acc(k); return a ? a.code + ' · ' + a.name : k; };
+        order = sel;
+      } else if (kind === 'grp') {
+        keyOf = function (ck) { return ck ? cgOf(ck) : null; }; label = cgName; order = cgList().map(function (g) { return g.id; }).concat([CG_NONE]);
+      } else {
+        keyOf = function (ck) { var a = ck && acc(ck); return a && a.parent ? a.parent : null; }; label = function (k) { var a = acc(k); return a ? a.code + ' · ' + a.name : k; }; order = null;
+      }
+      var g = {}, keys = [], other = [];
+      res.rows.forEach(function (r) { var k = keyOf(ckOf(r)); if (k === null || k === undefined) { other.push(r); return; } if (!g[k]) { g[k] = []; keys.push(k); } g[k].push(r); });
+      if (order) keys.sort(function (a, b) { return order.indexOf(a) - order.indexOf(b); });
       var nums = res.cols.filter(function (c) { return isNum(c) && c.t !== 'pct' && !GRP_NOSUM.test(c.k); });
       var head = function (name, list, gi) {
         var h = { _b: true, _hl: true, _g: gi, _gh: 1 }; h[ccol.k] = name + ' (' + list.length + ')';
@@ -5188,13 +5213,119 @@
         if ('share' in (list[0] || {})) h.share = list.reduce(function (s, r) { return s + (Number(r.share) || 0); }, 0);
         return h;
       };
+      var main = nums[0] ? nums[0].k : null;
+      if (!order && main) keys.sort(function (a, b) { var sa = g[a].reduce(function (s, r) { return s + (Number(r[main]) || 0); }, 0), sb = g[b].reduce(function (s, r) { return s + (Number(r[main]) || 0); }, 0); return sb - sa; });
       var rows = [];
-      groups.forEach(function (list, i) { if (!list.length) return; rows.push(head(label(i), list, i)); list.forEach(function (r) { rows.push(Object.assign({}, r, { _lvl: 1, _g: i })); }); });
-      if (other.length) { rows.push(head('أخرى', other, sel.length)); other.forEach(function (r) { rows.push(Object.assign({}, r, { _lvl: 1, _g: sel.length })); }); }
-      var out = Object.assign({}, res, { rows: rows, _lvlc: res.cols.indexOf(ccol), _grouped: true });
-      if (res.chart && !res.chart.rowsOverride) { var hs = rows.filter(function (r) { return r._gh; }).map(function (r) { var o = Object.assign({}, r); if (res.chart.x && res.chart.x !== ccol.k) o[res.chart.x] = r[ccol.k]; return o; }); out.chart = Object.assign({}, res.chart, { rowsOverride: hs, limit: 0 }); }
-      out.note = (res.note ? res.note + ' · ' : '') + 'مجمّع حسب ' + (kind === 'cgrp' ? 'مجموعات العملاء' : 'حسابات العملاء') + ' المحددة في التصفية';
+      keys.forEach(function (k, i) { rows.push(head(label(k), g[k], i)); g[k].forEach(function (r) { rows.push(Object.assign({}, r, { _lvl: 1, _g: i })); }); });
+      if (other.length) { rows.push(head(kind === 'cacc' || kind === 'cgrp' ? 'أخرى' : 'بدون حساب', other, keys.length)); other.forEach(function (r) { rows.push(Object.assign({}, r, { _lvl: 1, _g: keys.length })); }); }
+      var out = Object.assign({}, res, { rows: rows, _lvlc: res.cols.indexOf(ccol), _grouped: kind });
+      if (res.chart && !res.chart.rowsOverride) { var hs = rows.filter(function (r) { return r._gh; }).map(function (r) { var o = Object.assign({}, r); delete o._b; delete o._hl; if (res.chart.x && res.chart.x !== ccol.k) o[res.chart.x] = r[ccol.k]; return o; }); out.chart = Object.assign({}, res.chart, { rowsOverride: hs, limit: Math.max(hs.length, 1) }); }
+      out.note = (res.note ? res.note + ' · ' : '') + 'مجمّع ' + (kind === 'cacc' ? 'حسب حسابات العملاء المحددة في التصفية' : kind === 'cgrp' ? 'حسب مجموعات العملاء المحددة في التصفية' : kind === 'grp' ? 'حسب مجموعات العملاء' : 'حسب الحساب الأب لكل عميل');
       return out;
+    }
+
+    /* ===================== الفلاتر الجاهزة وقالب التجميع =====================
+       فلتر جاهز = تصفية محفوظة باسم (عملاء، حسابات، مجموعات، أصناف…) تُستدعى في أي تقرير، أو تُثبَّت لتُطبَّق على كل تقرير يُفتح.
+       قالب التجميع = عرض صفوف العملاء مجمّعة تحت مجموعاتها (أو حساباتها الأب) في أي تقرير، ويمكن جعله الافتراضي لكل التقارير. */
+    function savedFilters() {
+      var l = F.config && Array.isArray(F.config.filters) ? F.config.filters : null;
+      if (!l) { try { l = JSON.parse(localStorage.getItem('rk.finFilters') || 'null'); } catch (e) { l = null; } }
+      return (l || []).filter(function (x) { return x && x.id && x.name && x.flt; });
+    }
+    function saveConfigKey(k, value, lsKey) {
+      return call('fin_config_save', { key: k, value: value }).then(function (r) {
+        F.config = r.config || {}; if (value === null) delete F.config[k]; S.set('fin:aux', { boxes: F.boxes, reports: F.reports, config: F.config }); try { localStorage.removeItem(lsKey); } catch (e) {} return false;
+      }).catch(function (e) {
+        if (!/غير معروف/.test(e.message)) throw e;
+        try { if (value === null) localStorage.removeItem(lsKey); else localStorage.setItem(lsKey, JSON.stringify(value)); } catch (x) {} if (F.config) delete F.config[k]; return true;
+      });
+    }
+    function storeFilters(list) { return saveConfigKey('filters', list.length ? list : null, 'rk.finFilters'); }
+    // نوع الفلتر: الأبعاد التي فيه (لترتيب الفلاتر الجاهزة في أقسام)
+    var FKEY_ORDER = ['cgrp', 'cacc', 'cust', 'ag', 'cat', 'item', 'st', 'u', 'xcgrp', 'xcacc', 'xcust', 'xcat', 'xitem'];
+    var FKEY_SEC = { cgrp: 'مجموعات العملاء', xcgrp: 'مجموعات العملاء', cacc: 'حسابات العملاء', xcacc: 'حسابات العملاء', cust: 'العملاء', xcust: 'العملاء', ag: 'المناديب', cat: 'فئات المناديب', xcat: 'فئات المناديب', item: 'الأصناف', xitem: 'الأصناف', st: 'المخازن', u: 'المستخدمون' };
+    function fltType(f) { f = fObj(f); var ks = FKEY_ORDER.filter(function (k) { return f[k] && f[k].length; }), secs = []; ks.forEach(function (k) { var s0 = FKEY_SEC[k] || k; if (secs.indexOf(s0) < 0) secs.push(s0); }); return secs.length ? secs.join(' + ') : 'أخرى'; }
+    function fltSummary(f) { f = fObj(f); return FKEY_ORDER.filter(function (k) { return f[k] && f[k].length; }).map(function (k) { return (FLT_LABEL[k] || k) + ': ' + f[k].map(function (x) { return fltName(k, x); }).join('، '); }).join(' · '); }
+    function fltFor(f, dims) { f = fObj(f); var ok = {}, o = {}; dims.forEach(function (d) { ok[DIM[d][0]] = 1; }); Object.keys(f).forEach(function (k) { if (ok[k] && f[k] && f[k].length) o[k] = f[k].slice(); }); return fCount(o) ? o : null; }
+    function groupedSaved(list) {
+      var sec = {}, order = [];
+      list.forEach(function (x) { var t = fltType(x.flt); if (!sec[t]) { sec[t] = []; order.push(t); } sec[t].push(x); });
+      return order.map(function (t) { return [t, sec[t]]; });
+    }
+    function askName(title, val) {
+      return new Promise(function (res) {
+        sheet(title, '<div class="form"><div class="field"><label class="lbl" for="snm">الاسم</label><input id="snm" class="input" value="' + esc(val || '') + '" placeholder="مثل: وكلاء الشرقية والغربية"></div><button class="btn primary big" id="snok">حفظ</button></div>', function (s) {
+          var i = q('#snm', s.el); setTimeout(function () { i.focus(); i.select(); }, 50);
+          var ok = function () { var v = i.value.trim(); if (!v) { i.focus(); return; } s.done = true; s.close(); res(v); };
+          q('#snok', s.el).onclick = ok; i.onkeydown = function (e) { if (e.key === 'Enter') ok(); };
+          s.onclose = function () { if (!s.done) res(null); };
+        });
+      });
+    }
+    function saveCurrentFilter(f) {
+      return askName('حفظ كفلتر جاهز', '').then(function (name) {
+        if (!name) return;
+        var list = savedFilters().slice(); list.push({ id: 'f' + Date.now().toString(36), name: name.slice(0, 60), flt: fObj(f), by: (A.st.user && A.st.user.name) || '' });
+        return storeFilters(list).then(function (local) { toast(local ? 'حُفظ على هذا الجهاز فقط حتى يُحدَّث الخادم' : 'حُفظ في «الفلاتر الجاهزة»'); A.render(); });
+      }).catch(function (e) { toast(e.message, true); });
+    }
+    // قائمة الفلاتر الجاهزة لاختيار واحد منها في تقرير
+    function pickSaved(dims) {
+      return new Promise(function (res) {
+        var list = savedFilters();
+        sheet('الفلاتر الجاهزة', '<div class="sf-pick">' + groupedSaved(list).map(function (g) {
+          return '<div class="sf-sec">' + esc(g[0]) + '</div>' + g[1].map(function (x) {
+            var fit = fltFor(x.flt, dims), part = fit && fCount(fit) < fCount(x.flt);
+            return '<button class="item tap sf-it" data-sf="' + esc(x.id) + '"' + (fit ? '' : ' disabled') + '><div class="main"><b>' + esc(x.name) + '</b><div class="meta"><span>' + esc(fltSummary(x.flt)) + '</span>' + (!fit ? '<span class="derr">لا يناسب هذا التقرير</span>' : part ? '<span class="muted">يُطبَّق جزء منه فقط</span>' : '') + '</div></div></button>';
+          }).join('');
+        }).join('') + '</div>', function (s) {
+          qa('[data-sf]', s.el).forEach(function (b) { b.onclick = function () { s.done = true; s.close(); res(list.filter(function (x) { return x.id === b.dataset.sf; })[0]); }; });
+          s.onclose = function () { if (!s.done) res(null); };
+        });
+      });
+    }
+    // الفلتر المثبّت: يُطبَّق على كل تقرير يُفتح بعده (إن كان التقرير يقبل أبعاده)
+    function pinnedFilter() { if (F.pinF === undefined) { try { F.pinF = JSON.parse(localStorage.getItem('rk.finPin') || 'null'); } catch (e) { F.pinF = null; } } return F.pinF; }
+    function setPinned(x) { F.pinF = x || null; try { if (x) localStorage.setItem('rk.finPin', JSON.stringify(x)); else localStorage.removeItem('rk.finPin'); } catch (e) {} }
+
+    // قسم «الفلاتر الجاهزة» في الصفحة الأولى للتقارير
+    function savedHomeHTML() {
+      var list = savedFilters(), pin = pinnedFilter();
+      var h = '<section class="card sf-home"><div class="sf-head"><h2>الفلاتر الجاهزة <span class="badge">' + list.length + '</span></h2>' + (pin ? '<span class="sf-pin-on">مثبّت الآن: <b>' + esc(pin.name) + '</b><button class="btn sm ghost" data-sfunpin>إلغاء التثبيت</button></span>' : '') + '</div>';
+      if (!list.length) return h + '<p class="small muted" style="margin:0">لا توجد فلاتر محفوظة بعد. افتح أي تقرير، اختر التصفية التي تريدها (عملاء، حسابات، مجموعات، أصناف…) ثم اضغط «☆ حفظ كفلتر جاهز»، فتظهر هنا لتستدعيها في أي وقت.</p></section>';
+      h += '<p class="small muted" style="margin:0 0 10px">«تثبيت» يطبّق الفلتر على كل تقرير تفتحه حتى تلغيه. ويمكن أيضاً اختياره من زر «الفلاتر الجاهزة» داخل أي تقرير.</p>';
+      groupedSaved(list).forEach(function (g) {
+        h += '<div class="sf-sec">' + esc(g[0]) + ' <span class="badge">' + g[1].length + '</span></div><div class="sf-grid">' + g[1].map(function (x) {
+          var on = pin && pin.id === x.id;
+          return '<div class="sf-card' + (on ? ' on' : '') + '"><b>' + esc(x.name) + '</b><span class="sf-sum">' + esc(fltSummary(x.flt)) + '</span>' + (x.by ? '<span class="small muted">' + esc(x.by) + '</span>' : '') +
+            '<div class="sf-act"><button class="btn sm ' + (on ? 'ghost' : 'primary') + '" data-sfpin="' + esc(x.id) + '">' + (on ? 'مثبّت ✓' : 'تثبيت على كل التقارير') + '</button>' +
+            (canEdit() ? '<button class="iconbtn" data-sfren="' + esc(x.id) + '" title="إعادة تسمية" aria-label="إعادة تسمية">✎</button><button class="iconbtn" data-sfdel="' + esc(x.id) + '" title="حذف" aria-label="حذف">✕</button>' : '') + '</div></div>';
+        }).join('') + '</div>';
+      });
+      return h + '</section>';
+    }
+    function bindSavedHome(m) {
+      var list = savedFilters();
+      qa('[data-sfpin]', m).forEach(function (b) { b.onclick = function () { var x = list.filter(function (y) { return y.id === b.dataset.sfpin; })[0], pin = pinnedFilter(); setPinned(pin && pin.id === x.id ? null : { id: x.id, name: x.name, flt: x.flt }); toast(pinnedFilter() ? 'سيُطبَّق «' + x.name + '» على كل تقرير تفتحه' : 'أُلغي التثبيت'); A.render(); }; });
+      var up = q('[data-sfunpin]', m); if (up) up.onclick = function () { setPinned(null); A.render(); };
+      qa('[data-sfdel]', m).forEach(function (b) { b.onclick = function () { var x = list.filter(function (y) { return y.id === b.dataset.sfdel; })[0]; A.confirmBox('حذف الفلتر', 'حذف الفلتر الجاهز «' + esc(x.name) + '»؟', 'حذف').then(function (y) { if (!y) return; var pin = pinnedFilter(); if (pin && pin.id === x.id) setPinned(null); storeFilters(list.filter(function (z) { return z.id !== x.id; })).then(function () { toast('حُذف'); A.render(); }).catch(function (e) { toast(e.message, true); }); }); }; });
+      qa('[data-sfren]', m).forEach(function (b) { b.onclick = function () { var x = list.filter(function (y) { return y.id === b.dataset.sfren; })[0]; askName('إعادة تسمية الفلتر', x.name).then(function (n) { if (!n) return; var l2 = list.map(function (z) { return z.id === x.id ? Object.assign({}, z, { name: n }) : z; }); storeFilters(l2).then(function () { var pin = pinnedFilter(); if (pin && pin.id === x.id) setPinned(Object.assign({}, pin, { name: n })); A.render(); }).catch(function (e) { toast(e.message, true); }); }); }; });
+    }
+
+    // شريط قالب التجميع فوق جدول التقرير
+    function grpBarHTML(res, p) {
+      var cur = p.cgx && p.cgx !== 'auto' ? p.cgx : 'auto', def = grpDefault(), eff = grpMode(p), bySel = res._grouped === 'cacc' || res._grouped === 'cgrp';
+      return '<div class="grp-bar"><span class="grp-t">تجميع العملاء:</span>' + (bySel ? '<span class="small muted">حسب ما حددته في التصفية</span>' :
+        GRP_MODES.map(function (m0) { var on = eff === m0[0] || (m0[0] === 'grp' && eff === 'parent' && cur === 'grp'); return '<button class="chip' + (on ? ' on' : '') + '" data-cgx="' + m0[0] + '">' + m0[1] + '</button>'; }).join('') +
+        (canEdit() && eff !== def ? '<button class="btn sm ghost" data-cgxdef="' + eff + '">اجعله الافتراضي لكل التقارير</button>' : (def !== 'none' ? '<span class="small muted">' + (cur === 'auto' ? '(الافتراضي لكل التقارير)' : '') + '</span>' : ''))) + '</div>';
+    }
+    function bindGrpBar(m, p, save) {
+      qa('[data-cgx]', m).forEach(function (b) { b.onclick = function () { p.cgx = b.dataset.cgx === grpDefault() ? 'auto' : b.dataset.cgx; save(); A.render(); }; });
+      var d = q('[data-cgxdef]', m);
+      if (d) d.onclick = function () {
+        var v = d.dataset.cgxdef, ui = Object.assign({}, (F.config && F.config.ui) || {}, { grp: v });
+        saveConfigKey('ui', ui, 'rk.finUi').then(function (local) { if (local) try { localStorage.setItem('rk.finUi', JSON.stringify(ui)); } catch (e) {} p.cgx = 'auto'; save(); toast(v === 'none' ? 'أصبح الافتراضي: بدون تجميع' : 'أصبح الافتراضي في كل تقارير العملاء: ' + GRP_MODES.filter(function (x) { return x[0] === v; })[0][1]); A.render(); }).catch(function (e) { toast(e.message, true); });
+      };
     }
 
     // عند الخروج: مسح البيانات المالية من الجهاز

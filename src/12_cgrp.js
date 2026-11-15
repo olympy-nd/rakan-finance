@@ -233,27 +233,44 @@
       recvIds().forEach(function (id) { var a = acc(id); if (a && !m[a.name]) m[a.name] = id; });
       return (F.cache.cnm = m);
     }
-    function groupBySel(res, flt) {
-      var f = parseFilter(flt);
-      if (!res || res.empty || !res.rows || !res.rows.length || !f) return res;
-      var kind = f.cacc && f.cacc.length > 1 ? 'cacc' : f.cgrp && f.cgrp.length > 1 ? 'cgrp' : '';
-      if (!kind || res.rows.some(function (r) { return r._b || r._lvl; })) return res;
-      var sel = f[kind].map(function (x) { return String(x).replace(/^@/, ''); }), nm = custNameMap();
+    // التجميع: حسب الحسابات/المجموعات المحددة في التصفية (تلقائي عند اختيار أكثر من واحد)،
+    // أو حسب قالب التجميع المختار للتقرير أو الافتراضي لكل التقارير: مجموعات العملاء أو الحساب الأب
+    var GRP_MODES = [['none', 'بدون تجميع'], ['grp', 'حسب مجموعات العملاء'], ['parent', 'حسب الحساب الأب']];
+    function grpDefault() { var u = (F.config && F.config.ui) || null; if (!u) { try { u = JSON.parse(localStorage.getItem('rk.finUi') || 'null'); } catch (e) { u = null; } } return (u && u.grp) || 'none'; }
+    function grpMode(p) { var m = p && p.cgx && p.cgx !== 'auto' ? p.cgx : grpDefault(); if (m === 'grp' && !cgList().length) m = 'parent'; return m; }
+    function groupBySel(res, flt, mode) {
+      var f = parseFilter(flt) || {};
+      if (!res || res.empty || !res.rows || !res.rows.length) return res;
+      if (res.rows.some(function (r) { return r._b || r._lvl; })) return res;
+      var nm = custNameMap();
       // عمود العميل: أول عمود نصي تُعرف قيمه كعملاء
       var textCols = res.cols.filter(function (c) { return !isNum(c); }), ccol = null, best = 0;
       textCols.slice(0, 3).forEach(function (c) { var n = res.rows.filter(function (r) { return r._c1 || r._ck || r._acc || nm[plain(r[c.k]).trim()]; }).length; if (n > best) { best = n; ccol = c; } });
       if (!ccol || best < res.rows.length * 0.6) return res;
+      res._custRows = true;
+      var kind = f.cacc && f.cacc.length > 1 ? 'cacc' : f.cgrp && f.cgrp.length > 1 ? 'cgrp' : mode === 'grp' || mode === 'parent' ? mode : '';
+      if (!kind) return res;
       var ckOf = function (r) { return r._c1 || r._ck || (r._acc && acc(r._acc) ? r._acc : null) || nm[plain(r[ccol.k]).trim()]; };
-      var whichSel = function (ck) {
-        if (!ck) return -1;
-        if (kind === 'cgrp') { for (var i = 0; i < sel.length; i++) if (cgIn(ck, sel[i])) return i; return -1; }
-        var an = ancOf(ck).map(function (a) { return a.id; }), bi = -1, bd = 1e9;
-        sel.forEach(function (id, i) { var d = an.indexOf(id); if (d >= 0 && d < bd) { bd = d; bi = i; } });   // الأقرب للعميل (الأدق) يفوز
-        return bi;
-      };
-      var groups = sel.map(function () { return []; }), other = [];
-      res.rows.forEach(function (r) { var i = whichSel(ckOf(r)); (i >= 0 ? groups[i] : other).push(r); });
-      var label = function (i) { var id = sel[i]; if (kind === 'cgrp') return cgName(id); var a = acc(id); return a ? a.code + ' · ' + a.name : id; };
+      var keyOf, label, order;
+      if (kind === 'cacc' || kind === 'cgrp') {
+        var sel = f[kind].map(function (x) { return String(x).replace(/^@/, ''); });
+        keyOf = function (ck) {
+          if (!ck) return null;
+          if (kind === 'cgrp') { for (var i = 0; i < sel.length; i++) if (cgIn(ck, sel[i])) return sel[i]; return null; }
+          var an = ancOf(ck).map(function (a) { return a.id; }), bi = null, bd = 1e9;
+          sel.forEach(function (id) { var d = an.indexOf(id); if (d >= 0 && d < bd) { bd = d; bi = id; } });   // الأقرب للعميل (الأدق) يفوز
+          return bi;
+        };
+        label = function (k) { if (kind === 'cgrp') return cgName(k); var a = acc(k); return a ? a.code + ' · ' + a.name : k; };
+        order = sel;
+      } else if (kind === 'grp') {
+        keyOf = function (ck) { return ck ? cgOf(ck) : null; }; label = cgName; order = cgList().map(function (g) { return g.id; }).concat([CG_NONE]);
+      } else {
+        keyOf = function (ck) { var a = ck && acc(ck); return a && a.parent ? a.parent : null; }; label = function (k) { var a = acc(k); return a ? a.code + ' · ' + a.name : k; }; order = null;
+      }
+      var g = {}, keys = [], other = [];
+      res.rows.forEach(function (r) { var k = keyOf(ckOf(r)); if (k === null || k === undefined) { other.push(r); return; } if (!g[k]) { g[k] = []; keys.push(k); } g[k].push(r); });
+      if (order) keys.sort(function (a, b) { return order.indexOf(a) - order.indexOf(b); });
       var nums = res.cols.filter(function (c) { return isNum(c) && c.t !== 'pct' && !GRP_NOSUM.test(c.k); });
       var head = function (name, list, gi) {
         var h = { _b: true, _hl: true, _g: gi, _gh: 1 }; h[ccol.k] = name + ' (' + list.length + ')';
@@ -264,11 +281,13 @@
         if ('share' in (list[0] || {})) h.share = list.reduce(function (s, r) { return s + (Number(r.share) || 0); }, 0);
         return h;
       };
+      var main = nums[0] ? nums[0].k : null;
+      if (!order && main) keys.sort(function (a, b) { var sa = g[a].reduce(function (s, r) { return s + (Number(r[main]) || 0); }, 0), sb = g[b].reduce(function (s, r) { return s + (Number(r[main]) || 0); }, 0); return sb - sa; });
       var rows = [];
-      groups.forEach(function (list, i) { if (!list.length) return; rows.push(head(label(i), list, i)); list.forEach(function (r) { rows.push(Object.assign({}, r, { _lvl: 1, _g: i })); }); });
-      if (other.length) { rows.push(head('أخرى', other, sel.length)); other.forEach(function (r) { rows.push(Object.assign({}, r, { _lvl: 1, _g: sel.length })); }); }
-      var out = Object.assign({}, res, { rows: rows, _lvlc: res.cols.indexOf(ccol), _grouped: true });
-      if (res.chart && !res.chart.rowsOverride) { var hs = rows.filter(function (r) { return r._gh; }).map(function (r) { var o = Object.assign({}, r); if (res.chart.x && res.chart.x !== ccol.k) o[res.chart.x] = r[ccol.k]; return o; }); out.chart = Object.assign({}, res.chart, { rowsOverride: hs, limit: 0 }); }
-      out.note = (res.note ? res.note + ' · ' : '') + 'مجمّع حسب ' + (kind === 'cgrp' ? 'مجموعات العملاء' : 'حسابات العملاء') + ' المحددة في التصفية';
+      keys.forEach(function (k, i) { rows.push(head(label(k), g[k], i)); g[k].forEach(function (r) { rows.push(Object.assign({}, r, { _lvl: 1, _g: i })); }); });
+      if (other.length) { rows.push(head(kind === 'cacc' || kind === 'cgrp' ? 'أخرى' : 'بدون حساب', other, keys.length)); other.forEach(function (r) { rows.push(Object.assign({}, r, { _lvl: 1, _g: keys.length })); }); }
+      var out = Object.assign({}, res, { rows: rows, _lvlc: res.cols.indexOf(ccol), _grouped: kind });
+      if (res.chart && !res.chart.rowsOverride) { var hs = rows.filter(function (r) { return r._gh; }).map(function (r) { var o = Object.assign({}, r); delete o._b; delete o._hl; if (res.chart.x && res.chart.x !== ccol.k) o[res.chart.x] = r[ccol.k]; return o; }); out.chart = Object.assign({}, res.chart, { rowsOverride: hs, limit: Math.max(hs.length, 1) }); }
+      out.note = (res.note ? res.note + ' · ' : '') + 'مجمّع ' + (kind === 'cacc' ? 'حسب حسابات العملاء المحددة في التصفية' : kind === 'cgrp' ? 'حسب مجموعات العملاء المحددة في التصفية' : kind === 'grp' ? 'حسب مجموعات العملاء' : 'حسب الحساب الأب لكل عميل');
       return out;
     }
