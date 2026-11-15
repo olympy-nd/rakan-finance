@@ -428,6 +428,8 @@
       r.close = r.open + r.dr - r.cr;
       return r;
     }
+    // بداية البيانات المعتمدة للمقارنة: بداية السنة المالية من الإعدادات، وإلا أول قيد
+    function dataStart() { var ys = F.meta && F.meta.settings && F.meta.settings.year_start; if (ys) return ys; if (!F.cache.dstart) F.cache.dstart = T().jl.reduce(function (x, l) { return l.d && l.d < x ? l.d : x; }, today()); return F.cache.dstart; }
     function yearStart() { return (F.meta && F.meta.settings && F.meta.settings.year_start) || today().slice(0, 4) + '-01-01'; }
     // حسابات العملاء والموردين: لكل فرع حساباته (دليل حسابات مستقل). الفرع الذي لم تُحدَّد له يأخذ رموز القاعدة الرئيسية
     function grpCodes(k, code) {

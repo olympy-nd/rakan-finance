@@ -428,6 +428,8 @@
       r.close = r.open + r.dr - r.cr;
       return r;
     }
+    // بداية البيانات المعتمدة للمقارنة: بداية السنة المالية من الإعدادات، وإلا أول قيد
+    function dataStart() { var ys = F.meta && F.meta.settings && F.meta.settings.year_start; if (ys) return ys; if (!F.cache.dstart) F.cache.dstart = T().jl.reduce(function (x, l) { return l.d && l.d < x ? l.d : x; }, today()); return F.cache.dstart; }
     function yearStart() { return (F.meta && F.meta.settings && F.meta.settings.year_start) || today().slice(0, 4) + '-01-01'; }
     // حسابات العملاء والموردين: لكل فرع حساباته (دليل حسابات مستقل). الفرع الذي لم تُحدَّد له يأخذ رموز القاعدة الرئيسية
     function grpCodes(k, code) {
@@ -1849,7 +1851,7 @@
       var ps = dashPs(), r = dashRange(), list = cards(), gf = F.gflt, rv = recvFor(gf), cmp = isCmp(ps.preset);
       F.lastRange = r;
       var h = '<div class="card head-card"><div class="hc-top"><h2 class="hc-sub">الفترة</h2>' + (canEdit() ? '<button class="btn sm ghost" data-custom>' + ICON_EDIT + '<span class="bt-txt">تخصيص البطاقات</span></button>' : '') + '</div>' +
-        periodHTML(ps, 'dash', { prev: true }) + fltPanelHTML(DASH_DIMS, gf, 'dash') + '</div>';
+        periodHTML(ps, 'dash') + fltPanelHTML(DASH_DIMS, gf, 'dash') + '</div>';
       if (viewBr() === 'cmp') {
         var bs = branches(), bv = bs.map(function (b) { return withBr(b.code, function () { return evalList(list, r[0], r[1], gf); }); }), tv = evalList(list, r[0], r[1], gf);
         h += '<div class="card scroll-x fin-table"><h3>مقارنة الفروع · ' + esc(rangeText(r[0], r[1])) + '</h3><table class="tbl fin"><thead><tr><th>المؤشر</th>' + bs.map(function (b) { return '<th class="n">' + esc(b.name) + '</th>'; }).join('') + '<th class="n">الموحّد</th></tr></thead><tbody>' +
@@ -1865,9 +1867,12 @@
         if (list.length) h += '<div class="card"><h3>' + esc(list[0].name) + '</h3>' + chartSVG({ type: 'bar', x: 'name', y: ['v'], yl: [list[0].name] }, pcs.map(function (c, j) { return { name: c.l, v: vals[j][0].err ? 0 : vals[j][0].v }; })) + '</div>';
         return h;
       }
-      var pr = prevRange(r[0], r[1], ps.preset);
-      var cur = evalList(list, r[0], r[1], gf), prev = list.some(function (c) { return c.cmp; }) ? evalList(list, pr[0], pr[1], gf) : [];
+      var pr = prevRange(r[0], r[1], ps.preset), ds = dataStart(), hasCmp = list.some(function (c) { return c.cmp; }), canCmp = pr[0] >= ds;
+      var cur = evalList(list, r[0], r[1], gf), prev = hasCmp && canCmp ? evalList(list, pr[0], pr[1], gf) : [];
       h += '<div class="kpis fin-kpis">' + list.map(function (c, i) { return cardHTML(c, cur[i], prev[i], i); }).join('') + '</div>';
+      if (hasCmp) h += '<p class="kpi-cmp">' + (canCmp
+        ? '<span class="kc-ar"><b class="up">▲</b><b class="down">▼</b></span><span>النسب في البطاقات مقارنة بالفترة</span><b class="kc-d">' + esc(rangeText(pr[0], pr[1])) + '</b>'
+        : '<span class="kc-i">i</span><span>لا تظهر نسب المقارنة: الفترة السابقة (' + esc(rangeText(pr[0], pr[1])) + ') تبدأ قبل بداية بيانات المنظومة في</span><b class="kc-d">' + esc(rangeText(ds, ds)) + '</b>') + '</p>';
       var months = [], m0 = r[1].slice(0, 7);
       for (var i = 5; i >= 0; i--) { var mm = m0, k = i; while (k-- > 0) mm = addD(mm + '-01', -1).slice(0, 7); months.push(mm); }
       var series = months.map(function (mm) { var e = monthEnd(mm) > r[1] ? r[1] : monthEnd(mm); return { name: MONTHS[+mm.slice(5, 7) - 1], net: salesStats(mm + '-01', e, gf).net, coll: collections(mm + '-01', e, '', false, rv) }; });
@@ -5827,6 +5832,6 @@
 
     // للاختبارات: الوصول للمحرّك
     window.__rkfin = { F: F, R: R, custTreeAccs: custTreeAccs, iclTree: iclTree, resetCache: resetCache, cgOf: cgOf, runCustom: runCustom, runPair: runPair, runFree: runFree, applyView: applyView, CATS: CATS, repCat: repCat, repCollections: repCollections, SRC: SRC, normAr: normAr, build: rebuild, buildOne: build, useBr: useBr, setBr: setBr, withBr: withBr, branches: branches, recvIds: recvIds, runCur: runCur, balance: balance, salesStats: salesStats, evalFormula: evalFormula, tryFormula: tryFormula, evalList: evalList,
-      stockTotals: stockTotals, collections: collections, termsToF: termsToF, fToTerms: fToTerms, itemText: function (x) { return itemText(x); }, fltOptions: function (d) { return fltOptions(d); }, dailyData: function () { return dailyData(); }, cards: cards, dailyDef: dailyDef, T: T, stockAt: stockAt, itemName: itemName, balance: balance };
+      stockTotals: stockTotals, collections: collections, termsToF: termsToF, fToTerms: fToTerms, itemText: function (x) { return itemText(x); }, fltOptions: function (d) { return fltOptions(d); }, dailyData: function () { return dailyData(); }, cards: cards, dailyDef: dailyDef, T: T, evalList: evalList, prevRange: prevRange, stockAt: stockAt, itemName: itemName, balance: balance };
   };
 })();
