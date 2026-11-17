@@ -358,8 +358,8 @@
     var off = window.RKSnd && !RKSnd.prefs().sound;
     return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/>' + (off ? '<path d="M17 9l5 6M22 9l-5 6"/>' : '<path d="M16.5 8.5a5 5 0 010 7M19.5 5.5a9 9 0 010 13"/>') + '</svg>';
   }
-  /* الوضع النهاري والليلي: يتبع الجهاز حتى يختار المستخدم، والاختيار محفوظ على هذا الجهاز */
-  function isDark() { var t = document.documentElement.getAttribute('data-theme'); return t ? t === 'dark' : !!(window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches); }
+  /* الوضع النهاري والليلي: النهاري افتراضياً (لا يتبع إعداد الجهاز)، واختيار المستخدم محفوظ على هذا الجهاز */
+  function isDark() { return document.documentElement.getAttribute('data-theme') === 'dark'; }
   function themeTip() { return isDark() ? 'الوضع النهاري' : 'الوضع الليلي'; }
   function themeIcon() {
     return isDark()
