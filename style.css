@@ -929,3 +929,6 @@ input[type=date].input::-webkit-calendar-picker-indicator { position: absolute; 
 .dx-t { display: flex; align-items: center; justify-content: center; pointer-events: none; direction: ltr; unicode-bidi: isolate; font-variant-numeric: tabular-nums; font-weight: 700; font-size: 15px; color: var(--ink); white-space: nowrap; padding: 0 8px; z-index: 1; }
 .day-date .dx { flex: 1 1 auto; }
 .day-date .dx-t { color: var(--blue); }
+
+/* انتقال هادئ عند تبديل الوضع النهاري والليلي */
+.th-anim, .th-anim * { transition: background-color .3s ease, color .3s ease, border-color .3s ease, fill .3s ease, stroke .3s ease !important; }

@@ -276,11 +276,12 @@
     $app.innerHTML = '<div class="strip"></div><div class="shell ' + (phone ? 'has-bnav' : 'has-side') + '">' + (phone ? '' : nav) +
       '<div class="shell-b"><header class="top"><div class="top-in">' + (phone ? '<img class="logo" src="logo.png" alt="راكان">' : '') +
       '<div class="who"><h1 id="ptitle"></h1><span id="psub"></span></div>' +
-      '<span class="dsync" id="dsync" hidden></span><span class="net" id="net"></span><button class="iconbtn" id="sndb" aria-label="الأصوات" title="الأصوات">' + sndIcon() + '</button><button class="iconbtn" id="lo" aria-label="خروج" title="خروج">' + ICON.out + '</button></div></header>' +
+      '<span class="dsync" id="dsync" hidden></span><span class="net" id="net"></span><button class="iconbtn" id="sndb" aria-label="الأصوات" title="الأصوات">' + sndIcon() + '</button><button class="iconbtn" id="thb" aria-label="' + themeTip() + '" title="' + themeTip() + '">' + themeIcon() + '</button><button class="iconbtn" id="lo" aria-label="خروج" title="خروج">' + ICON.out + '</button></div></header>' +
       '<main id="main"></main></div>' + (phone ? nav : '') + '</div>';
     q('#lo').onclick = function () { confirmBox('خروج', 'هل تريد الخروج؟ تُمسح البيانات المالية من هذا الجهاز.', 'خروج').then(function (y) { if (y) logout(); }); };
     var pb = q('#pinb'); if (pb) pb.onclick = pinSheet;
     q('#sndb').onclick = sndSheet;
+    q('#thb').onclick = toggleTheme;
     navBadges();
     qa('[data-tab]').forEach(function (b) { b.onclick = function () { if (b.dataset.tab !== st.tab || (FINAPI && FINAPI.navSnap && FINAPI.navSnap().cur)) navPush(); go(b.dataset.tab); }; });
     var mb = q('[data-more]');
@@ -357,6 +358,23 @@
     var off = window.RKSnd && !RKSnd.prefs().sound;
     return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/>' + (off ? '<path d="M17 9l5 6M22 9l-5 6"/>' : '<path d="M16.5 8.5a5 5 0 010 7M19.5 5.5a9 9 0 010 13"/>') + '</svg>';
   }
+  /* الوضع النهاري والليلي: يتبع الجهاز حتى يختار المستخدم، والاختيار محفوظ على هذا الجهاز */
+  function isDark() { var t = document.documentElement.getAttribute('data-theme'); return t ? t === 'dark' : !!(window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches); }
+  function themeTip() { return isDark() ? 'الوضع النهاري' : 'الوضع الليلي'; }
+  function themeIcon() {
+    return isDark()
+      ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6"/></svg>'
+      : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 14.2A8.5 8.5 0 019.8 3.5a8.5 8.5 0 1010.7 10.7z"/></svg>';
+  }
+  function applyTheme(t) {
+    var de = document.documentElement;
+    de.classList.add('th-anim'); de.setAttribute('data-theme', t);
+    var m = document.querySelector('meta[name=theme-color]'); if (m) m.setAttribute('content', t === 'dark' ? '#0E1622' : '#08386F');
+    try { localStorage.setItem('rk.theme', t); } catch (e) {}
+    var b = q('#thb'); if (b) { b.innerHTML = themeIcon(); b.title = themeTip(); b.setAttribute('aria-label', themeTip()); }
+    setTimeout(function () { de.classList.remove('th-anim'); }, 400);
+  }
+  function toggleTheme() { var t = isDark() ? 'light' : 'dark'; applyTheme(t); toast(t === 'dark' ? 'تم تفعيل الوضع الليلي' : 'تم تفعيل الوضع النهاري'); }
   function sndSheet() {
     if (!window.RKSnd) return;
     var pr = RKSnd.prefs();
