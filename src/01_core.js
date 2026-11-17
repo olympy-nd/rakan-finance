@@ -477,7 +477,8 @@
     // التصفية: { cust:[مفاتيح العملاء], item:[], st:[], ag:[], u:[], xcust:[] } أو نص "عميل:1601001,1602; مخزن:الرئيسي; بدون_عميل:..."
     var FKEYS = { 'عميل': 'cust', 'عملاء': 'cust', cust: 'cust', 'صنف': 'item', 'أصناف': 'item', item: 'item', 'مخزن': 'st', store: 'st', st: 'st',
       'مندوب': 'ag', rep: 'ag', ag: 'ag', 'مستخدم': 'u', user: 'u', u: 'u', 'بدون_عميل': 'xcust', xcust: 'xcust', 'بدون_صنف': 'xitem', xitem: 'xitem',
-      'بدون_مخزن': 'xst', xst: 'xst', 'نوع': 'type', type: 'type', 'فئة': 'cat', 'فئة_المندوب': 'cat', cat: 'cat', 'بدون_فئة': 'xcat', xcat: 'xcat' };
+      'بدون_مخزن': 'xst', xst: 'xst', 'نوع': 'type', type: 'type', 'فئة': 'cat', 'فئة_المندوب': 'cat', cat: 'cat', 'بدون_فئة': 'xcat', xcat: 'xcat',
+      'حساب': 'acc', 'حسابات': 'acc', acc: 'acc', 'بدون_حساب': 'xacc', xacc: 'xacc' };
     function parseFilter(f) {
       if (!f) return null;
       if (typeof f === 'object') { var any = false; Object.keys(f).forEach(function (k) { if (f[k] && f[k].length) any = true; }); return any ? f : null; }
@@ -538,7 +539,16 @@
       if (f.xcat && f.xcat.length && f.xcat.map(function (x) { return String(x).replace(/^@/, ''); }).indexOf(repCat(v.ag)) >= 0) return false;
       if (f.u && f.u.length && !matchAny(f.u, v.u, (T().us[v.u] || {}).name)) return false;
       if (f.type && f.type.length && !matchAny(f.type, v.t, (T().it[v.t] || {}).name)) return false;
+      if (f.acc && f.acc.length && !accIdSet(f.acc)[v.ck]) return false;
+      if (f.xacc && f.xacc.length && accIdSet(f.xacc)[v.ck]) return false;
       return true;
+    }
+    // حسابات من الدليل (رموز، والحساب الرئيسي يشمل فروعه) ← مجموعة المعرّفات
+    function accIdSet(codes) {
+      var key = 'as:' + codes.join(',');
+      if (F.cache[key]) return F.cache[key];
+      var o = {}; byCodes(codes.map(function (c) { return String(c).replace(/^@/, ''); }).join(',')).forEach(function (id) { o[id] = 1; });
+      return (F.cache[key] = o);
     }
     function linePass(l, f) {
       if (!f) return true;
@@ -634,4 +644,27 @@
         r.base += qb; r.qty += qb / (it.f || 1); r.val += qb * costAt(p[1], d);
       });
       return r;
+    }
+    // البضاعة لدى حسابات من الدليل (مثل الوكلاء) حتى تاريخ: المباع لها − المرتجع منها، بالوحدة الشائعة وبالتكلفة
+    function accHeld(d, stores, f) {
+      f = Object.assign({}, parseFilter(f) || {});
+      if (stores && stores.length) f.st = (f.st || []).concat(stores);
+      var key = 'ah:' + d + JSON.stringify(f);
+      if (F.cache[key]) return F.cache[key];
+      var r = { qty: 0, val: 0, base: 0 };
+      F.D.invs.forEach(function (v) {
+        if ((v.c !== SALE && v.c !== SRET) || v.d > d || !invPass(v, f)) return;
+        var s = v.c === SRET ? -1 : 1;
+        v.lines.forEach(function (l) {
+          if (!linePass(l, f)) return;
+          var it = T().item[l.item] || { f: 1 };
+          r.base += s * l.qb; r.qty += s * l.qb / (it.f || 1); r.val += s * (l.cost || 0);
+        });
+      });
+      return (F.cache[key] = r);
+    }
+    function stockOrHeld(d, stores, own, scr) {
+      var o = parseFilter(own);
+      if (o && o.acc && o.acc.length) return accHeld(d, stores, mergeF(own, scr, ['item', 'xitem', 'st', 'acc', 'xacc']));
+      return stockTotals(d, stores, mergeF(own, scr, ['item', 'xitem', 'st']));
     }

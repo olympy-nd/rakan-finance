@@ -477,7 +477,8 @@
     // التصفية: { cust:[مفاتيح العملاء], item:[], st:[], ag:[], u:[], xcust:[] } أو نص "عميل:1601001,1602; مخزن:الرئيسي; بدون_عميل:..."
     var FKEYS = { 'عميل': 'cust', 'عملاء': 'cust', cust: 'cust', 'صنف': 'item', 'أصناف': 'item', item: 'item', 'مخزن': 'st', store: 'st', st: 'st',
       'مندوب': 'ag', rep: 'ag', ag: 'ag', 'مستخدم': 'u', user: 'u', u: 'u', 'بدون_عميل': 'xcust', xcust: 'xcust', 'بدون_صنف': 'xitem', xitem: 'xitem',
-      'بدون_مخزن': 'xst', xst: 'xst', 'نوع': 'type', type: 'type', 'فئة': 'cat', 'فئة_المندوب': 'cat', cat: 'cat', 'بدون_فئة': 'xcat', xcat: 'xcat' };
+      'بدون_مخزن': 'xst', xst: 'xst', 'نوع': 'type', type: 'type', 'فئة': 'cat', 'فئة_المندوب': 'cat', cat: 'cat', 'بدون_فئة': 'xcat', xcat: 'xcat',
+      'حساب': 'acc', 'حسابات': 'acc', acc: 'acc', 'بدون_حساب': 'xacc', xacc: 'xacc' };
     function parseFilter(f) {
       if (!f) return null;
       if (typeof f === 'object') { var any = false; Object.keys(f).forEach(function (k) { if (f[k] && f[k].length) any = true; }); return any ? f : null; }
@@ -538,7 +539,16 @@
       if (f.xcat && f.xcat.length && f.xcat.map(function (x) { return String(x).replace(/^@/, ''); }).indexOf(repCat(v.ag)) >= 0) return false;
       if (f.u && f.u.length && !matchAny(f.u, v.u, (T().us[v.u] || {}).name)) return false;
       if (f.type && f.type.length && !matchAny(f.type, v.t, (T().it[v.t] || {}).name)) return false;
+      if (f.acc && f.acc.length && !accIdSet(f.acc)[v.ck]) return false;
+      if (f.xacc && f.xacc.length && accIdSet(f.xacc)[v.ck]) return false;
       return true;
+    }
+    // حسابات من الدليل (رموز، والحساب الرئيسي يشمل فروعه) ← مجموعة المعرّفات
+    function accIdSet(codes) {
+      var key = 'as:' + codes.join(',');
+      if (F.cache[key]) return F.cache[key];
+      var o = {}; byCodes(codes.map(function (c) { return String(c).replace(/^@/, ''); }).join(',')).forEach(function (id) { o[id] = 1; });
+      return (F.cache[key] = o);
     }
     function linePass(l, f) {
       if (!f) return true;
@@ -635,6 +645,29 @@
       });
       return r;
     }
+    // البضاعة لدى حسابات من الدليل (مثل الوكلاء) حتى تاريخ: المباع لها − المرتجع منها، بالوحدة الشائعة وبالتكلفة
+    function accHeld(d, stores, f) {
+      f = Object.assign({}, parseFilter(f) || {});
+      if (stores && stores.length) f.st = (f.st || []).concat(stores);
+      var key = 'ah:' + d + JSON.stringify(f);
+      if (F.cache[key]) return F.cache[key];
+      var r = { qty: 0, val: 0, base: 0 };
+      F.D.invs.forEach(function (v) {
+        if ((v.c !== SALE && v.c !== SRET) || v.d > d || !invPass(v, f)) return;
+        var s = v.c === SRET ? -1 : 1;
+        v.lines.forEach(function (l) {
+          if (!linePass(l, f)) return;
+          var it = T().item[l.item] || { f: 1 };
+          r.base += s * l.qb; r.qty += s * l.qb / (it.f || 1); r.val += s * (l.cost || 0);
+        });
+      });
+      return (F.cache[key] = r);
+    }
+    function stockOrHeld(d, stores, own, scr) {
+      var o = parseFilter(own);
+      if (o && o.acc && o.acc.length) return accHeld(d, stores, mergeF(own, scr, ['item', 'xitem', 'st', 'acc', 'xacc']));
+      return stockTotals(d, stores, mergeF(own, scr, ['item', 'xitem', 'st']));
+    }
 
 
     /* ===================== محرّك المعادلات (للبطاقات والتقرير اليومي) ===================== */
@@ -666,8 +699,8 @@
     fn('مقبوضات', 'REC', '', 'مجموع سندات القبض في الفترة.', function (c) { return cashStats(c.from, c.to).rec; }, G_CASH);
     fn('مدفوعات', 'PAY', '', 'مجموع سندات الدفع في الفترة.', function (c) { return cashStats(c.from, c.to).pay; }, G_CASH);
     fn('رصيد_صناديق', 'BOXBAL', '"صندوق" أو "بنك" أو اسم', 'رصيد الصناديق أو البنوك المعرّفة في نهاية الفترة.', function (c, a) { var b = boxIds(a[0] || ''); return b.length ? balance(b, null, c.to).close : 0; }, G_CASH);
-    fn('مخزون_كمية', 'STOCKQ', '"المخازن" ، "تصفية"', 'كمية المخزون في نهاية الفترة بالوحدة الشائعة. بدون مخزن: كل المخازن.', function (c, a) { return stockTotals(c.to, splitList(a[0]), mergeF(a[1], c.flt, ['item', 'xitem', 'st'])).qty; }, G_STK);
-    fn('مخزون_قيمة', 'STOCKV', '"المخازن" ، "تصفية"', 'قيمة المخزون بمتوسط التكلفة في نهاية الفترة.', function (c, a) { return stockTotals(c.to, splitList(a[0]), mergeF(a[1], c.flt, ['item', 'xitem', 'st'])).val; }, G_STK);
+    fn('مخزون_كمية', 'STOCKQ', '"المخازن" ، "تصفية"', 'كمية المخزون في نهاية الفترة بالوحدة الشائعة. بدون مخزن: كل المخازن. مع «حساب:»: الكمية لدى الحساب (المباع له − المرتجع منه) حتى نهاية الفترة.', function (c, a) { return stockOrHeld(c.to, splitList(a[0]), a[1], c.flt).qty; }, G_STK);
+    fn('مخزون_قيمة', 'STOCKV', '"المخازن" ، "تصفية"', 'قيمة المخزون بمتوسط التكلفة في نهاية الفترة.', function (c, a) { return stockOrHeld(c.to, splitList(a[0]), a[1], c.flt).val; }, G_STK);
     fn('أيام', 'DAYS', '', 'عدد أيام الفترة.', function (c) { return days(c.from, c.to) + 1; }, G_MATH);
     fn('قسمة', 'DIV', 'أ ، ب', 'أ ÷ ب، ويعطي صفراً إذا كانت ب صفراً.', function (c, a) { return a[1] ? a[0] / a[1] : 0; }, G_MATH);
     fn('نسبة', 'PCT', 'أ ، ب', 'أ ÷ ب × 100.', function (c, a) { return a[1] ? a[0] / a[1] * 100 : 0; }, G_MATH);
@@ -790,7 +823,7 @@
     ];
     var TKMAP = {}; TK.forEach(function (g) { g[1].forEach(function (t) { TKMAP[t[0]] = { k: t[0], label: t[1], type: t[2], grp: g[0] }; }); });
     var OPS = { '+': '+', '-': '−', '*': '×', '/': '÷' };
-    var FKEY_AR = { cust: 'عميل', item: 'صنف', st: 'مخزن', xcust: 'بدون_عميل', xitem: 'بدون_صنف', ag: 'مندوب' };
+    var FKEY_AR = { cust: 'عميل', item: 'صنف', st: 'مخزن', xcust: 'بدون_عميل', xitem: 'بدون_صنف', ag: 'مندوب', acc: 'حساب' };
     function fltToStr(f) { if (!f) return ''; return Object.keys(f).filter(function (k) { return f[k] && f[k].length && FKEY_AR[k]; }).map(function (k) { return FKEY_AR[k] + ':' + f[k].join(','); }).join('; '); }
     function q2(s) { return '"' + String(s).replace(/"/g, '') + '"'; }
     function termToF(t) {
@@ -899,8 +932,8 @@
     function repName(id) { return (T().ag[id] || {}).name || 'بدون مندوب'; }
     function userName(id) { return (T().us[id] || {}).name || 'غير معروف'; }
     function noteF(p) { var f = parseFilter(p.flt); if (!f) return ''; var parts = []; Object.keys(f).forEach(function (k) { if (f[k] && f[k].length) parts.push((FLT_LABEL[k] || k) + ': ' + f[k].map(function (x) { return fltName(k, x); }).join('، ')); }); return parts.length ? 'التصفية: ' + parts.join(' · ') : ''; }
-    var FLT_LABEL = { cust: 'العميل', item: 'الصنف', st: 'المخزن', ag: 'المندوب', u: 'المستخدم', xcust: 'بدون العميل', xitem: 'بدون الصنف', xst: 'بدون المخزن', type: 'النوع', cat: 'فئة المندوب', xcat: 'بدون فئة المندوب', cacc: 'حساب العملاء', xcacc: 'بدون حساب العملاء', cgrp: 'مجموعة العملاء', xcgrp: 'بدون مجموعة العملاء', icl: 'تصنيف الصنف', xicl: 'بدون تصنيف الصنف', igrp: 'مجموعة الأصناف', xigrp: 'بدون مجموعة الأصناف' };
-    function fltName(k, x) { x = String(x).replace(/^@/, ''); if (k === 'cgrp' || k === 'xcgrp') return cgName(x); if (k === 'icl' || k === 'xicl') return iclName(x); if (k === 'igrp' || k === 'xigrp') return igrpName(x); if (k === 'cacc' || k === 'xcacc') return acc(x) ? acc(x).code + ' ' + acc(x).name : x; return k === 'cust' || k === 'xcust' ? (acc(x) ? acc(x).name : x) : k === 'item' || k === 'xitem' ? (T().item[x] ? itemName(x) : x) : k === 'st' || k === 'xst' ? (T().st[x] ? storeName(x) : x) : k === 'ag' ? (T().ag[x] ? repName(x) : x) : k === 'u' ? (T().us[x] ? userName(x) : x) : x; }
+    var FLT_LABEL = { cust: 'العميل', item: 'الصنف', st: 'المخزن', ag: 'المندوب', u: 'المستخدم', xcust: 'بدون العميل', xitem: 'بدون الصنف', xst: 'بدون المخزن', type: 'النوع', cat: 'فئة المندوب', xcat: 'بدون فئة المندوب', cacc: 'حساب العملاء', xcacc: 'بدون حساب العملاء', cgrp: 'مجموعة العملاء', xcgrp: 'بدون مجموعة العملاء', icl: 'تصنيف الصنف', xicl: 'بدون تصنيف الصنف', igrp: 'مجموعة الأصناف', xigrp: 'بدون مجموعة الأصناف', acc: 'الحساب', xacc: 'بدون الحساب' };
+    function fltName(k, x) { x = String(x).replace(/^@/, ''); if (k === 'cgrp' || k === 'xcgrp') return cgName(x); if (k === 'icl' || k === 'xicl') return iclName(x); if (k === 'igrp' || k === 'xigrp') return igrpName(x); if (k === 'acc' || k === 'xacc') { var ab = F.D.byCode[x]; return ab ? ab.code + ' ' + ab.name : x; } if (k === 'cacc' || k === 'xcacc') return acc(x) ? acc(x).code + ' ' + acc(x).name : x; return k === 'cust' || k === 'xcust' ? (acc(x) ? acc(x).name : x) : k === 'item' || k === 'xitem' ? (T().item[x] ? itemName(x) : x) : k === 'st' || k === 'xst' ? (T().st[x] ? storeName(x) : x) : k === 'ag' ? (T().ag[x] ? repName(x) : x) : k === 'u' ? (T().us[x] ? userName(x) : x) : x; }
     function hasItemF(flt) { var f = parseFilter(flt); return !!(f && ['item', 'xitem', 'st', 'icl', 'xicl', 'igrp', 'xigrp'].some(function (k) { return f[k] && f[k].length; })); }
     function custKeys(flt) { if (!hasCustF(flt)) return null; var ok = {}, f = parseFilter(flt); F.D.invs.forEach(function (v) { if ((v.c === SALE || v.c === SRET) && invPass(v, { cust: f.cust, xcust: f.xcust, cacc: f.cacc, xcacc: f.xcacc, cgrp: f.cgrp, xcgrp: f.xcgrp })) ok[v.ck] = 1; }); return ok; }
     function withNote(res, p) { var n = noteF(p); if (n) res.note = (res.note ? res.note + ' · ' : '') + n; return res; }
@@ -2616,6 +2649,7 @@
 
     /* ---------- الحساب المبسّط: اختر ما تريد من قائمة، واربط العناصر بـ + − × ÷ ---------- */
     var FMT_SIMPLE = [['money0', 'مبلغ بدون كسور'], ['money', 'مبلغ بثلاث خانات'], ['dec2', 'رقم بخانتين'], ['qty', 'كمية'], ['int', 'عدد'], ['pct', 'نسبة مئوية %']];
+    function accNames(codes) { return (codes || []).map(function (c) { var a = F.D.byCode[c]; return a ? a.name : c; }); }
     function namesOf(k, list) { return (list || []).map(function (x) { return fltName(k, x); }); }
     function termOpts(t) {   // وصف خيارات العنصر بالكلمات
       var parts = [], f = t.flt || {};
@@ -2623,6 +2657,7 @@
       if (t.st && t.st.length) parts.push('المخزن: ' + namesOf('st', t.st).join('، '));
       if (t.box) parts.push(t.box === 'صندوق' ? 'نقداً (الصناديق)' : t.box === 'بنك' ? 'تحويل (البنوك)' : t.box);
       ['cust', 'item', 'st', 'ag', 'xcust', 'xitem'].forEach(function (k) { if (f[k] && f[k].length) parts.push(DIM[k][1] + ': ' + namesOf(k, f[k]).join('، ')); });
+      if (f.acc && f.acc.length) parts.push((TKMAP[t.k] && TKMAP[t.k].type === 'stock' ? 'لدى الحساب (المباع له − المرتجع منه حتى نهاية الفترة): ' : 'الحساب: ') + accNames(f.acc).join('، '));
       return parts.join(' · ');
     }
     function termLabel(t) {
@@ -2649,12 +2684,13 @@
         var d = TKMAP[t.k] || {}, f = t.flt || {};
         var btn = function (attr, label, val) { return '<button type="button" class="chip tb-o' + (val ? ' on' : '') + '" ' + attr + '>' + esc(label) + ' ▾</button>'; };
         var o = '';
-        if (d.type === 'flt') o = btn('data-tf="cust"', (f.cust || []).length ? 'العملاء: ' + f.cust.length : 'كل العملاء', (f.cust || []).length) + btn('data-tf="item"', (f.item || []).length ? 'الأصناف: ' + f.item.length : 'كل الأصناف', (f.item || []).length) + btn('data-tf="st"', (f.st || []).length ? 'المخازن: ' + f.st.length : 'كل المخازن', (f.st || []).length);
+        var accB = btn('data-tfacc', (f.acc || []).length ? 'الحسابات: ' + accNames(f.acc).join('، ') : 'كل الحسابات', (f.acc || []).length);
+        if (d.type === 'flt') o = btn('data-tf="cust"', (f.cust || []).length ? 'العملاء: ' + f.cust.length : 'كل العملاء', (f.cust || []).length) + btn('data-tf="item"', (f.item || []).length ? 'الأصناف: ' + f.item.length : 'كل الأصناف', (f.item || []).length) + btn('data-tf="st"', (f.st || []).length ? 'المخازن: ' + f.st.length : 'كل المخازن', (f.st || []).length) + accB;
         else if (d.type === 'cust') o = btn('data-tf="cust"', (f.cust || []).length ? 'العملاء: ' + f.cust.length : 'كل العملاء', (f.cust || []).length);
         else if (d.type === 'coll') o = '<select class="input tb-sel" data-tbox><option value="">كل التحصيل</option><option value="صندوق"' + (t.box === 'صندوق' ? ' selected' : '') + '>نقداً (الصناديق)</option><option value="بنك"' + (t.box === 'بنك' ? ' selected' : '') + '>تحويل (البنوك)</option></select>' + btn('data-tf="cust"', (f.cust || []).length ? 'العملاء: ' + f.cust.length : 'كل العملاء', (f.cust || []).length);
         else if (d.type === 'box') o = '<select class="input tb-sel" data-tbox><option value="">الصناديق والبنوك</option><option value="صندوق"' + (t.box === 'صندوق' ? ' selected' : '') + '>الصناديق فقط</option><option value="بنك"' + (t.box === 'بنك' ? ' selected' : '') + '>البنوك فقط</option></select>';
         else if (d.type === 'acc') o = btn('data-tacc', (t.acc || []).length ? 'الحساب: ' + t.acc.map(function (c) { var a = F.D.byCode[c]; return a ? a.name : c; }).join('، ') : 'اختر الحساب', (t.acc || []).length);
-        else if (d.type === 'stock') o = btn('data-tst', (t.st || []).length ? 'المخازن: ' + namesOf('st', t.st).join('، ') : 'كل المخازن', (t.st || []).length) + btn('data-tf="item"', (f.item || []).length ? 'الأصناف: ' + f.item.length : 'كل الأصناف', (f.item || []).length);
+        else if (d.type === 'stock') o = btn('data-tst', (t.st || []).length ? 'المخازن: ' + namesOf('st', t.st).join('، ') : 'كل المخازن', (t.st || []).length) + btn('data-tf="item"', (f.item || []).length ? 'الأصناف: ' + f.item.length : 'كل الأصناف', (f.item || []).length) + accB;
         else if (d.type === 'num') o = '<input class="input tb-num num" type="number" step="any" data-tnum value="' + esc(t.n === undefined ? '' : t.n) + '" placeholder="مثل 100">';
         else if (d.type === 'var') o = '<select class="input tb-sel" data-tvar><option value="">اختر…</option>' + (names || []).map(function (n) { return '<option' + (t.v === n ? ' selected' : '') + '>' + esc(n) + '</option>'; }).join('') + '</select>';
         var det = termOpts(t);
@@ -2672,6 +2708,7 @@
       qa('[data-tf]', box).forEach(function (b) {
         b.onclick = function () { var t = row(b), k = b.dataset.tf; t.flt = t.flt || {}; pickMulti({ title: 'اختر ' + DIM[k][1], options: fltOptions(k), value: t.flt[k] || [] }).then(function (v) { if (!v) return; if (v.length) t.flt[k] = v; else delete t.flt[k]; if (!Object.keys(t.flt).length) delete t.flt; onChange(); }); };
       });
+      qa('[data-tfacc]', box).forEach(function (b) { b.onclick = function () { var t = row(b), stk = (TKMAP[t.k] || {}).type === 'stock'; pickAccount({ multi: true, value: (t.flt && t.flt.acc) || [], title: 'اختر الحسابات (الحساب الرئيسي يشمل فروعه)', hint: stk ? 'مثل حساب الوكلاء: تُحسب الكمية لدى الحساب = المباع له − المرتجع منه حتى نهاية الفترة. اترك الاختيار فارغاً لكمية المخازن.' : 'تُحسب الكميات والمبالغ لفواتير هذه الحسابات فقط.' }).then(function (codes) { if (!codes) return; t.flt = t.flt || {}; if (codes.length) t.flt.acc = codes; else delete t.flt.acc; if (!Object.keys(t.flt).length) delete t.flt; onChange(); }); }; });
       qa('[data-tst]', box).forEach(function (b) { b.onclick = function () { var t = row(b); pickMulti({ title: 'اختر المخازن', options: fltOptions('st'), value: t.st || [] }).then(function (v) { if (v) { t.st = v; onChange(); } }); }; });
       qa('[data-tbox]', box).forEach(function (el) { el.onchange = function () { row(el).box = el.value; onChange(); }; });
       qa('[data-tvar]', box).forEach(function (el) { el.onchange = function () { row(el).v = el.value; onChange(); }; });
@@ -2770,7 +2807,8 @@
           var dd = TKMAP[t.k] || {}, body;
           if (dd.type === 'acc') body = '<select class="input dc-kind" data-dk="' + i + '">' + ACC_KINDS.map(function (k) { return '<option value="' + k[0] + '"' + (t.k === k[0] ? ' selected' : '') + '>' + k[1] + '</option>'; }).join('') + '</select><div class="st-pills dc-accs">' + accChips(t) + '<button type="button" class="btn sm" data-dacc="' + i + '">' + ((t.acc || []).length ? 'تغيير الحسابات' : 'اختر الحسابات') + '</button></div>';
           else if (dd.type === 'num') body = '<label class="dc-num"><span class="small muted">قيمة يدوية</span><input type="number" step="any" class="input num" data-dn="' + i + '" value="' + esc(t.n === undefined ? '' : t.n) + '" placeholder="0"></label>';
-          else body = '<select class="input dc-kind" data-dr="' + i + '">' + ready.map(function (r) { return '<option value="' + r[0] + '"' + (t.k === r[0] ? ' selected' : '') + '>' + esc(r[2] + ' · ' + r[1]) + '</option>'; }).join('') + '</select>' + (termOpts(t) ? '<div class="small muted">' + esc(termOpts(t)) + '</div>' : '');
+          else body = '<select class="input dc-kind" data-dr="' + i + '">' + ready.map(function (r) { return '<option value="' + r[0] + '"' + (t.k === r[0] ? ' selected' : '') + '>' + esc(r[2] + ' · ' + r[1]) + '</option>'; }).join('') + '</select>' + (termOpts(t) ? '<div class="small muted">' + esc(termOpts(t)) + '</div>' : '') +
+            (dd.type === 'flt' || dd.type === 'stock' ? '<div class="st-pills dc-accs">' + (dd.type === 'stock' ? '<button type="button" class="chip tb-o' + ((t.st || []).length ? ' on' : '') + '" data-dfst="' + i + '">' + esc((t.st || []).length ? 'المخازن: ' + namesOf('st', t.st).join('، ') : 'كل المخازن') + ' ▾</button>' : '') + '<button type="button" class="chip tb-o' + ((t.flt && t.flt.acc || []).length ? ' on' : '') + '" data-dfacc="' + i + '">' + esc((t.flt && t.flt.acc || []).length ? 'الحسابات: ' + accNames(t.flt.acc).join('، ') : 'كل الحسابات') + ' ▾</button></div>' : '');
           return '<div class="dc-row' + (t.op === '-' ? ' minus' : '') + '"><button type="button" class="dc-sign" data-sg="' + i + '" title="إضافة أو خصم">' + (t.op === '-' ? '−' : '+') + '</button><div class="dc-main">' + body + '</div><div class="dc-val num">' + valOf(t) + '</div><button type="button" class="iconbtn" data-dcdel="' + i + '" aria-label="حذف">✕</button></div>';
         };
         var fmtOpts = FMT_SIMPLE.map(function (o) { return '<option value="' + o[0] + '"' + (d.fmt === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('');
@@ -2791,6 +2829,8 @@
             qa('[data-dk]', list).forEach(function (el) { el.onchange = function () { terms[Number(el.dataset.dk)].k = el.value; draw(); }; });
             qa('[data-dr]', list).forEach(function (el) { el.onchange = function () { var t = terms[Number(el.dataset.dr)]; terms[Number(el.dataset.dr)] = { k: el.value, op: t.op }; draw(); }; });
             qa('[data-dn]', list).forEach(function (el) { el.onchange = function () { terms[Number(el.dataset.dn)].n = el.value === '' ? '' : Number(el.value); draw(); }; });
+            qa('[data-dfst]', list).forEach(function (b) { b.onclick = function () { var t = terms[Number(b.dataset.dfst)]; pickMulti({ title: 'اختر المخازن', options: fltOptions('st'), value: t.st || [] }).then(function (v) { if (v) { t.st = v; draw(); } }); }; });
+            qa('[data-dfacc]', list).forEach(function (b) { b.onclick = function () { var t = terms[Number(b.dataset.dfacc)], stk = (TKMAP[t.k] || {}).type === 'stock'; pickAccount({ multi: true, value: (t.flt && t.flt.acc) || [], title: 'اختر الحسابات (الحساب الرئيسي يشمل فروعه)', hint: stk ? 'مثل حساب الوكلاء: تُحسب الكمية لدى الحساب = المباع له − المرتجع منه حتى نهاية الفترة. اترك الاختيار فارغاً لكمية المخازن.' : 'تُحسب الكميات والمبالغ لفواتير هذه الحسابات فقط.' }).then(function (c) { if (!c) return; t.flt = t.flt || {}; if (c.length) t.flt.acc = c; else delete t.flt.acc; if (!Object.keys(t.flt).length) delete t.flt; draw(); }); }; });
             qa('[data-dacc]', list).forEach(function (b) { b.onclick = function () { var t = terms[Number(b.dataset.dacc)]; pickAcc(t.acc || []).then(function (c) { if (c) { t.acc = c; draw(); } }); }; });
           };
           var pickAcc = function (cur) { return pickAccount({ multi: true, value: cur.slice(), title: 'اختر الحسابات', hint: 'يمكن اختيار أكثر من حساب، رئيسي أو فرعي. يُجمع رصيدها أو حركتها معاً.' }); };

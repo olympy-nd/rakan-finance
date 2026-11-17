@@ -1027,6 +1027,7 @@
 
     /* ---------- الحساب المبسّط: اختر ما تريد من قائمة، واربط العناصر بـ + − × ÷ ---------- */
     var FMT_SIMPLE = [['money0', 'مبلغ بدون كسور'], ['money', 'مبلغ بثلاث خانات'], ['dec2', 'رقم بخانتين'], ['qty', 'كمية'], ['int', 'عدد'], ['pct', 'نسبة مئوية %']];
+    function accNames(codes) { return (codes || []).map(function (c) { var a = F.D.byCode[c]; return a ? a.name : c; }); }
     function namesOf(k, list) { return (list || []).map(function (x) { return fltName(k, x); }); }
     function termOpts(t) {   // وصف خيارات العنصر بالكلمات
       var parts = [], f = t.flt || {};
@@ -1034,6 +1035,7 @@
       if (t.st && t.st.length) parts.push('المخزن: ' + namesOf('st', t.st).join('، '));
       if (t.box) parts.push(t.box === 'صندوق' ? 'نقداً (الصناديق)' : t.box === 'بنك' ? 'تحويل (البنوك)' : t.box);
       ['cust', 'item', 'st', 'ag', 'xcust', 'xitem'].forEach(function (k) { if (f[k] && f[k].length) parts.push(DIM[k][1] + ': ' + namesOf(k, f[k]).join('، ')); });
+      if (f.acc && f.acc.length) parts.push((TKMAP[t.k] && TKMAP[t.k].type === 'stock' ? 'لدى الحساب (المباع له − المرتجع منه حتى نهاية الفترة): ' : 'الحساب: ') + accNames(f.acc).join('، '));
       return parts.join(' · ');
     }
     function termLabel(t) {
@@ -1060,12 +1062,13 @@
         var d = TKMAP[t.k] || {}, f = t.flt || {};
         var btn = function (attr, label, val) { return '<button type="button" class="chip tb-o' + (val ? ' on' : '') + '" ' + attr + '>' + esc(label) + ' ▾</button>'; };
         var o = '';
-        if (d.type === 'flt') o = btn('data-tf="cust"', (f.cust || []).length ? 'العملاء: ' + f.cust.length : 'كل العملاء', (f.cust || []).length) + btn('data-tf="item"', (f.item || []).length ? 'الأصناف: ' + f.item.length : 'كل الأصناف', (f.item || []).length) + btn('data-tf="st"', (f.st || []).length ? 'المخازن: ' + f.st.length : 'كل المخازن', (f.st || []).length);
+        var accB = btn('data-tfacc', (f.acc || []).length ? 'الحسابات: ' + accNames(f.acc).join('، ') : 'كل الحسابات', (f.acc || []).length);
+        if (d.type === 'flt') o = btn('data-tf="cust"', (f.cust || []).length ? 'العملاء: ' + f.cust.length : 'كل العملاء', (f.cust || []).length) + btn('data-tf="item"', (f.item || []).length ? 'الأصناف: ' + f.item.length : 'كل الأصناف', (f.item || []).length) + btn('data-tf="st"', (f.st || []).length ? 'المخازن: ' + f.st.length : 'كل المخازن', (f.st || []).length) + accB;
         else if (d.type === 'cust') o = btn('data-tf="cust"', (f.cust || []).length ? 'العملاء: ' + f.cust.length : 'كل العملاء', (f.cust || []).length);
         else if (d.type === 'coll') o = '<select class="input tb-sel" data-tbox><option value="">كل التحصيل</option><option value="صندوق"' + (t.box === 'صندوق' ? ' selected' : '') + '>نقداً (الصناديق)</option><option value="بنك"' + (t.box === 'بنك' ? ' selected' : '') + '>تحويل (البنوك)</option></select>' + btn('data-tf="cust"', (f.cust || []).length ? 'العملاء: ' + f.cust.length : 'كل العملاء', (f.cust || []).length);
         else if (d.type === 'box') o = '<select class="input tb-sel" data-tbox><option value="">الصناديق والبنوك</option><option value="صندوق"' + (t.box === 'صندوق' ? ' selected' : '') + '>الصناديق فقط</option><option value="بنك"' + (t.box === 'بنك' ? ' selected' : '') + '>البنوك فقط</option></select>';
         else if (d.type === 'acc') o = btn('data-tacc', (t.acc || []).length ? 'الحساب: ' + t.acc.map(function (c) { var a = F.D.byCode[c]; return a ? a.name : c; }).join('، ') : 'اختر الحساب', (t.acc || []).length);
-        else if (d.type === 'stock') o = btn('data-tst', (t.st || []).length ? 'المخازن: ' + namesOf('st', t.st).join('، ') : 'كل المخازن', (t.st || []).length) + btn('data-tf="item"', (f.item || []).length ? 'الأصناف: ' + f.item.length : 'كل الأصناف', (f.item || []).length);
+        else if (d.type === 'stock') o = btn('data-tst', (t.st || []).length ? 'المخازن: ' + namesOf('st', t.st).join('، ') : 'كل المخازن', (t.st || []).length) + btn('data-tf="item"', (f.item || []).length ? 'الأصناف: ' + f.item.length : 'كل الأصناف', (f.item || []).length) + accB;
         else if (d.type === 'num') o = '<input class="input tb-num num" type="number" step="any" data-tnum value="' + esc(t.n === undefined ? '' : t.n) + '" placeholder="مثل 100">';
         else if (d.type === 'var') o = '<select class="input tb-sel" data-tvar><option value="">اختر…</option>' + (names || []).map(function (n) { return '<option' + (t.v === n ? ' selected' : '') + '>' + esc(n) + '</option>'; }).join('') + '</select>';
         var det = termOpts(t);
@@ -1083,6 +1086,7 @@
       qa('[data-tf]', box).forEach(function (b) {
         b.onclick = function () { var t = row(b), k = b.dataset.tf; t.flt = t.flt || {}; pickMulti({ title: 'اختر ' + DIM[k][1], options: fltOptions(k), value: t.flt[k] || [] }).then(function (v) { if (!v) return; if (v.length) t.flt[k] = v; else delete t.flt[k]; if (!Object.keys(t.flt).length) delete t.flt; onChange(); }); };
       });
+      qa('[data-tfacc]', box).forEach(function (b) { b.onclick = function () { var t = row(b), stk = (TKMAP[t.k] || {}).type === 'stock'; pickAccount({ multi: true, value: (t.flt && t.flt.acc) || [], title: 'اختر الحسابات (الحساب الرئيسي يشمل فروعه)', hint: stk ? 'مثل حساب الوكلاء: تُحسب الكمية لدى الحساب = المباع له − المرتجع منه حتى نهاية الفترة. اترك الاختيار فارغاً لكمية المخازن.' : 'تُحسب الكميات والمبالغ لفواتير هذه الحسابات فقط.' }).then(function (codes) { if (!codes) return; t.flt = t.flt || {}; if (codes.length) t.flt.acc = codes; else delete t.flt.acc; if (!Object.keys(t.flt).length) delete t.flt; onChange(); }); }; });
       qa('[data-tst]', box).forEach(function (b) { b.onclick = function () { var t = row(b); pickMulti({ title: 'اختر المخازن', options: fltOptions('st'), value: t.st || [] }).then(function (v) { if (v) { t.st = v; onChange(); } }); }; });
       qa('[data-tbox]', box).forEach(function (el) { el.onchange = function () { row(el).box = el.value; onChange(); }; });
       qa('[data-tvar]', box).forEach(function (el) { el.onchange = function () { row(el).v = el.value; onChange(); }; });
@@ -1181,7 +1185,8 @@
           var dd = TKMAP[t.k] || {}, body;
           if (dd.type === 'acc') body = '<select class="input dc-kind" data-dk="' + i + '">' + ACC_KINDS.map(function (k) { return '<option value="' + k[0] + '"' + (t.k === k[0] ? ' selected' : '') + '>' + k[1] + '</option>'; }).join('') + '</select><div class="st-pills dc-accs">' + accChips(t) + '<button type="button" class="btn sm" data-dacc="' + i + '">' + ((t.acc || []).length ? 'تغيير الحسابات' : 'اختر الحسابات') + '</button></div>';
           else if (dd.type === 'num') body = '<label class="dc-num"><span class="small muted">قيمة يدوية</span><input type="number" step="any" class="input num" data-dn="' + i + '" value="' + esc(t.n === undefined ? '' : t.n) + '" placeholder="0"></label>';
-          else body = '<select class="input dc-kind" data-dr="' + i + '">' + ready.map(function (r) { return '<option value="' + r[0] + '"' + (t.k === r[0] ? ' selected' : '') + '>' + esc(r[2] + ' · ' + r[1]) + '</option>'; }).join('') + '</select>' + (termOpts(t) ? '<div class="small muted">' + esc(termOpts(t)) + '</div>' : '');
+          else body = '<select class="input dc-kind" data-dr="' + i + '">' + ready.map(function (r) { return '<option value="' + r[0] + '"' + (t.k === r[0] ? ' selected' : '') + '>' + esc(r[2] + ' · ' + r[1]) + '</option>'; }).join('') + '</select>' + (termOpts(t) ? '<div class="small muted">' + esc(termOpts(t)) + '</div>' : '') +
+            (dd.type === 'flt' || dd.type === 'stock' ? '<div class="st-pills dc-accs">' + (dd.type === 'stock' ? '<button type="button" class="chip tb-o' + ((t.st || []).length ? ' on' : '') + '" data-dfst="' + i + '">' + esc((t.st || []).length ? 'المخازن: ' + namesOf('st', t.st).join('، ') : 'كل المخازن') + ' ▾</button>' : '') + '<button type="button" class="chip tb-o' + ((t.flt && t.flt.acc || []).length ? ' on' : '') + '" data-dfacc="' + i + '">' + esc((t.flt && t.flt.acc || []).length ? 'الحسابات: ' + accNames(t.flt.acc).join('، ') : 'كل الحسابات') + ' ▾</button></div>' : '');
           return '<div class="dc-row' + (t.op === '-' ? ' minus' : '') + '"><button type="button" class="dc-sign" data-sg="' + i + '" title="إضافة أو خصم">' + (t.op === '-' ? '−' : '+') + '</button><div class="dc-main">' + body + '</div><div class="dc-val num">' + valOf(t) + '</div><button type="button" class="iconbtn" data-dcdel="' + i + '" aria-label="حذف">✕</button></div>';
         };
         var fmtOpts = FMT_SIMPLE.map(function (o) { return '<option value="' + o[0] + '"' + (d.fmt === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('');
@@ -1202,6 +1207,8 @@
             qa('[data-dk]', list).forEach(function (el) { el.onchange = function () { terms[Number(el.dataset.dk)].k = el.value; draw(); }; });
             qa('[data-dr]', list).forEach(function (el) { el.onchange = function () { var t = terms[Number(el.dataset.dr)]; terms[Number(el.dataset.dr)] = { k: el.value, op: t.op }; draw(); }; });
             qa('[data-dn]', list).forEach(function (el) { el.onchange = function () { terms[Number(el.dataset.dn)].n = el.value === '' ? '' : Number(el.value); draw(); }; });
+            qa('[data-dfst]', list).forEach(function (b) { b.onclick = function () { var t = terms[Number(b.dataset.dfst)]; pickMulti({ title: 'اختر المخازن', options: fltOptions('st'), value: t.st || [] }).then(function (v) { if (v) { t.st = v; draw(); } }); }; });
+            qa('[data-dfacc]', list).forEach(function (b) { b.onclick = function () { var t = terms[Number(b.dataset.dfacc)], stk = (TKMAP[t.k] || {}).type === 'stock'; pickAccount({ multi: true, value: (t.flt && t.flt.acc) || [], title: 'اختر الحسابات (الحساب الرئيسي يشمل فروعه)', hint: stk ? 'مثل حساب الوكلاء: تُحسب الكمية لدى الحساب = المباع له − المرتجع منه حتى نهاية الفترة. اترك الاختيار فارغاً لكمية المخازن.' : 'تُحسب الكميات والمبالغ لفواتير هذه الحسابات فقط.' }).then(function (c) { if (!c) return; t.flt = t.flt || {}; if (c.length) t.flt.acc = c; else delete t.flt.acc; if (!Object.keys(t.flt).length) delete t.flt; draw(); }); }; });
             qa('[data-dacc]', list).forEach(function (b) { b.onclick = function () { var t = terms[Number(b.dataset.dacc)]; pickAcc(t.acc || []).then(function (c) { if (c) { t.acc = c; draw(); } }); }; });
           };
           var pickAcc = function (cur) { return pickAccount({ multi: true, value: cur.slice(), title: 'اختر الحسابات', hint: 'يمكن اختيار أكثر من حساب، رئيسي أو فرعي. يُجمع رصيدها أو حركتها معاً.' }); };
