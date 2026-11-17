@@ -378,6 +378,9 @@ code { unicode-bidi: plaintext; }
 .pm-box { flex: 0 0 22px; width: 22px; height: 22px; border: 2px solid var(--line); border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; font-weight: 900; color: #fff; }
 .pm-it.sel { background: var(--blue-soft); border-color: var(--blue); }
 .pm-it.sel .pm-box { background: var(--blue); border-color: var(--blue); }
+.pm-grp { display: flex; align-items: center; gap: 8px; position: sticky; top: 0; z-index: 1; margin: 10px 0 4px; padding: 8px 10px; border-radius: 10px; background: var(--card, #fff); border: 1px solid var(--line, #dfe5ee); box-shadow: 0 1px 0 rgba(0,0,0,.03); }
+.pm-grp:first-child { margin-top: 0; }
+.pm-grp b { color: var(--blue); }
 /* ---------- الحساب المبسّط ---------- */
 .tk-g { margin-bottom: 12px; }
 .tk-gt { font-weight: 800; color: var(--blue-deep); margin-bottom: 6px; }
