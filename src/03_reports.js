@@ -284,8 +284,17 @@
       } };
     R.statement = { cat: 'acct', name: 'كشف حساب', desc: 'حركة عميل أو مورد أو أي حساب برصيد افتتاحي وتراكمي', params: ['period', 'account'],
       run: function (p) { if (!p.account) return { cols: [C('m', '')], rows: [], empty: 'اختر الحساب من الأعلى' }; return statement(descend(p.account), p, 'كشف حساب: ' + accName(p.account)); } };
+    // حسابات بطاقة يدوية (رموز من الدليل) ← أسماؤها للعنوان
+    function accsTitle(codes) { var n = codes.map(function (c) { var a = F.D.byCode[c]; return a ? a.name : c; }); return n.length > 3 ? n.slice(0, 3).join('، ') + ' و' + (n.length - 3) + ' أخرى' : n.join('، '); }
     R.ledger = { cat: 'acct', name: 'دفتر الأستاذ', desc: 'القيود على حساب رئيسي وكل فروعه مع اسم الحساب الفرعي', params: ['period', 'account'],
       run: function (p) {
+        if (!p.account && p.accs && p.accs.length) {   // من بطاقة: حركات كل حساباتها معاً
+          var ids = byCodes(p.accs.join(','));
+          var rs = statement(ids, p, 'حركات الحساب: ' + accsTitle(p.accs));
+          rs.cols.splice(4, 0, C('sub', 'الحساب'));
+          rs.rows.forEach(function (r) { r.sub = r._acc ? accName(r._acc) : (ids.length === 1 && r.d ? accName(ids[0]) : ''); });
+          return rs;
+        }
         if (!p.account) return { cols: [C('m', '')], rows: [], empty: 'اختر الحساب الرئيسي من الأعلى' };
         var res = statement(descend(p.account), p, 'دفتر الأستاذ: ' + accName(p.account));
         res.cols.splice(4, 0, C('sub', 'الحساب الفرعي'));

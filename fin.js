@@ -1191,8 +1191,17 @@
       } };
     R.statement = { cat: 'acct', name: 'كشف حساب', desc: 'حركة عميل أو مورد أو أي حساب برصيد افتتاحي وتراكمي', params: ['period', 'account'],
       run: function (p) { if (!p.account) return { cols: [C('m', '')], rows: [], empty: 'اختر الحساب من الأعلى' }; return statement(descend(p.account), p, 'كشف حساب: ' + accName(p.account)); } };
+    // حسابات بطاقة يدوية (رموز من الدليل) ← أسماؤها للعنوان
+    function accsTitle(codes) { var n = codes.map(function (c) { var a = F.D.byCode[c]; return a ? a.name : c; }); return n.length > 3 ? n.slice(0, 3).join('، ') + ' و' + (n.length - 3) + ' أخرى' : n.join('، '); }
     R.ledger = { cat: 'acct', name: 'دفتر الأستاذ', desc: 'القيود على حساب رئيسي وكل فروعه مع اسم الحساب الفرعي', params: ['period', 'account'],
       run: function (p) {
+        if (!p.account && p.accs && p.accs.length) {   // من بطاقة: حركات كل حساباتها معاً
+          var ids = byCodes(p.accs.join(','));
+          var rs = statement(ids, p, 'حركات الحساب: ' + accsTitle(p.accs));
+          rs.cols.splice(4, 0, C('sub', 'الحساب'));
+          rs.rows.forEach(function (r) { r.sub = r._acc ? accName(r._acc) : (ids.length === 1 && r.d ? accName(ids[0]) : ''); });
+          return rs;
+        }
         if (!p.account) return { cols: [C('m', '')], rows: [], empty: 'اختر الحساب الرئيسي من الأعلى' };
         var res = statement(descend(p.account), p, 'دفتر الأستاذ: ' + accName(p.account));
         res.cols.splice(4, 0, C('sub', 'الحساب الفرعي'));
@@ -1891,11 +1900,26 @@
 
     /* ---------- لوحة المؤشرات (بطاقات) ---------- */
     var DASH_DIMS = ['cust', 'item', 'st', 'ag', 'xcust', 'xitem'];
+    // ماذا يفتح الضغط على البطاقة: التقرير المختار، وإلا تلقائياً: حركات حساباتها، أو التقرير المناسب لما تحسبه
+    var CARD_AUTO = { 'مبيعات': 'sales_trend', 'كمية_مبيعات': 'sales_trend', 'مبيعات_إجمالي': 'sales_trend', 'فواتير_مبيع': 'sales_trend', 'عملاء_مشترون': 'sales_cust', 'هدايا': 'sales_trend',
+      'مرتجعات': 'sales_returns', 'كمية_مرتجعات': 'sales_returns', 'ربح': 'gross_profit', 'تكلفة_مبيعات': 'gross_profit', 'مشتريات': 'purch', 'كمية_مشتريات': 'purch_item',
+      'مديونية': 'recv_balances', 'تحصيل': 'collections_cust', 'الموردون': 'pay_balances', 'رصيد_صناديق': 'boxes', 'مقبوضات': 'receipts', 'مدفوعات': 'payments', 'مخزون_كمية': 'stock_store', 'مخزون_قيمة': 'stock_store' };
+    function cardTerms(c) { return c.terms && c.terms.length ? c.terms : (c.f ? fToTerms(c.f) || [] : []); }
+    function cardAction(c) {
+      if (c.rep === '-') return null;
+      if (c.rep && R[c.rep]) return { rep: c.rep };
+      var tt = cardTerms(c), codes = [];
+      tt.forEach(function (t) { if (TKMAP[t.k] && TKMAP[t.k].type === 'acc') (t.acc || []).forEach(function (x) { if (codes.indexOf(x) < 0) codes.push(x); }); });
+      if (!codes.length && c.f) { var m, re = /\[([^\]]+)\]/g; while ((m = re.exec(c.f))) splitList(m[1]).forEach(function (x) { if (codes.indexOf(x) < 0) codes.push(x); }); }
+      if (codes.length) return { rep: 'ledger', accs: codes };
+      for (var i = 0; i < tt.length; i++) { var k = CARD_AUTO[tt[i].k]; if (k && R[k]) return { rep: k }; }
+      return null;
+    }
     function cardHTML(c, r, pr, i) {
       var v = r.err ? null : r.v, pv = pr && !pr.err ? pr.v : null;
       var ch = c.cmp && pv ? (v - pv) / Math.abs(pv) * 100 : null, good = c.good === 'down' ? ch < 0 : ch > 0;
-      var tag = c.rep && R[c.rep] ? 'button' : 'div';
-      return '<' + tag + (tag === 'button' ? ' data-crep="' + esc(c.rep) + '"' : '') + ' class="kpi fin-kpi' + (tag === 'button' ? ' tap' : '') + '" title="' + esc(itemText(c)) + '"><span class="k-n">' + esc(c.name) + '</span>' +
+      var act = cardAction(c), tag = act ? 'button' : 'div';
+      return '<' + tag + (tag === 'button' ? ' data-crep="' + esc(act.rep) + '" data-ci="' + i + '"' : '') + ' class="kpi fin-kpi' + (tag === 'button' ? ' tap' : '') + '" title="' + esc(itemText(c)) + '"><span class="k-n">' + esc(c.name) + '</span>' +
         (r.err ? '<b class="num">—</b><small class="down">خطأ: ' + esc(r.err) + '</small>' : '<b class="num">' + fmtVal(v, c.fmt || 'money0') + '</b>') +
         (ch !== null && isFinite(ch) ? '<small class="k-ch ' + (Math.abs(ch) < 0.05 ? '' : good ? 'up' : 'down') + '">' + (ch > 0 ? '▲ ' : ch < 0 ? '▼ ' : '') + fp(Math.abs(ch)) + ' <span class="muted">عن السابقة</span></small>' : '') +
         (c.sub && r.sub !== null && r.sub !== undefined ? '<small class="muted">' + fmtVal(r.sub, c.subfmt || 'int') + ' ' + esc(c.subl || '') + '</small>' : '') + '</' + tag + '>';
@@ -1947,7 +1971,7 @@
     }
     function bindDash(m) {
       bindPeriod(m, 'dash', dashPs, function (ps) { F.dash = ps; A.render(); }, true);
-      qa('[data-crep]', m).forEach(function (b) { b.onclick = function () { openReport(b.dataset.crep, dashReportParams(b.dataset.crep)); }; });
+      qa('[data-crep]', m).forEach(function (b) { b.onclick = function () { var c = cards()[Number(b.dataset.ci)], act = c && cardAction(c), rep = b.dataset.crep, o = dashReportParams(rep); if (act && act.accs) { o.accs = act.accs; o.account = ''; } openReport(rep, o); }; });
       qa('[data-qopen]', m).forEach(function (b) { b.onclick = function () { openReport(b.dataset.qopen, dashReportParams(b.dataset.qopen)); }; });
       qa('[data-gosub]', m).forEach(function (b) { b.onclick = function () { go(b.dataset.gosub); }; });
       var cu = q('[data-custom]', m);
@@ -2193,6 +2217,7 @@
       var dd0 = def ? (def.def.kind === 'ready' && R[def.def.base] ? R[def.def.base] : { params: ['period'] }) : R[id];
       if (dd0 && ((dd0.params.indexOf('asof') >= 0 && dd0.params.indexOf('period') < 0) || dd0.year) && !saved.preset) { base.preset = 'year'; base.from = t.slice(0, 4) + '-01-01'; }
       var p = Object.assign(base, def && def.def.p ? def.def.p : {}, saved, params || {});
+      if (!(params && params.accs)) delete p.accs;   // حسابات البطاقة تُستعمل فقط عند الفتح من البطاقة
       var pin = pinnedFilter(), ddef = def ? (def.def.kind === 'ready' && R[def.def.base] ? R[def.def.base] : null) : R[id];
       if (!pin && p._pin) { p.flt = null; delete p._pin; }
       if (pin && ddef && ddef.params.indexOf('flt') >= 0 && !(params && params.flt)) { var pf = fltFor(pin.flt, fdimsFor(ddef)); if (pf) { p.flt = pf; p._pin = pin.name; } }
@@ -2386,7 +2411,7 @@
       if (has('search')) row += '<label class="field fin-param"><span class="lbl">بحث</span><input class="input" data-pk="search" value="' + esc(p.search || '') + '" placeholder="رقم أو اسم"></label>';
       if (has('item1')) row += '<div class="field fin-param" style="flex:1 1 100%;max-width:520px"><span class="lbl">الصنف</span><button class="input" data-itempick style="text-align:start;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + (p.item1 && T().item[p.item1] ? esc(itemName(p.item1)) : 'اختر الصنف…') + '</button></div>';
       if (has('cust1')) { var ck1 = c1Default(p); if (ck1) p.cust1 = ck1; row += '<div class="field fin-param" style="flex:1 1 100%;max-width:520px"><span class="lbl">العميل</span><button class="input" data-custpick style="text-align:start;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + (ck1 ? esc(c1Sub(ck1)) : 'اختر العميل…') + '</button></div>'; }
-      if (has('account')) row += '<div class="field fin-param" style="flex:2"><span class="lbl">الحساب</span><button class="input" data-accpick style="text-align:start">' + (p.account ? esc(acc(p.account) ? acc(p.account).code + ' · ' + acc(p.account).name : '—') : 'اختر الحساب…') + '</button></div>';
+      if (has('account')) row += '<div class="field fin-param" style="flex:2"><span class="lbl">الحساب</span><button class="input" data-accpick style="text-align:start">' + (p.account ? esc(acc(p.account) ? acc(p.account).code + ' · ' + acc(p.account).name : '—') : p.accs && p.accs.length ? esc(p.accs.map(function (c) { var a = F.D.byCode[c]; return c + ' · ' + (a ? a.name : ''); }).join('، ')) : 'اختر الحساب…') + '</button></div>';
       if (row) h += '<div class="fin-params">' + row + '</div>';
       if (has('flt')) h += fltPanelHTML(fdimsFor(def), p.flt, 'rep');
       return h;
@@ -2452,7 +2477,7 @@
       var ip = q('[data-itempick]', m);
       if (ip) ip.onclick = function () { pickMulti({ title: 'اختر الصنف', hint: 'اختر صنفاً واحداً', options: fltOptions('item'), value: p.item1 ? ['@' + p.item1] : [] }).then(function (v) { if (v && v.length) { p.item1 = String(v[v.length - 1]).replace(/^@/, ''); save(); A.render(); } }); };
       var ap = q('[data-accpick]', m);
-      if (ap) ap.onclick = function () { pickAccount({ title: 'اختر الحساب', any: true }).then(function (id) { if (id) { p.account = id; save(); A.render(); } }); };
+      if (ap) ap.onclick = function () { pickAccount({ title: 'اختر الحساب', any: true }).then(function (id) { if (id) { p.account = id; delete p.accs; save(); A.render(); } }); };
       bindFltPanel(m, 'rep', fdimsFor(def), function () { return p.flt; }, function (f) { p.flt = f; delete p._pin; save(); A.render(); });
       bindGrpBar(m, p, save); bindIgrpBar(m, p, save); bindSplitBar(m, p, save);
       qa('th[data-sort]', m).forEach(function (th) { th.onclick = function () { var k = th.dataset.sort; c.sort = c.sort && c.sort.k === k ? { k: k, dir: -c.sort.dir } : { k: k, dir: -1 }; A.render(); }; });
@@ -2749,7 +2774,7 @@
         if (adv) terms = [];
         var sub = d.subTerms ? d.subTerms : (d.sub ? fToTerms(d.sub) || [] : []);
         var fmtOpts = function (v) { return FMT_SIMPLE.map(function (o) { return '<option value="' + o[0] + '"' + (v === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join(''); };
-        var repOpts = '<option value="">بدون</option>' + Object.keys(R).map(function (k) { return '<option value="' + k + '"' + (d.rep === k ? ' selected' : '') + '>' + esc(R[k].name) + '</option>'; }).join('');
+        var repOpts = '<option value="">تلقائي: حركات حسابات البطاقة أو التقرير المناسب</option><option value="-"' + (d.rep === '-' ? ' selected' : '') + '>بدون (لا تفتح شيئاً)</option>' + Object.keys(R).map(function (k) { return '<option value="' + k + '"' + (d.rep === k ? ' selected' : '') + '>' + esc(R[k].name) + '</option>'; }).join('');
         var html = '<div class="form fe">' +
           '<div class="field"><label class="lbl" for="fen">' + (kind === 'card' ? 'اسم البطاقة' : 'اسم السطر') + '</label><input id="fen" class="input" value="' + esc(d.name || '') + '" placeholder="مثل: صافي مبيعات الزيت"></div>' +
           (kind !== 'card' ? '<label class="chk"><input type="checkbox" id="fesep"' + (sepInit ? ' checked' : '') + '> عنوان قسم فقط (بدون رقم)</label>' : '') +
