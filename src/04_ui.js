@@ -269,6 +269,9 @@
       for (var i = 0; i < tt.length; i++) { var k = CARD_AUTO[tt[i].k]; if (k && R[k]) return { rep: k }; }
       return null;
     }
+    // شريط مؤشرات أعلى التقرير (مثل تقييم المخزون)
+    function kpiVal(k) { return k.t === 'money' ? fm(k.v) : k.t === 'int' ? fk(k.v) : k.t === 'pct' ? (Number(k.v) || 0).toFixed(1) + '%' : String(k.v); }
+    function repKpisHTML(ks) { return '<div class="rep-kpis">' + ks.map(function (k) { return '<div class="rk-t' + (k.bad ? ' bad' : '') + '"><span class="rk-l">' + esc(k.l) + '</span><b>' + esc(kpiVal(k)) + '</b>' + (k.s ? '<span class="rk-s">' + esc(k.s) + '</span>' : '') + '</div>'; }).join('') + '</div>'; }
     function cardHTML(c, r, pr, i) {
       var v = r.err ? null : r.v, pv = pr && !pr.err ? pr.v : null;
       var ch = c.cmp && pv ? (v - pv) / Math.abs(pv) * 100 : null, good = c.good === 'down' ? ch < 0 : ch > 0;
@@ -783,6 +786,7 @@
         (p._pin && p.flt ? '<div class="pin-note">📌 مُطبَّق الفلتر المثبّت «' + esc(p._pin) + '» · يُلغى من صفحة التقارير ← الفلاتر الجاهزة</div>' : '') + paramsHTML(def, p) + (res.empty && !hasView(p.view) ? '' : viewPanelHTML(res, p)) +
         (res.note ? '<div class="small muted rep-note">' + esc(plain(res.note)) + '</div>' : '') + (res._custRows ? '' : grpDefaultHTML()) + splitBarHTML(res, p) + '</div>';
       if (res.empty) return h + '<div class="card empty">' + esc(res.empty) + '</div>';
+      if (res.kpis && res.kpis.length) h += repKpisHTML(res.kpis);
       if (res.chart && (res.chart.rowsOverride || res.rows.length > 1)) h += '<div class="card">' + chartSVG(res.chart, res.rows) + '</div>';
       if (!res.rows.length && hasView(p.view)) return h + '<div class="card empty">لا توجد أسطر تطابق شروط التخصيص. عدّل الشروط أو اضغط «إلغاء كل التعديلات».</div>';
       h += '<div class="card scroll-x fin-table">' + (res._custRows ? grpBarHTML(res, p) : '') + (res._itemRows && !res._custRows ? igrpBarHTML(res, p) : '') + tableHTML(res) + '</div>';
@@ -856,6 +860,7 @@
         put(r++, 0, xcell(res.title || name, { font: XS.font({ bold: true, sz: 14, color: { rgb: '0C4CA2' } }) }));
         put(r++, 0, xcell(periodText(p, def) + (res.note ? ' · ' + plain(res.note) : ''), { font: XS.font({ color: { rgb: '595959' } }) }));
         put(r++, 0, xcell('آخر بيانات من سراج: ' + ((F.meta && F.meta.last) || ''), { font: XS.font({ sz: 9, color: { rgb: '7F7F7F' } }) }));
+        if (res.kpis && res.kpis.length) { r++; res.kpis.forEach(function (x) { put(r, 0, xcell(x.l, { font: XS.font({ bold: true, color: { rgb: '0C4CA2' } }) })); put(r, 1, x.t === 'money' || x.t === 'int' ? xcell(Number(x.v) || 0, { font: XS.font({ bold: true }) }, x.t === 'money' ? '#,##0.000' : '#,##0') : xcell(kpiVal(x), { font: XS.font({ bold: true }) })); if (x.s) put(r, 2, xcell(x.s, { font: XS.font({ sz: 9, color: { rgb: '7F7F7F' } }) })); r++; }); }
         r++;
         var hr = r;
         res.cols.forEach(function (c, j) { put(r, j, xcell(c.l, { font: XS.font({ bold: true, color: { rgb: 'FFFFFF' } }), fill: { fgColor: { rgb: '0C4CA2' } }, alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, border: XS.border })); });
@@ -952,7 +957,7 @@
         (plan.split ? 'الجزء ' + (k + 1) + ' من ' + plan.parts.length : esc('طُبع ' + RK.nowStr().slice(0, 16))) + '</span></div>'; };
       var foot = '<p class="p-note">آخر بيانات من سراج: ' + esc((F.meta && F.meta.last) || '') + ' · طُبع ' + esc(RK.nowStr().slice(0, 16)) + ' · ' + fk(res.rows.length) + ' سطر · تقارير راكان تقرأ من سراج ولا تعدّل فيه</p>';
       P.innerHTML = '<div class="p-rep p-' + plan.orient + '">' + plan.parts.map(function (part, k) {
-        return '<section class="p-part">' + head(k) + (k === 0 && res.note ? '<p class="p-note">' + esc(plain(res.note)) + '</p>' : '') +
+        return '<section class="p-part">' + head(k) + (k === 0 && res.note ? '<p class="p-note">' + esc(plain(res.note)) + '</p>' : '') + (k === 0 && res.kpis ? '<div class="p-kpis">' + res.kpis.map(function (x) { return '<div><span>' + esc(x.l) + '</span><b>' + esc(kpiVal(x)) + '</b>' + (x.s ? '<i>' + esc(x.s) + '</i>' : '') + '</div>'; }).join('') + '</div>' : '') +
           (plan.split ? '<p class="p-note p-cols">الأعمدة في هذا الجزء: ' + esc(part.cols.map(function (c) { return c.l; }).join('، ')) + '</p>' : '') + printTableHTML(res, part, plan.pt) + foot + '</section>';
       }).join('') + '</div>';
       var st = document.getElementById('p-page-style') || document.head.appendChild(Object.assign(document.createElement('style'), { id: 'p-page-style' }));
