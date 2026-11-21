@@ -6566,6 +6566,14 @@
     var VB_METH = [['mavg', 'متوسط التكلفة المتحرك (الدفتري)'], ['fifo', 'الوارد أولاً صادر أولاً (FIFO)'], ['wavg', 'المتوسط المرجح لأسعار الشراء'], ['last', 'آخر سعر شراء'], ['min', 'أقل سعر شراء'], ['max', 'أعلى سعر شراء']];
     var VB_BY = [['item', 'الصنف'], ['st', 'المخزن'], ['icl', 'تصنيف الصنف'], ['igrp', 'مجموعة الأصناف'], ['sup', 'المورد الرئيسي']];
     function vbShort(x) { x = String(x || '').replace(/\s+/g, ' ').trim(); return x.length > 30 ? x.slice(0, 29) + '…' : x; }
+    // كل أسعار شراء الصنف مع عدد مرات الشراء بكل سعر (عدد الفواتير، وبضاعة أول المدة مرة لكل قيد)، الأكثر تكراراً أولاً
+    function vbPrices(r) {
+      if (!r.has) return 'بدون مشتريات حتى التاريخ';
+      var m = {}, f = r.f;
+      r.tiers.forEach(function (t) { var k = t.pb.toFixed(5), o = m[k] || (m[k] = { pb: t.pb, n: 0, o: 0 }), c = Object.keys(t.inv).length; o.n += c; if (t.label === 'o') o.o += c; });
+      return Object.keys(m).map(function (k) { return m[k]; }).sort(function (a, b) { return b.n - a.n || a.pb - b.pb; })
+        .map(function (o) { return (o.pb > 0 ? fm(o.pb * f) : 'مجاني') + '\u00a0×' + o.n + (o.o ? (o.o === o.n ? '\u00a0(أول\u00a0المدة)' : '\u00a0(منها\u00a0' + o.o + '\u00a0أول\u00a0المدة)') : ''); }).join('  ·  ');
+    }
     function vbMethName(m) { var o = VB_METH.filter(function (x) { return x[0] === m; })[0]; return o ? o[1] : m; }
     // طبقات الشراء لكل صنف حتى تاريخ: بضاعة أول المدة + كل سعر شراء (مع المرتجعات) — على مستوى الشركة
     function vbLayers(asof) {
@@ -6671,11 +6679,11 @@
             else { var k = grp(r); add(k[0], k[1], r, 1); }
           });
           rows = Object.keys(G).map(function (k) { var g = G[k], o = { name: g.name, items: Object.keys(g.items).length, fin: g.fin, share: pct(g.fin, Tt.fin), book: g.v.mavg, diff: g.fin - g.v.mavg, dpct: pct(g.fin - g.v.mavg, g.v.mavg), fifo: g.v.fifo, wavg: g.v.wavg, last: g.v.last, min: g.v.min, max: g.v.max, pv: g.pv };
-            if (g.it) { var r = g.it; o.unit = unitOf(r.it); o.q = r.q / r.f; o.np = r.has ? r.nlev : 0; o.range = priceRange(r); o.uf = r.unitF * r.f; o.chg = r.chg; o.lastD = r.lastD || '—'; o.sup = r.sup && r.sup.length ? vbShort(r.sup[0]) + (r.sup.length > 1 ? ' +' + (r.sup.length - 1) : '') : '—'; }
+            if (g.it) { var r = g.it; o.unit = unitOf(r.it); o.q = r.q / r.f; o.np = r.has ? r.nlev : 0; o.range = priceRange(r); o.prices = vbPrices(r); o.uf = r.unitF * r.f; o.chg = r.chg; o.lastD = r.lastD || '—'; o.sup = r.sup && r.sup.length ? vbShort(r.sup[0]) + (r.sup.length > 1 ? ' +' + (r.sup.length - 1) : '') : '—'; }
             return o; }).sort(function (a, b) { return b.fin - a.fin; });
           var byL = { item: 'الصنف', st: 'المخزن', icl: 'التصنيف', igrp: 'المجموعة', sup: 'المورد الرئيسي' }[by];
           cols = [C('name', byL)];
-          if (by === 'item') cols = cols.concat([C('unit', 'الوحدة'), C('q', 'الكمية', 'qty'), C('np', 'عدد الأسعار', 'int'), C('range', 'نطاق سعر الشراء'), C('chg', 'تغير السعر %', 'pct'), C('uf', 'تكلفة الوحدة النهائية', 'money')]);
+          if (by === 'item') cols = cols.concat([C('unit', 'الوحدة'), C('q', 'الكمية', 'qty'), C('np', 'عدد الأسعار', 'int'), C('prices', 'أسعار الشراء (× عدد مرات الشراء)', 'long'), C('chg', 'تغير السعر %', 'pct'), C('uf', 'تكلفة الوحدة النهائية', 'money')]);
           else cols.push(C('items', 'عدد الأصناف', 'int'));
           cols = cols.concat([C('fin', 'القيمة النهائية', 'money'), C('share', 'من الإجمالي %', 'pct'), C('book', 'الدفترية (متوسط متحرك)', 'money'), C('diff', 'الفرق عن الدفتري', 'money'), C('dpct', 'الفرق %', 'pct'), C('fifo', 'FIFO', 'money'), C('wavg', 'المتوسط المرجح', 'money'), C('last', 'بآخر سعر', 'money'), C('min', 'بأقل سعر', 'money'), C('max', 'بأعلى سعر', 'money')]);
           if (by === 'item') cols.push(C('sup', 'المورد الرئيسي'));
@@ -6708,7 +6716,7 @@
         ];
         var note = 'طريقة التقييم النهائي: ' + mName + (lcm ? ' مع قاعدة الأقل من التكلفة أو سعر البيع أ' + (ipr ? '' : ' (قوائم الأسعار لم تصل، فلم تُطبَّق)') : '') +
           ' · أسعار الشراء بالوحدة الشائعة من فواتير الشراء وبضاعة أول المدة حتى التاريخ، والمرتجع يُخصم من طبقة سعره · FIFO: الرصيد الموجود يُقيَّم بأحدث أسعار الشراء رجوعاً' + (Tt.fifoX ? '، والزائد عن المشتريات بالتكلفة الدفترية (' + Tt.fifoX + ' صنف)' : '') +
-          ' · المتوسط المرجح يشمل الكميات المجانية (البونص) بسعر صفر · الأسعار وطرق التقييم على مستوى الشركة، وتصفية المخزن تحدد الكميات فقط · الدفترية = متوسط التكلفة المتحرك كما في سراج';
+          ' · أسعار الشراء: كل سعر مع عدد مرات الشراء به (عدد الفواتير، وقيود بضاعة أول المدة) · المتوسط المرجح يشمل الكميات المجانية (البونص) بسعر صفر · الأسعار وطرق التقييم على مستوى الشركة، وتصفية المخزن تحدد الكميات فقط · الدفترية = متوسط التكلفة المتحرك كما في سراج';
         var res = { title: title, cols: cols, rows: rows, total: total, kpis: kpis, note: note };
         if (view === 'det') res._grouped = true;
         else res.chart = { type: 'hbar', x: 'name', y: ['v'], yl: ['قيمة المخزون'], rowsOverride: M.map(function (m) { return { name: (m === meth ? '◀ ' : '') + vbMethName(m), v: Tt[m] }; }), limit: 6 };
