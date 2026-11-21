@@ -814,7 +814,7 @@
       if (!rows.length) return '<p class="muted" style="margin:0">لا توجد حركة في هذه الفترة</p>';
       var clickable = rows.some(function (r) { return r._acc || r._box || r._c1; }), hasC1 = rows.some(function (r) { return r._c1; });
       var shown = rows.length > 3000 ? rows.slice(0, 3000) : rows;
-      return '<table class="tbl fin"><thead><tr>' + res.cols.map(function (c) { return '<th class="' + (isNum(c) ? 'n' : c.t === 'long' ? 'lt' : '') + '" data-sort="' + c.k + '">' + esc(c.l) + (sk && sk.k === c.k ? (sk.dir > 0 ? ' ▲' : ' ▼') : '') + '</th>'; }).join('') + '</tr></thead><tbody>' +
+      return '<table class="tbl fin"><thead><tr>' + res.cols.map(function (c) { return '<th class="' + (isNum(c) ? 'n' : c.t === 'long' ? 'lt' : '') + '" data-sort="' + c.k + '">' + thHTML(c.l) + (sk && sk.k === c.k ? '<span class="ths">' + (sk.dir > 0 ? '▲' : '▼') + '</span>' : '') + '</th>'; }).join('') + '</tr></thead><tbody>' +
         shown.map(function (r) {
           return '<tr class="' + (r._b ? 'b ' : '') + (r._hl ? 'hl ' : '') + ((r._acc || r._box || r._c1) && clickable ? 'tap' : '') + '"' + (r._c1 ? ' data-c1="' + esc(r._c1) + '"' : r._acc ? ' data-acc="' + esc(r._acc) + '"' : r._box ? ' data-box="' + esc(r._box) + '"' : '') + '>' +
             res.cols.map(function (c, i) { return '<td class="' + (isNum(c) ? 'n' : c.t === 'long' ? 'lt' : '') + '"' + (r._lvl && i === lvlCol(res) ? ' style="padding-inline-start:' + (6 + r._lvl * 18) + 'px"' : '') + '>' + cell(c, r[c.k], r) + '</td>'; }).join('') + '</tr>';
@@ -892,9 +892,18 @@
     /* ---------- الطباعة الاحترافية: اختيار الاتجاه وحجم الخط تلقائياً، وتقسيم الأعمدة على أجزاء عند الحاجة دون فقد أي عمود ---------- */
     var PX2MM = 25.4 / 96;
     function pMeasure(t, pt, bold) { return textW(String(t), pt * 96 / 72, bold) * PX2MM; }
+    // عنوان العمود على سطرين كحد أقصى: العنوان الرئيسي، وما بين القوسين سطراً ثانياً أصغر
+    function thSplit(l) { l = String(l || ''); var m = l.match(/^(.*?)\s*\(([^()]*(?:\([^()]*\)[^()]*)*)\)\s*$/); return m && m[1] ? [m[1], m[2]] : [l, '']; }
+    function thHTML(l) { var x = thSplit(l); return '<span class="thm' + (x[0].split(/\s+/).length <= 3 ? ' one' : '') + '">' + esc(x[0]) + '</span>' + (x[1] ? ' <span class="ths">(' + esc(x[1]) + ')</span>' : ''); }
+    function thWidth(l, pt) {
+      var x = thSplit(l), words = x[0].split(/\s+/), lw = Math.max.apply(null, words.map(function (w) { return pMeasure(w, pt - 0.5, true); })), full = pMeasure(x[0], pt - 0.5, true);
+      var main = words.length <= 3 ? full : Math.max(lw, Math.min(full, Math.max(full * 0.55, lw)));   // العنوان الرئيسي في سطر أو سطرين متوازنين
+      var sub = x[1] ? Math.min(pMeasure('(' + x[1] + ')', pt - 1.5, false), 30) : 0;
+      return Math.min(Math.max(main, sub, lw), 38);
+    }
     function pColWidths(res, rows, cols, pt) {
       return cols.map(function (c) {
-        var num = isNum(c), head = String(c.l), hw = Math.max.apply(null, head.split(/\s+/).map(function (w) { return pMeasure(w, pt - 0.5, true); })), natural = 0, word = 0;
+        var num = isNum(c), hw = thWidth(c.l, pt), natural = 0, word = 0;
         var sample = rows.length > 400 ? rows.filter(function (r, i) { return i % Math.ceil(rows.length / 400) === 0 || r._b; }) : rows;
         sample.concat(res.total ? [res.total] : []).forEach(function (r) {
           var v = plain(cell(c, r[c.k], r)); if (!v) return;
@@ -936,7 +945,7 @@
     function printTableHTML(res, part, pt) {
       var cols = part.cols, rows = res.rows, lc = lvlCol(res), lk = res.cols[lc] && res.cols[lc].k;
       return '<table class="p-tbl p-auto" style="font-size:' + pt + 'pt' + (part.fill ? ';width:auto;min-width:' + Math.round(part.ws.reduce(function (a, b) { return a + b; }, 0)) + '%' : '') + '"><colgroup>' + part.ws.map(function (w) { return '<col style="width:' + w.toFixed(2) + '%">'; }).join('') + '</colgroup><thead><tr>' +
-        cols.map(function (c) { return '<th class="' + (isNum(c) ? 'n' : '') + '">' + esc(c.l) + '</th>'; }).join('') + '</tr></thead><tbody>' +
+        cols.map(function (c) { return '<th class="' + (isNum(c) ? 'n' : '') + '">' + thHTML(c.l) + '</th>'; }).join('') + '</tr></thead><tbody>' +
         rows.map(function (r) {
           return '<tr class="' + (r._gh ? 'gh ' : r._b ? 'b ' : '') + (r._hl ? 'hl' : '') + '">' + cols.map(function (c) {
             return '<td class="' + (isNum(c) ? 'n' : c.t === 'long' ? 'lt' : '') + '"' + (r._lvl && c.k === lk ? ' style="padding-inline-start:' + (1.5 + r._lvl * 3.5) + 'mm"' : '') + '>' + cell(c, r[c.k], r) + '</td>';
