@@ -6543,7 +6543,8 @@
           });
           cols = [C('name', byL + ' / الصنف'), C('unit', 'الوحدة'), C('abc', 'ABC'), C('qty', 'الكمية', 'qty'), C('cost', 'متوسط التكلفة', 'money'), C('val', 'القيمة بالتكلفة', 'money'), C('share', 'من الإجمالي %', 'pct'), C('bp', 'آخر سعر شراء', 'money'), C('rep', 'بآخر سعر شراء', 'money'), C('spu', 'سعر البيع', 'money'), C('sale', 'بسعر البيع', 'money'), C('pf', 'الربح المتوقع', 'money'), C('margin', 'الهامش %', 'pct'), C('nrv', 'انخفاض القيمة', 'money'), C('ls', 'آخر بيع'), C('status', 'الحالة')];
         }
-        var t = { name: 'الإجمالي', _b: true, items: Object.keys(T0.items).length, val: T0.val, share: 100, rep: T0.rep, rdiff: T0.rep - T0.val, sale: T0.sale, pf: T0.pf, margin: pct(T0.pf, pSaleT), nrv: T0.nrv, staleV: T0.staleV, neg: T0.neg, status: '' };
+        var qAll = 0; list.forEach(function (o) { qAll += o.qb / ((T().item[o.it] || {}).f || 1); });
+        var t = { name: 'الإجمالي', _b: true, qty: qAll, items: Object.keys(T0.items).length, val: T0.val, share: 100, rep: T0.rep, rdiff: T0.rep - T0.val, sale: T0.sale, pf: T0.pf, margin: pct(T0.pf, pSaleT), nrv: T0.nrv, staleV: T0.staleV, neg: T0.neg, status: '' };
         var cnt = { A: 0, B: 0, C: 0 }; Object.keys(abc).forEach(function (k) { cnt[abc[k]]++; });
         var lvlName = VAL_PRICE.filter(function (o) { return o[0] === V.lvl; })[0][1];
         var kpis = [
@@ -6704,7 +6705,8 @@
           cols = [C('name', 'الصنف / سعر الشراء'), C('src', 'المورد'), C('d1', 'من'), C('d2', 'إلى'), C('ninv', 'الفواتير', 'int'), C('pq', 'الكمية المشتراة', 'qty'), C('rq', 'المرتجع', 'qty'), C('pp', 'سعر الشراء', 'money'), C('pv', 'قيمة المشتريات', 'money'), C('sq', meth === 'fifo' ? 'بالمخزون (FIFO)' : 'الكمية بالمخزون', 'qty'), C('uf', 'تكلفة الوحدة النهائية', 'money'), C('fin', 'القيمة النهائية', 'money'), C('book', 'الدفترية', 'money'), C('diff', 'الفرق', 'money')];
           title = 'تقييم المخزون بأسعار الشراء — تفصيلي (' + mName + ')';
         }
-        var total = { name: 'الإجمالي', _b: true, items: D.length, fin: Tt.fin, share: 100, book: Tt.mavg, diff: Tt.fin - Tt.mavg, dpct: pct(Tt.fin - Tt.mavg, Tt.mavg), fifo: Tt.fifo, wavg: Tt.wavg, last: Tt.last, min: Tt.min, max: Tt.max, pv: Tt.pv };
+        var qT = D.reduce(function (a, r) { return a + r.q / r.f; }, 0), pqT = D.reduce(function (a, r) { return a + (r.has ? r.nq / r.f : 0); }, 0), rqT = D.reduce(function (a, r) { return a + (r.rq ? r.rq / r.f : 0); }, 0);
+        var total = { name: 'الإجمالي', _b: true, items: D.length, q: qT, sq: qT, pq: pqT, rq: rqT || '', fin: Tt.fin, share: 100, book: Tt.mavg, diff: Tt.fin - Tt.mavg, dpct: pct(Tt.fin - Tt.mavg, Tt.mavg), fifo: Tt.fifo, wavg: Tt.wavg, last: Tt.last, min: Tt.min, max: Tt.max, pv: Tt.pv };
         var tots = M.map(function (m) { return Tt[m]; }), lo = Math.min.apply(null, tots), hi = Math.max.apply(null, tots), infl = pct(Tt.lastV - Tt.firstV, Tt.firstV);
         var kpis = [
           { l: 'القيمة النهائية للمخزون', v: Tt.fin, t: 'money', s: mName + (lcm ? ' + قاعدة الأقل' : '') },

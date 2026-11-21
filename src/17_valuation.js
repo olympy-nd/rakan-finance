@@ -81,7 +81,8 @@
           });
           cols = [C('name', byL + ' / الصنف'), C('unit', 'الوحدة'), C('abc', 'ABC'), C('qty', 'الكمية', 'qty'), C('cost', 'متوسط التكلفة', 'money'), C('val', 'القيمة بالتكلفة', 'money'), C('share', 'من الإجمالي %', 'pct'), C('bp', 'آخر سعر شراء', 'money'), C('rep', 'بآخر سعر شراء', 'money'), C('spu', 'سعر البيع', 'money'), C('sale', 'بسعر البيع', 'money'), C('pf', 'الربح المتوقع', 'money'), C('margin', 'الهامش %', 'pct'), C('nrv', 'انخفاض القيمة', 'money'), C('ls', 'آخر بيع'), C('status', 'الحالة')];
         }
-        var t = { name: 'الإجمالي', _b: true, items: Object.keys(T0.items).length, val: T0.val, share: 100, rep: T0.rep, rdiff: T0.rep - T0.val, sale: T0.sale, pf: T0.pf, margin: pct(T0.pf, pSaleT), nrv: T0.nrv, staleV: T0.staleV, neg: T0.neg, status: '' };
+        var qAll = 0; list.forEach(function (o) { qAll += o.qb / ((T().item[o.it] || {}).f || 1); });
+        var t = { name: 'الإجمالي', _b: true, qty: qAll, items: Object.keys(T0.items).length, val: T0.val, share: 100, rep: T0.rep, rdiff: T0.rep - T0.val, sale: T0.sale, pf: T0.pf, margin: pct(T0.pf, pSaleT), nrv: T0.nrv, staleV: T0.staleV, neg: T0.neg, status: '' };
         var cnt = { A: 0, B: 0, C: 0 }; Object.keys(abc).forEach(function (k) { cnt[abc[k]]++; });
         var lvlName = VAL_PRICE.filter(function (o) { return o[0] === V.lvl; })[0][1];
         var kpis = [
