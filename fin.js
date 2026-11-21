@@ -6577,6 +6577,7 @@
       return Object.keys(m).map(function (k) { return m[k]; }).sort(function (a, b) { return b.n - a.n || a.pb - b.pb; })
         .map(function (o) { return (o.pb > 0 ? fm(o.pb * f) : 'مجاني') + '\u00a0×' + o.n + (o.o ? (o.o === o.n ? '\u00a0(أول\u00a0المدة)' : '\u00a0(منها\u00a0' + o.o + '\u00a0أول\u00a0المدة)') : ''); }).join('  ·  ');
     }
+    var VB_SHORT = { mavg: 'متوسط متحرك', fifo: 'FIFO', wavg: 'متوسط مرجح', last: 'آخر سعر', min: 'أقل سعر', max: 'أعلى سعر' };
     function vbMethName(m) { var o = VB_METH.filter(function (x) { return x[0] === m; })[0]; return o ? o[1] : m; }
     // طبقات الشراء لكل صنف حتى تاريخ: بضاعة أول المدة + كل سعر شراء (مع المرتجعات) — على مستوى الشركة
     function vbLayers(asof) {
@@ -6663,7 +6664,7 @@
           if (r.nlev > 1) Tt.multi++; if (!r.has) Tt.noPur++; if (r.has && r.last > r.first + 1e-9) Tt.up++; if (r.has && r.last < r.first - 1e-9) Tt.down++;
           if (r.has && r.q > 0) { Tt.firstV += r.q * r.first; Tt.lastV += r.q * r.last; } if (r.fifoX > 0) Tt.fifoX++;
         });
-        var mName = vbMethName(meth), rows, cols, title;
+        var mName = vbMethName(meth), mS = VB_SHORT[meth] + (lcm ? ' + الأقل' : ''), rows, cols, title;
         var priceRange = function (r) { if (!r.has) return 'بدون مشتريات حتى التاريخ'; var f = r.f; return r.max - r.min > 1e-9 ? fm(r.min * f) + '\u00a0–\u00a0' + fm(r.max * f) : r.max > 0 ? fm(r.max * f) : 'مجاني فقط'; };
         if (view === 'sum') {
           var grp = {
@@ -6686,11 +6687,11 @@
             return o; }).sort(function (a, b) { return b.fin - a.fin; });
           var byL = { item: 'الصنف', st: 'المخزن', icl: 'التصنيف', igrp: 'المجموعة', sup: 'المورد الرئيسي' }[by];
           cols = [C('name', byL)];
-          if (by === 'item') cols = cols.concat([C('unit', 'الوحدة'), C('q', 'الكمية', 'qty'), C('np', 'عدد الأسعار', 'int'), C('prices', 'أسعار الشراء (× عدد مرات الشراء)', 'long'), C('chg', 'تغير السعر %', 'pct'), C('uf', 'تكلفة الوحدة النهائية', 'money')]);
+          if (by === 'item') cols = cols.concat([C('unit', 'الوحدة'), C('q', 'الكمية', 'qty'), C('np', 'عدد الأسعار', 'int'), C('prices', 'أسعار الشراء (× عدد مرات الشراء)', 'long'), C('chg', 'تغير السعر %', 'pct'), C('uf', 'تكلفة الوحدة النهائية (' + mS + ')', 'money')]);
           else cols.push(C('items', 'عدد الأصناف', 'int'));
-          cols = cols.concat([C('fin', 'القيمة النهائية', 'money'), C('share', 'من الإجمالي %', 'pct'), C('book', 'الدفترية (متوسط متحرك)', 'money'), C('diff', 'الفرق عن الدفتري', 'money'), C('dpct', 'الفرق %', 'pct'), C('fifo', 'FIFO', 'money'), C('wavg', 'المتوسط المرجح', 'money'), C('last', 'بآخر سعر', 'money'), C('min', 'بأقل سعر', 'money'), C('max', 'بأعلى سعر', 'money')]);
+          cols = cols.concat([C('fin', 'القيمة النهائية (' + mS + ')', 'money'), C('share', 'من الإجمالي %', 'pct'), C('book', 'الدفترية (متوسط متحرك)', 'money'), C('diff', 'الفرق عن الدفتري', 'money'), C('dpct', 'الفرق %', 'pct'), C('fifo', 'FIFO', 'money'), C('wavg', 'المتوسط المرجح', 'money'), C('last', 'بآخر سعر', 'money'), C('min', 'بأقل سعر', 'money'), C('max', 'بأعلى سعر', 'money')]);
           if (by === 'item') cols.push(C('sup', 'المورد الرئيسي'));
-          title = 'تقييم المخزون بأسعار الشراء — ملخص حسب ' + byL;
+          title = 'تقييم المخزون بأسعار الشراء — ملخص حسب ' + byL + ' (' + mName + (lcm ? ' + قاعدة الأقل' : '') + ')';
         } else {
           rows = [];
           D.sort(function (a, b) { return b.fin - a.fin; }).forEach(function (r, gi) {
@@ -6702,8 +6703,8 @@
             });
             if (meth === 'fifo' && r.fifoX > 0) rows.push({ _g: gi, _lvl: 1, name: 'رصيد غير مغطى بمشتريات (بالتكلفة الدفترية)', src: '', d1: '', d2: '', pq: '', pp: r.book * f, sq: r.fifoX / f, fin: r.fifoX * r.book });
           });
-          cols = [C('name', 'الصنف / سعر الشراء'), C('src', 'المورد'), C('d1', 'من'), C('d2', 'إلى'), C('ninv', 'الفواتير', 'int'), C('pq', 'الكمية المشتراة', 'qty'), C('rq', 'المرتجع', 'qty'), C('pp', 'سعر الشراء', 'money'), C('pv', 'قيمة المشتريات', 'money'), C('sq', meth === 'fifo' ? 'بالمخزون (FIFO)' : 'الكمية بالمخزون', 'qty'), C('uf', 'تكلفة الوحدة النهائية', 'money'), C('fin', 'القيمة النهائية', 'money'), C('book', 'الدفترية', 'money'), C('diff', 'الفرق', 'money')];
-          title = 'تقييم المخزون بأسعار الشراء — تفصيلي (' + mName + ')';
+          cols = [C('name', 'الصنف / سعر الشراء'), C('src', 'المورد'), C('d1', 'من'), C('d2', 'إلى'), C('ninv', 'الفواتير', 'int'), C('pq', 'الكمية المشتراة', 'qty'), C('rq', 'المرتجع', 'qty'), C('pp', 'سعر الشراء', 'money'), C('pv', 'قيمة المشتريات', 'money'), C('sq', meth === 'fifo' ? 'بالمخزون (FIFO)' : 'الكمية بالمخزون', 'qty'), C('uf', 'تكلفة الوحدة النهائية (' + mS + ')', 'money'), C('fin', 'القيمة النهائية (' + mS + ')', 'money'), C('book', 'الدفترية', 'money'), C('diff', 'الفرق', 'money')];
+          title = 'تقييم المخزون بأسعار الشراء — تفصيلي (' + mName + (lcm ? ' + قاعدة الأقل' : '') + ')';
         }
         var qT = D.reduce(function (a, r) { return a + r.q / r.f; }, 0), pqT = D.reduce(function (a, r) { return a + (r.has ? r.nq / r.f : 0); }, 0), rqT = D.reduce(function (a, r) { return a + (r.rq ? r.rq / r.f : 0); }, 0);
         var total = { name: 'الإجمالي', _b: true, items: D.length, q: qT, sq: qT, pq: pqT, rq: rqT || '', fin: Tt.fin, share: 100, book: Tt.mavg, diff: Tt.fin - Tt.mavg, dpct: pct(Tt.fin - Tt.mavg, Tt.mavg), fifo: Tt.fifo, wavg: Tt.wavg, last: Tt.last, min: Tt.min, max: Tt.max, pv: Tt.pv };
