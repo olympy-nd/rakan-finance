@@ -154,6 +154,7 @@
           ' · أسعار الشراء بالوحدة الشائعة من فواتير الشراء وبضاعة أول المدة حتى التاريخ، والمرتجع يُخصم من طبقة سعره · FIFO: الرصيد الموجود يُقيَّم بأحدث أسعار الشراء رجوعاً' + (Tt.fifoX ? '، والزائد عن المشتريات بالتكلفة الدفترية (' + Tt.fifoX + ' صنف)' : '') +
           ' · أسعار الشراء: كل سعر مع عدد مرات الشراء به (عدد الفواتير، وقيود بضاعة أول المدة) · المتوسط المرجح يشمل الكميات المجانية (البونص) بسعر صفر · الأسعار وطرق التقييم على مستوى الشركة، وتصفية المخزن تحدد الكميات فقط · الدفترية = متوسط التكلفة المتحرك كما في سراج';
         var res = { title: title, cols: cols, rows: rows, total: total, kpis: kpis, note: note };
+        res.printKeys = view === 'sum' ? ['name', 'unit', 'q'] : ['name'];
         if (view === 'det') res._grouped = true;
         else res.chart = { type: 'hbar', x: 'name', y: ['v'], yl: ['قيمة المخزون'], rowsOverride: M.map(function (m) { return { name: (m === meth ? '◀ ' : '') + vbMethName(m), v: Tt[m] }; }), limit: 6 };
         return withNote(res, p);

@@ -2564,6 +2564,8 @@
       // تقسيم الأعمدة: أعمدة التعريف (الاسم/الرمز) تتكرر في كل جزء، وبقية الأعمدة توزَّع بالترتيب
       var pt = mode === 'split' ? 8 : 7.5, orient = mode === 'portrait' ? 'portrait' : 'landscape', av = AV[orient], ws2 = pColWidths(res, rows, cols, pt);
       var nKey = 1; if (cols.length > 2 && !isNum(cols[1]) && (cols[0].k === 'code' || ws2[0] < 30)) nKey = 2;
+      // أعمدة يطلب التقرير تكرارها في كل جزء (مثل الوحدة والكمية) إن كانت في أول الجدول
+      if (res.printKeys) { var pk = 0; while (pk < cols.length && res.printKeys.indexOf(cols[pk].k) >= 0) pk++; if (pk > nKey) nKey = pk; }
       var keyW = ws2.slice(0, nKey).reduce(function (a, b) { return a + b; }, 0), parts = [], cur = [];
       for (var i = nKey; i < cols.length; i++) {
         var used = keyW + cur.reduce(function (a, x) { return a + ws2[x]; }, 0);
@@ -5502,7 +5504,7 @@
 
     /* ---------- تجميع صفوف العملاء حسب الحسابات أو المجموعات المحددة في التصفية ---------- */
     // عند اختيار أكثر من حساب عملاء (أو مجموعة) في التصفية، تُعرض كل مجموعة بعنوان وإجمالي وتحتها عملاؤها
-    var GRP_NOSUM = /^(margin|share|rp|cr|ch|chp|diffp|odp|pch|use|avg|avgp|avgc|avgi|ppi|upp|score|grade|dso|pd|gap|since|ratio|pmin|pmax|mn|mx|lim|cov|mratio|p|lp|up|s_\w+)$/;
+    var GRP_NOSUM = /^(margin|share|uf|np|rp|cr|ch|chp|diffp|odp|pch|use|avg|avgp|avgc|avgi|ppi|upp|score|grade|dso|pd|gap|since|ratio|pmin|pmax|mn|mx|lim|cov|mratio|p|lp|up|s_\w+)$/;
     function custNameMap() {
       if (F.cache.cnm) return F.cache.cnm;
       var m = {}; F.D.invs.forEach(function (v) { if (v.name && !m[v.name]) m[v.name] = v.ck; });
@@ -6718,6 +6720,7 @@
           ' · أسعار الشراء بالوحدة الشائعة من فواتير الشراء وبضاعة أول المدة حتى التاريخ، والمرتجع يُخصم من طبقة سعره · FIFO: الرصيد الموجود يُقيَّم بأحدث أسعار الشراء رجوعاً' + (Tt.fifoX ? '، والزائد عن المشتريات بالتكلفة الدفترية (' + Tt.fifoX + ' صنف)' : '') +
           ' · أسعار الشراء: كل سعر مع عدد مرات الشراء به (عدد الفواتير، وقيود بضاعة أول المدة) · المتوسط المرجح يشمل الكميات المجانية (البونص) بسعر صفر · الأسعار وطرق التقييم على مستوى الشركة، وتصفية المخزن تحدد الكميات فقط · الدفترية = متوسط التكلفة المتحرك كما في سراج';
         var res = { title: title, cols: cols, rows: rows, total: total, kpis: kpis, note: note };
+        res.printKeys = view === 'sum' ? ['name', 'unit', 'q'] : ['name'];
         if (view === 'det') res._grouped = true;
         else res.chart = { type: 'hbar', x: 'name', y: ['v'], yl: ['قيمة المخزون'], rowsOverride: M.map(function (m) { return { name: (m === meth ? '◀ ' : '') + vbMethName(m), v: Tt[m] }; }), limit: 6 };
         return withNote(res, p);

@@ -918,6 +918,8 @@
       // تقسيم الأعمدة: أعمدة التعريف (الاسم/الرمز) تتكرر في كل جزء، وبقية الأعمدة توزَّع بالترتيب
       var pt = mode === 'split' ? 8 : 7.5, orient = mode === 'portrait' ? 'portrait' : 'landscape', av = AV[orient], ws2 = pColWidths(res, rows, cols, pt);
       var nKey = 1; if (cols.length > 2 && !isNum(cols[1]) && (cols[0].k === 'code' || ws2[0] < 30)) nKey = 2;
+      // أعمدة يطلب التقرير تكرارها في كل جزء (مثل الوحدة والكمية) إن كانت في أول الجدول
+      if (res.printKeys) { var pk = 0; while (pk < cols.length && res.printKeys.indexOf(cols[pk].k) >= 0) pk++; if (pk > nKey) nKey = pk; }
       var keyW = ws2.slice(0, nKey).reduce(function (a, b) { return a + b; }, 0), parts = [], cur = [];
       for (var i = nKey; i < cols.length; i++) {
         var used = keyW + cur.reduce(function (a, x) { return a + ws2[x]; }, 0);
