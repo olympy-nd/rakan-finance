@@ -223,17 +223,19 @@
 
     /* ===================== التحصيل حسب طريقة القبض: نقدي / بنوك / مقاصة ===================== */
     // سطر لكل حساب مدين في كل سند تحصيل من العملاء، والمبلغ موزّع بنسبته (نفس قواعد collections وcollSplit)
-    function collLines(from, to, recvList) {
-      var bx = boxIds(''), recv = recvList || recvIds(), bset = {}, rset = {}, out = [];
-      bx.forEach(function (x) { bset[x] = 1; }); recv.forEach(function (x) { rset[x] = 1; });
+    function collLines(from, to, recvList, onlyExcl) {
+      // onlyExcl: الحركات التي كانت ستُحسب لولا الحسابات المستبعدة (للمراجعة)
+      var bx = boxIds(''), recv = recvList || recvIds(), bset = {}, rset = {}, out = [], ex = collExcl();
+      bx.forEach(function (x) { if (onlyExcl || !ex[x]) bset[x] = 1; }); recv.forEach(function (x) { if (onlyExcl || !ex[x]) rset[x] = 1; });
       entriesIn(from, to).forEach(function (l0) {
         var ls = F.D.byEntry[l0.e], dB = 0, cR = 0, deb = [], cus = {};
         ls.forEach(function (l) {
-          if ((bx.length ? bset[l.a] : (l0.k === 'r' && l.dr)) && l.dr) { dB += l.dr; deb.push(l); }
+          if ((bx.length ? bset[l.a] : (l0.k === 'r' && l.dr && (onlyExcl || !ex[l.a]))) && l.dr) { dB += l.dr; deb.push(l); }
           if (rset[l.a] && l.cr) { cR += l.cr; cus[l.a] = (cus[l.a] || 0) + l.cr; }
         });
         var amt = Math.min(dB, cR);
         if (amt <= 0 || dB <= 0) return;
+        if (onlyExcl && !deb.concat(Object.keys(cus).map(function (a) { return { a: a }; })).some(function (l) { return ex[l.a]; })) return;
         var cl = Object.keys(cus).sort(function (a, b) { return cus[b] - cus[a]; });
         deb.forEach(function (l) {
           var k = cashBankKind(l.a);
@@ -244,9 +246,11 @@
     }
     R.coll_offset = { cat: 'debts', name: 'التحصيل حسب طريقة القبض (نقدي · بنوك · مقاصة)', desc: 'سندات التحصيل من العملاء مصنّفة حسب الحساب الذي دخل فيه المبلغ: صندوق (نقدي) أو مصرف (بنوك) أو حساب آخر (مقاصة: تسوية دين العميل مقابل حساب آخر دون نقد). حركات المقاصة تفصيلياً، أو كل التحصيل، أو ملخصاً حسب الحساب المقابل أو العميل',
       params: ['period', 'flt'], fdims: ['cust', 'xcust'],
-      sel: [['view', 'العرض', [['oth', 'حركات المقاصة (تفصيلي)'], ['all', 'كل التحصيل (تفصيلي)'], ['acc', 'ملخص حسب الحساب المقابل'], ['cust', 'ملخص حسب العميل']]]],
+      sel: [['view', 'العرض', [['oth', 'حركات المقاصة (تفصيلي)'], ['all', 'كل التحصيل (تفصيلي)'], ['acc', 'ملخص حسب الحساب المقابل'], ['cust', 'ملخص حسب العميل'], ['excl', 'الحركات المستبعدة من التحصيل']]]],
       run: function (p) {
-        var f = parseFilter(p.flt), L = collLines(p.from, p.to, f ? recvFor(f) : null), view = p.view || 'oth';
+        var f = parseFilter(p.flt), view = p.view || 'oth';
+        if (view === 'excl') return collExclReport(p, f);
+        var L = collLines(p.from, p.to, f ? recvFor(f) : null);
         if (!L.length) return emptyR('لا يوجد تحصيل من العملاء في الفترة');
         var tot = { 'نقدي': 0, 'بنوك': 0, 'مقاصة': 0 }, all = 0, offE = {}, offAcc = {}, offCus = {};
         L.forEach(function (x) { tot[x.kind] += x.amt; all += x.amt; if (x.kind === 'مقاصة') { offE[x.e] = 1; offAcc[x.acc] = 1; x.cust.forEach(function (c) { offCus[c] = 1; }); } });
@@ -301,3 +305,25 @@
         return withNote({ title: view === 'acc' ? 'التحصيل حسب الحساب المقابل' : 'التحصيل حسب العميل وطريقة القبض', kpis: kpis, rows: rows, total: total, cols: cols, note: note, _noCust: view === 'acc',
           chart: view === 'acc' ? { type: 'hbar', x: 'name', y: ['amt'], yl: ['المبلغ'], limit: 12 } : null }, p);
       } };
+
+    // الحركات المستبعدة من التحصيل بسبب الحسابات المحددة في الإعدادات
+    function collExclReport(p, f) {
+      var lst = collExclList();
+      if (!lst.length) return emptyR('لم تُحدَّد حسابات مستبعدة من التحصيل. حدّدها من الإعدادات ← الصناديق والبنوك ← «حسابات لا تُحسب حركاتها في التحصيل»');
+      var L = collLines(p.from, p.to, f ? recvFor(f) : null, true), ex = collExcl();
+      if (!L.length) return emptyR('لا توجد حركات مستبعدة في الفترة');
+      var acode = function (a) { var x = acc(a); return x ? x.code + ' · ' + x.name + (multiBr() ? ' — ' + brName(x.br || '') : '') : a; };
+      var G = {}, tot = 0;
+      L.forEach(function (x) { var k = ex[x.acc] ? x.acc : x.cust.filter(function (c) { return ex[c]; })[0] || x.cmain, g = G[k] || (G[k] = { name: acode(k), l: [], amt: 0 }); g.l.push(x); g.amt += x.amt; tot += x.amt; });
+      var rows = [];
+      Object.keys(G).sort(function (a, b) { return G[b].amt - G[a].amt; }).forEach(function (k, gi) {
+        var g = G[k], ne = {}; g.l.forEach(function (x) { ne[x.e] = 1; });
+        rows.push({ _g: gi, _gh: 1, _b: true, name: g.name + ' (' + Object.keys(ne).length + ' سند)', amt: g.amt, share: pct(g.amt, tot) });
+        g.l.sort(function (a, b) { return a.dt < b.dt ? -1 : 1; }).forEach(function (x) { rows.push({ _g: gi, _lvl: 1, name: x.cust.map(function (a) { return accName(a); }).join('\n'), d: x.d, no: x.no, btn: x.btn, cacc: acode(x.acc), amt: x.amt, ed: x.ed }); });
+      });
+      var nE = {}; L.forEach(function (x) { nE[x.e] = 1; });
+      return withNote({ title: 'الحركات المستبعدة من التحصيل', _grouped: true, _noCust: true, rows: rows, total: { name: 'الإجمالي', _b: true, amt: tot, share: 100 },
+        kpis: [{ l: 'المستبعد من التحصيل', v: tot, t: 'money', s: Object.keys(nE).length + ' سند في الفترة' }, { l: 'التحصيل المحسوب', v: collections(p.from, p.to, '', false, f ? recvFor(f) : null), t: 'money', s: 'بعد الاستبعاد' }, { l: 'الحسابات المستبعدة', v: lst.length, t: 'int', s: 'من الإعدادات' }],
+        cols: [C('name', 'الحساب المستبعد / العميل', 'long'), C('d', 'التاريخ'), C('no', 'رقم السند'), C('btn', 'نوع السند'), C('cacc', 'الحساب المدين', 'long'), C('amt', 'المبلغ', 'money'), C('share', 'من المستبعد %', 'pct'), C('ed', 'البيان', 'long')],
+        note: 'سندات كانت ستُحسب تحصيلاً لولا أن أحد حسابيها (حساب العميل الدائن أو الحساب المدين) من الحسابات المستبعدة — مثل الحسابات بين الإدارة والفروع حتى لا يُحسب نفس المبلغ مرتين' }, p);
+    }

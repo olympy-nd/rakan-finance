@@ -602,13 +602,21 @@
       return r;
     }
     // التحصيل من العملاء إلى صناديق أو بنوك: لكل قيد = الأقل بين المدين على الصناديق والدائن على حسابات العملاء
-    function collections(from, to, kind, perCust, recvList) {
-      var bx = boxIds(kind), recv = recvList || recvIds(), bset = {}, rset = {}, tot = 0, by = {};
+    // الحسابات المستبعدة من التحصيل (الإعدادات ← الصناديق والبنوك): الحساب وكل فروعه
+    function collExclList() { return F.config && Array.isArray(F.config.collx) ? F.config.collx : []; }
+    function collExcl() {
+      if (F.cache.cx) return F.cache.cx;
+      var o = {};
+      collExclList().forEach(function (x) { (function w(id) { if (!id || o[id]) return; o[id] = 1; var a = T().acc[id]; ((a && a.kids) || []).forEach(w); })(String(x.acc)); });
+      return (F.cache.cx = o);
+    }
+    function collections(from, to, kind, perCust, recvList, noExcl) {
+      var bx = boxIds(kind), recv = recvList || recvIds(), bset = {}, rset = {}, tot = 0, by = {}, ex = noExcl ? {} : collExcl();
       if (!bx.length && kind) return perCust ? {} : 0;
-      bx.forEach(function (x) { bset[x] = 1; }); recv.forEach(function (x) { rset[x] = 1; });
+      bx.forEach(function (x) { if (!ex[x]) bset[x] = 1; }); recv.forEach(function (x) { if (!ex[x]) rset[x] = 1; });
       entriesIn(from, to).forEach(function (l0) {
         var ls = F.D.byEntry[l0.e], dB = 0, cR = 0, cr = {};
-        ls.forEach(function (l) { if (bx.length ? bset[l.a] : (l0.k === 'r' && l.dr)) dB += l.dr; if (rset[l.a] && l.cr) { cR += l.cr; cr[l.a] = (cr[l.a] || 0) + l.cr; } });
+        ls.forEach(function (l) { if (bx.length ? bset[l.a] : (l0.k === 'r' && l.dr && !ex[l.a])) dB += l.dr; if (rset[l.a] && l.cr) { cR += l.cr; cr[l.a] = (cr[l.a] || 0) + l.cr; } });
         var amt = Math.min(dB, cR);
         if (amt <= 0) return;
         tot += amt;
@@ -630,12 +638,12 @@
     function collSplit(from, to, recvList) {
       var key = 'cs:' + from + to + (recvList ? recvList.join(',') : '');
       if (F.cache[key]) return F.cache[key];
-      var bx = boxIds(''), recv = recvList || recvIds(), bset = {}, rset = {}, out = { cash: 0, bank: 0, other: 0, tot: 0 };
-      bx.forEach(function (x) { bset[x] = 1; }); recv.forEach(function (x) { rset[x] = 1; });
+      var bx = boxIds(''), recv = recvList || recvIds(), bset = {}, rset = {}, out = { cash: 0, bank: 0, other: 0, tot: 0 }, ex = collExcl();
+      bx.forEach(function (x) { if (!ex[x]) bset[x] = 1; }); recv.forEach(function (x) { if (!ex[x]) rset[x] = 1; });
       entriesIn(from, to).forEach(function (l0) {
         var ls = F.D.byEntry[l0.e], dB = 0, cR = 0, part = { cash: 0, bank: 0, other: 0 };
         ls.forEach(function (l) {
-          if ((bx.length ? bset[l.a] : (l0.k === 'r' && l.dr)) && l.dr) { dB += l.dr; var k = cashBankKind(l.a); part[k === 'بنك' ? 'bank' : k === 'صندوق' ? 'cash' : 'other'] += l.dr; }
+          if ((bx.length ? bset[l.a] : (l0.k === 'r' && l.dr && !ex[l.a])) && l.dr) { dB += l.dr; var k = cashBankKind(l.a); part[k === 'بنك' ? 'bank' : k === 'صندوق' ? 'cash' : 'other'] += l.dr; }
           if (rset[l.a] && l.cr) cR += l.cr;
         });
         var amt = Math.min(dB, cR);

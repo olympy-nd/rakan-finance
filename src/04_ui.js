@@ -1455,6 +1455,7 @@
           };
           h += multiBr() ? withBr(br.code, inBr) : inBr();
         });
+        h += collExclHTML();
       } else if (tab === 'cards') {
         var cl = editDraft('cards'), r = presetRange('month');
         h += '<div class="card"><h2>بطاقات لوحة المؤشرات</h2><p class="small muted" style="margin:0 0 10px">كل بطاقة تختار لها ما تحسبه من قائمة (مثل: صافي المبيعات لعميل أو صنف معين، أو رصيد حساب ناقص رصيد حساب آخر). القيم الظاهرة هنا لهذا الشهر.</p>' +
@@ -1498,6 +1499,36 @@
         toast(value === null ? 'استُعيد الافتراضي' : 'حُفظ'); A.render();
       }).catch(function (e) { if (btn) busy(btn, false); toast(e.message, true); });
     }
+    /* ---------- حسابات لا تُحسب حركاتها في التحصيل ---------- */
+    function collExclHTML() {
+      var lst = collExclList(), y0 = yearStart(), t0 = today(), amt = {};
+      if (lst.length) { var ex = collExcl(), map = {}; lst.forEach(function (x) { (function w(id) { if (!id) return; if (!map[id]) map[id] = x.acc; var a = T().acc[id]; ((a && a.kids) || []).forEach(w); })(String(x.acc)); });
+        collLines(y0, t0, null, true).forEach(function (l) { var hit = ex[l.acc] ? l.acc : l.cust.filter(function (c) { return ex[c]; })[0]; if (hit) { var k = map[hit] || hit; amt[k] = (amt[k] || 0) + l.amt; } }); }
+      var brs = multiBr() ? branches() : [{ code: '', name: '' }];
+      return '<div class="card cx-card"><h2>حسابات لا تُحسب حركاتها في التحصيل</h2><p class="small muted" style="margin:0 0 10px">أي سند قبض أو قيد يكون فيه أحد هذه الحسابات (حساب العميل الدائن أو الحساب المدين) لا يُحسب تحصيلاً في كل التقارير ولوحة المؤشرات. استعملها للحسابات بين الإدارة والفروع حتى لا يُحسب نفس المبلغ مرتين، مثل: حساب «فرع طرابلس» في الإدارة العامة إذا كان تحصيل الفرع يُحسب من سنداته. الحساب الرئيسي يشمل فروعه.</p>' +
+        (lst.length ? '<div class="list">' + lst.map(function (x, i) { var a = acc(x.acc); return '<div class="item"><div class="main"><b>' + esc(a ? a.name : x.name) + '</b><div class="meta"><span class="num">' + esc(a ? a.code : x.code) + '</span>' + (multiBr() ? '<span class="badge">' + esc(brName((a && a.br) || '')) + '</span>' : '') + (a ? '' : '<span class="badge warn">غير موجود في البيانات الحالية</span>') + '<span>المستبعد منذ بداية السنة: <b class="num">' + fm(amt[x.acc] || 0) + '</b></span></div></div>' +
+          (canEdit() ? '<div class="fe-btns"><button class="btn sm ghost" data-cxdel="' + i + '">إلغاء الاستبعاد</button></div>' : '') + '</div>'; }).join('') + '</div>' : '<div class="msg info">لا توجد حسابات مستبعدة: كل ما يدخل الصناديق والبنوك المعرّفة من حسابات العملاء يُحسب تحصيلاً.</div>') +
+        (canEdit() ? '<div class="row" style="margin-top:10px">' + brs.map(function (b) { return '<button class="btn" data-cxadd="' + esc(b.code) + '">+ حساب مستبعد' + (b.name ? ' من ' + esc(b.name) : '') + '</button>'; }).join('') + '<span class="grow"></span><button class="btn ghost" data-cxrep>عرض الحركات المستبعدة</button></div>' : '') + '</div>';
+    }
+    function collExclSave(list, btn) {
+      if (btn) busy(btn, true);
+      return call('fin_config_save', { key: 'collx', value: list }).then(function (r) { F.config = r.config || {}; S.set('fin:aux', { boxes: F.boxes, reports: F.reports, config: F.config }); resetCache(); toast('حُفظ'); A.render(); })
+        .catch(function (e) { if (btn) busy(btn, false); toast(e.message, true); });
+    }
+    function bindCollExcl(m) {
+      qa('[data-cxadd]', m).forEach(function (b) { b.onclick = function () {
+        var code = b.dataset.cxadd, list = multiBr() ? withBr(code, function () { return F.D.accList.slice(); }) : F.D.accList, cur = collExclList();
+        pickAccount({ title: 'حساب لا تُحسب حركاته في التحصيل' + (multiBr() ? ' — ' + brName(code) : ''), list: list, multi: true, byId: true, value: cur.map(function (x) { return String(x.acc); }).filter(function (id) { return list.some(function (a) { return a.id === id; }); }),
+          hint: 'مثل حساب الفرع في الإدارة العامة، أو حساب الإدارة في الفرع. الحساب الرئيسي يشمل فروعه.' }).then(function (ids) {
+          if (!ids) return;
+          var other = cur.filter(function (x) { return !list.some(function (a) { return a.id === String(x.acc); }); });
+          var add = ids.map(function (id) { var a = list.filter(function (x) { return x.id === id; })[0] || acc(id) || {}; return { acc: id, code: a.code || '', name: (a.name || '').trim() }; });
+          collExclSave(other.concat(add), b);
+        });
+      }; });
+      qa('[data-cxdel]', m).forEach(function (b) { b.onclick = function () { var l = collExclList().slice(), x = l[Number(b.dataset.cxdel)]; A.confirmBox('إلغاء الاستبعاد', 'تُحسب حركات «' + esc(x.name || x.code) + '» تحصيلاً من جديد؟', 'إلغاء الاستبعاد').then(function (y) { if (!y) return; l.splice(Number(b.dataset.cxdel), 1); collExclSave(l, b); }); }; });
+      var rb = q('[data-cxrep]', m); if (rb) rb.onclick = function () { openReport('coll_offset', { view: 'excl', preset: 'year', from: yearStart(), to: today() }); A.go('reports'); };
+    }
     /* ---------- الأمان والدخول (المدير) ---------- */
     var IDLE_OPTS = [[0, 'بدون خروج تلقائي'], [15, '15 دقيقة'], [30, '30 دقيقة'], [60, 'ساعة'], [120, 'ساعتان'], [240, '4 ساعات'], [480, '8 ساعات']];
     function secHTML() {
@@ -1527,6 +1558,7 @@
       var tab = F.setTab || 'boxes';
       if (tab === 'sec') return bindSec(m);
       if (tab === 'boxes') {
+        bindCollExcl(m);
         qa('[data-badd]', m).forEach(function (b) { b.onclick = function () { boxAdd(b.dataset.badd); }; });
         qa('[data-bedit]', m).forEach(function (b) { b.onclick = function () { boxForm(F.boxes.filter(function (x) { return x.id === b.dataset.bedit; })[0], b.dataset.bbr); }; });
         qa('[data-bon]', m).forEach(function (b) {
