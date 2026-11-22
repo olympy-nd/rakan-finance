@@ -279,7 +279,19 @@
       return '<' + tag + (tag === 'button' ? ' data-crep="' + esc(act.rep) + '" data-ci="' + i + '"' : '') + ' class="kpi fin-kpi' + (tag === 'button' ? ' tap' : '') + '" title="' + esc(itemText(c)) + '"><span class="k-n">' + esc(c.name) + '</span>' +
         (r.err ? '<b class="num">—</b><small class="down">خطأ: ' + esc(r.err) + '</small>' : '<b class="num">' + fmtVal(v, c.fmt || 'money0') + '</b>') +
         (ch !== null && isFinite(ch) ? '<small class="k-ch ' + (Math.abs(ch) < 0.05 ? '' : good ? 'up' : 'down') + '">' + (ch > 0 ? '▲ ' : ch < 0 ? '▼ ' : '') + fp(Math.abs(ch)) + ' <span class="muted">عن السابقة</span></small>' : '') +
+        collSplitHTML(c, r) +
         (c.sub && r.sub !== null && r.sub !== undefined ? '<small class="muted">' + fmtVal(r.sub, c.subfmt || 'int') + ' ' + esc(c.subl || '') + '</small>' : '') + '</' + tag + '>';
+    }
+    // بطاقة التحصيل (كل التحصيل): سطر صغير «نقدي · بنوك» تحت الرقم
+    function collSplitHTML(c, r) {
+      if (r.err || !F.lastRange) return '';
+      var tt = cardTerms(c);
+      if (tt.length !== 1 || tt[0].k !== 'تحصيل' || tt[0].box || (tt[0].flt && Object.keys(tt[0].flt).length)) return '';
+      var gf = F.gflt, x = collSplit(F.lastRange[0], F.lastRange[1], gf ? recvFor(gf) : null);
+      if (!x.tot) return '';
+      var seg = function (cls, l, v) { return '<span class="cs-' + cls + '"><i></i>' + l + ' <b>' + fmtVal(v, c.fmt || 'money0') + '</b></span>'; };
+      return '<span class="k-split">' + seg('cash', 'نقدي', x.cash) + seg('bank', 'بنوك', x.bank) + (x.other > 0.5 ? seg('oth', 'مقاصة', x.other) : '') + '</span>' +
+        '<span class="k-bar" aria-hidden="true"><i class="cs-cash" style="width:' + (x.cash / x.tot * 100).toFixed(1) + '%"></i><i class="cs-bank" style="width:' + (x.bank / x.tot * 100).toFixed(1) + '%"></i></span>';
     }
     function dashPs() { return F.dash || (F.dash = { preset: 'month' }); }
     function dashRange() { return perRange(dashPs()); }

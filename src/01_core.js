@@ -617,6 +617,33 @@
       });
       return perCust ? by : tot;
     }
+    // نوع الحساب المدين في سند القبض: «صندوق» أو «بنك» — من تعريف الصناديق والبنوك، وإلا من اسمه واسم الحسابات فوقه
+    function cashBankKind(id) {
+      var c = F.cache.cbk || (F.cache.cbk = {});
+      if (c[id] !== undefined) return c[id];
+      var b = (F.boxes || []).filter(function (x) { return x.acc === id; })[0], k = '';
+      if (b) k = /بنك|مصرف/.test(b.kind || '') ? 'بنك' : 'صندوق';
+      else { var a = acc(id), names = a ? a.name : '', g = 0, anc = a ? acc(a.parent) : null; while (anc && g++ < 6) { names += ' ' + anc.name; anc = acc(anc.parent); } k = /مصرف|بنك/.test(names) ? 'بنك' : /الصناديق|خزين|صندوق|نقد/.test(names) ? 'صندوق' : ''; }
+      return (c[id] = k);
+    }
+    // التحصيل من العملاء مقسّماً: نقدي (الصناديق) وبنوك، بنفس قواعد collections()
+    function collSplit(from, to, recvList) {
+      var key = 'cs:' + from + to + (recvList ? recvList.join(',') : '');
+      if (F.cache[key]) return F.cache[key];
+      var bx = boxIds(''), recv = recvList || recvIds(), bset = {}, rset = {}, out = { cash: 0, bank: 0, other: 0, tot: 0 };
+      bx.forEach(function (x) { bset[x] = 1; }); recv.forEach(function (x) { rset[x] = 1; });
+      entriesIn(from, to).forEach(function (l0) {
+        var ls = F.D.byEntry[l0.e], dB = 0, cR = 0, part = { cash: 0, bank: 0, other: 0 };
+        ls.forEach(function (l) {
+          if ((bx.length ? bset[l.a] : (l0.k === 'r' && l.dr)) && l.dr) { dB += l.dr; var k = cashBankKind(l.a); part[k === 'بنك' ? 'bank' : k === 'صندوق' ? 'cash' : 'other'] += l.dr; }
+          if (rset[l.a] && l.cr) cR += l.cr;
+        });
+        var amt = Math.min(dB, cR);
+        if (amt <= 0 || dB <= 0) return;
+        out.tot += amt; out.cash += amt * part.cash / dB; out.bank += amt * part.bank / dB; out.other += amt * part.other / dB;
+      });
+      return (F.cache[key] = out);
+    }
     /* ---------- المخزون ---------- */
     function costAt(item, d) {
       var h = F.D.costHist[item];

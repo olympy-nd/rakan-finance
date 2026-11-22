@@ -617,6 +617,33 @@
       });
       return perCust ? by : tot;
     }
+    // نوع الحساب المدين في سند القبض: «صندوق» أو «بنك» — من تعريف الصناديق والبنوك، وإلا من اسمه واسم الحسابات فوقه
+    function cashBankKind(id) {
+      var c = F.cache.cbk || (F.cache.cbk = {});
+      if (c[id] !== undefined) return c[id];
+      var b = (F.boxes || []).filter(function (x) { return x.acc === id; })[0], k = '';
+      if (b) k = /بنك|مصرف/.test(b.kind || '') ? 'بنك' : 'صندوق';
+      else { var a = acc(id), names = a ? a.name : '', g = 0, anc = a ? acc(a.parent) : null; while (anc && g++ < 6) { names += ' ' + anc.name; anc = acc(anc.parent); } k = /مصرف|بنك/.test(names) ? 'بنك' : /الصناديق|خزين|صندوق|نقد/.test(names) ? 'صندوق' : ''; }
+      return (c[id] = k);
+    }
+    // التحصيل من العملاء مقسّماً: نقدي (الصناديق) وبنوك، بنفس قواعد collections()
+    function collSplit(from, to, recvList) {
+      var key = 'cs:' + from + to + (recvList ? recvList.join(',') : '');
+      if (F.cache[key]) return F.cache[key];
+      var bx = boxIds(''), recv = recvList || recvIds(), bset = {}, rset = {}, out = { cash: 0, bank: 0, other: 0, tot: 0 };
+      bx.forEach(function (x) { bset[x] = 1; }); recv.forEach(function (x) { rset[x] = 1; });
+      entriesIn(from, to).forEach(function (l0) {
+        var ls = F.D.byEntry[l0.e], dB = 0, cR = 0, part = { cash: 0, bank: 0, other: 0 };
+        ls.forEach(function (l) {
+          if ((bx.length ? bset[l.a] : (l0.k === 'r' && l.dr)) && l.dr) { dB += l.dr; var k = cashBankKind(l.a); part[k === 'بنك' ? 'bank' : k === 'صندوق' ? 'cash' : 'other'] += l.dr; }
+          if (rset[l.a] && l.cr) cR += l.cr;
+        });
+        var amt = Math.min(dB, cR);
+        if (amt <= 0 || dB <= 0) return;
+        out.tot += amt; out.cash += amt * part.cash / dB; out.bank += amt * part.bank / dB; out.other += amt * part.other / dB;
+      });
+      return (F.cache[key] = out);
+    }
     /* ---------- المخزون ---------- */
     function costAt(item, d) {
       var h = F.D.costHist[item];
@@ -1925,7 +1952,19 @@
       return '<' + tag + (tag === 'button' ? ' data-crep="' + esc(act.rep) + '" data-ci="' + i + '"' : '') + ' class="kpi fin-kpi' + (tag === 'button' ? ' tap' : '') + '" title="' + esc(itemText(c)) + '"><span class="k-n">' + esc(c.name) + '</span>' +
         (r.err ? '<b class="num">—</b><small class="down">خطأ: ' + esc(r.err) + '</small>' : '<b class="num">' + fmtVal(v, c.fmt || 'money0') + '</b>') +
         (ch !== null && isFinite(ch) ? '<small class="k-ch ' + (Math.abs(ch) < 0.05 ? '' : good ? 'up' : 'down') + '">' + (ch > 0 ? '▲ ' : ch < 0 ? '▼ ' : '') + fp(Math.abs(ch)) + ' <span class="muted">عن السابقة</span></small>' : '') +
+        collSplitHTML(c, r) +
         (c.sub && r.sub !== null && r.sub !== undefined ? '<small class="muted">' + fmtVal(r.sub, c.subfmt || 'int') + ' ' + esc(c.subl || '') + '</small>' : '') + '</' + tag + '>';
+    }
+    // بطاقة التحصيل (كل التحصيل): سطر صغير «نقدي · بنوك» تحت الرقم
+    function collSplitHTML(c, r) {
+      if (r.err || !F.lastRange) return '';
+      var tt = cardTerms(c);
+      if (tt.length !== 1 || tt[0].k !== 'تحصيل' || tt[0].box || (tt[0].flt && Object.keys(tt[0].flt).length)) return '';
+      var gf = F.gflt, x = collSplit(F.lastRange[0], F.lastRange[1], gf ? recvFor(gf) : null);
+      if (!x.tot) return '';
+      var seg = function (cls, l, v) { return '<span class="cs-' + cls + '"><i></i>' + l + ' <b>' + fmtVal(v, c.fmt || 'money0') + '</b></span>'; };
+      return '<span class="k-split">' + seg('cash', 'نقدي', x.cash) + seg('bank', 'بنوك', x.bank) + (x.other > 0.5 ? seg('oth', 'مقاصة', x.other) : '') + '</span>' +
+        '<span class="k-bar" aria-hidden="true"><i class="cs-cash" style="width:' + (x.cash / x.tot * 100).toFixed(1) + '%"></i><i class="cs-bank" style="width:' + (x.bank / x.tot * 100).toFixed(1) + '%"></i></span>';
     }
     function dashPs() { return F.dash || (F.dash = { preset: 'month' }); }
     function dashRange() { return perRange(dashPs()); }
@@ -6999,6 +7038,6 @@
 
     // للاختبارات: الوصول للمحرّك
     window.__rkfin = { F: F, R: R, custTreeAccs: custTreeAccs, iclTree: iclTree, resetCache: resetCache, cgOf: cgOf, runCustom: runCustom, runPair: runPair, runFree: runFree, applyView: applyView, CATS: CATS, repCat: repCat, repCollections: repCollections, SRC: SRC, normAr: normAr, build: rebuild, buildOne: build, useBr: useBr, setBr: setBr, withBr: withBr, branches: branches, recvIds: recvIds, runCur: runCur, balance: balance, salesStats: salesStats, evalFormula: evalFormula, tryFormula: tryFormula, evalList: evalList,
-      stockTotals: stockTotals, collections: collections, termsToF: termsToF, fToTerms: fToTerms, itemText: function (x) { return itemText(x); }, fltOptions: function (d) { return fltOptions(d); }, dailyData: function () { return dailyData(); }, cards: cards, dailyDef: dailyDef, T: T, evalList: evalList, costAt: costAt, hasPrevYear: hasPrevYear, repKeys: repKeys, prevRange: prevRange, stockAt: stockAt, itemName: itemName, balance: balance };
+      stockTotals: stockTotals, collections: collections, collSplit: collSplit, termsToF: termsToF, fToTerms: fToTerms, itemText: function (x) { return itemText(x); }, fltOptions: function (d) { return fltOptions(d); }, dailyData: function () { return dailyData(); }, cards: cards, dailyDef: dailyDef, T: T, evalList: evalList, costAt: costAt, hasPrevYear: hasPrevYear, repKeys: repKeys, prevRange: prevRange, stockAt: stockAt, itemName: itemName, balance: balance };
   };
 })();
