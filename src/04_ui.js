@@ -558,8 +558,8 @@
       return '<button class="hc-back2" data-back aria-label="رجوع إلى ' + esc(to) + '" title="رجوع إلى ' + esc(to) + '"><span class="hb-ar">→</span><span class="hb-t">' + esc(to) + '</span></button>';
     }
     // لقطة من حالة التقارير لسجل التنقل، واستعادتها عند الرجوع
-    function navSnap() { return { cur: F.cur ? { id: F.cur.id, custom: F.cur.custom, p: JSON.parse(JSON.stringify(F.cur.p || {})), sort: F.cur.sort } : null, rcat: F.rcat, rq: F.rq }; }
-    function navApply(s) { if (!s) { F.cur = null; return; } F.cur = s.cur ? { id: s.cur.id, custom: s.cur.custom, p: s.cur.p, sort: s.cur.sort } : null; F.rcat = s.rcat; F.rq = s.rq || ''; }
+    function navSnap() { return { cur: F.cur ? { id: F.cur.id, custom: F.cur.custom, p: JSON.parse(JSON.stringify(F.cur.p || {})), sort: F.cur.sort } : null, rcat: F.rcat, rq: F.rq, setTab: F.setTab }; }
+    function navApply(s) { if (!s) { F.cur = null; return; } F.cur = s.cur ? { id: s.cur.id, custom: s.cur.custom, p: s.cur.p, sort: s.cur.sort } : null; F.rcat = s.rcat; F.rq = s.rq || ''; if (s.setTab) F.setTab = s.setTab; }
     function openReport(id, params, opt) {
       // نحفظ المكان الحالي (لوحة المؤشرات، قائمة التقارير، أو تقرير آخر) لنرجع إليه بنفس موضع التمرير
       if (!F.cur) F.catY = A.st.tab === 'reports' ? (window.scrollY || 0) : 0;
@@ -1415,8 +1415,11 @@
       return F.edit[k];
     }
     function settingsHTML() {
-      var tab = F.setTab || 'boxes', h = '<div class="chips fin-settabs">' + SET_TABS.map(function (t) { return '<button class="chip' + (tab === t[0] ? ' on' : '') + '" data-stab="' + t[0] + '">' + t[1] + (F.dirtyKeys && F.dirtyKeys[t[0]] ? ' •' : '') + '</button>'; }).join('') + '</div>';
+      var isMgr = A.st.user && A.st.user.role === 'manager', TABS = SET_TABS.concat(isMgr ? [['sec', 'الأمان والدخول']] : []);
+      if (F.setTab === 'sec' && !isMgr) F.setTab = 'boxes';
+      var tab = F.setTab || 'boxes', h = '<div class="chips fin-settabs">' + TABS.map(function (t) { return '<button class="chip' + (tab === t[0] ? ' on' : '') + '" data-stab="' + t[0] + '">' + t[1] + (F.dirtyKeys && F.dirtyKeys[t[0]] ? ' •' : '') + '</button>'; }).join('') + '</div>';
       var s = (F.meta && F.meta.settings) || {};
+      if (tab === 'sec') return h + secHTML();
       if (tab === 'boxes') {
         // لكل فرع (والإدارة العامة) صناديقه وبنوكه منفصلة، لأن لكل منها دليل حسابات مستقل في سراج
         var brs = multiBr() ? branches() : [{ code: viewBr() === '*' ? '' : (F.curBr || ''), name: '' }];
@@ -1483,9 +1486,34 @@
         toast(value === null ? 'استُعيد الافتراضي' : 'حُفظ'); A.render();
       }).catch(function (e) { if (btn) busy(btn, false); toast(e.message, true); });
     }
+    /* ---------- الأمان والدخول (المدير) ---------- */
+    var IDLE_OPTS = [[0, 'بدون خروج تلقائي'], [15, '15 دقيقة'], [30, '30 دقيقة'], [60, 'ساعة'], [120, 'ساعتان'], [240, '4 ساعات'], [480, '8 ساعات']];
+    function secHTML() {
+      var x = F.sec;
+      if (!x) { if (!F.secLoading) { F.secLoading = true; call('users_list').then(function (r) { F.sec = { idle_min: r.idle_min, trust_devices: r.trust_devices, codes_to_manager: r.codes_to_manager }; F.secLoading = false; if (A.secNow && A.setSec) A.setSec(F.sec); A.render(); }).catch(function (e) { F.secLoading = false; toast(e.message, true); }); } return '<div class="card loading"><span class="spin"></span> جارٍ التحميل…</div>'; }
+      return '<div class="card"><h2>الخروج التلقائي عند عدم النشاط</h2><p class="small muted" style="margin:0 0 10px">إذا لم يستعمل المستخدم المنظومة طوال هذه المدة (لا نقر ولا كتابة ولا تمرير) يُسجَّل خروجه تلقائياً، وتُمسح البيانات المالية من الجهاز، ويعود بالرقم السري فقط على جهازه الموثوق. تنطبق على كل المستخدمين وكل الأجهزة.</p>' +
+        '<div class="chips sec-idle">' + IDLE_OPTS.map(function (o) { return '<button class="chip' + (Number(x.idle_min) === o[0] ? ' on' : '') + '" data-idle="' + o[0] + '">' + o[1] + '</button>'; }).join('') + '</div></div>' +
+        '<div class="card"><h2>تذكر الأجهزة الموثوقة</h2><p class="small muted" style="margin:0 0 10px">الجهاز الموثوق هو الذي أدخل عليه المستخدم رمز التحقق من بريده مرة واحدة (حتى 5 أجهزة لكل مستخدم). يمكن إلغاء أجهزة مستخدم من شاشة المستخدمين.</p>' +
+        '<label class="chk"><input type="checkbox" id="sec_trust"' + (x.trust_devices ? ' checked' : '') + '> لا تطلب رمز البريد عند الدخول من جهاز موثوق</label>' +
+        '<div class="msg ' + (x.trust_devices ? 'info' : 'warn') + '" style="margin-top:8px">' + (x.trust_devices ? 'مفعّل: يُطلب الرمز من الجهاز الجديد فقط، ثم يكفي الرقم السري.' : 'غير مفعّل: يُطلب رمز البريد عند كل دخول، حتى من جهاز سبق التحقق منه.') + '</div></div>' +
+        '<div class="card"><h2>رمز التحقق لمن ليس له بريد</h2><p class="small muted" style="margin:0 0 10px">يُرسل الرمز إلى البريد المكتوب في حساب المستخدم، ويصله من حساب Google المالك للمنظومة. من ليس له بريد يدخل بالرقم السري فقط، إلا إذا فعّلت هذا الخيار.</p>' +
+        '<label class="chk"><input type="checkbox" id="sec_c2m"' + (x.codes_to_manager ? ' checked' : '') + '> أرسل رمز دخوله إلى بريد المدير، ويعطيه المدير الرمز</label></div>';
+    }
+    function bindSec(m) {
+      var save = function (body, el) {
+        if (el) el.disabled = true;
+        return call('sec_save', body).then(function (r) { F.sec = { idle_min: r.idle_min, trust_devices: r.trust_devices, codes_to_manager: r.codes_to_manager }; if (A.setSec) A.setSec(F.sec); toast('حُفظ'); A.render(); })
+          .catch(function (e) { toast(e.message, true); A.render(); });
+      };
+      qa('[data-idle]', m).forEach(function (b) { b.onclick = function () { save({ idle_min: Number(b.dataset.idle) }, b); }; });
+      var t = q('#sec_trust', m); if (t) t.onchange = function () { save({ trust_devices: t.checked }, t); };
+      var c = q('#sec_c2m', m); if (c) c.onchange = function () { save({ codes_to_manager: c.checked }, c); };
+    }
     function bindSettings(m) {
       qa('[data-stab]', m).forEach(function (b) { b.onclick = function () { F.setTab = b.dataset.stab; A.render(); }; });
+      var onc = q('.fin-settabs .chip.on', m); if (onc && onc.scrollIntoView) try { onc.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } catch (e) {}
       var tab = F.setTab || 'boxes';
+      if (tab === 'sec') return bindSec(m);
       if (tab === 'boxes') {
         qa('[data-badd]', m).forEach(function (b) { b.onclick = function () { boxAdd(b.dataset.badd); }; });
         qa('[data-bedit]', m).forEach(function (b) { b.onclick = function () { boxForm(F.boxes.filter(function (x) { return x.id === b.dataset.bedit; })[0], b.dataset.bbr); }; });

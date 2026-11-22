@@ -52,6 +52,43 @@
   }
   (function () { var qd = 0; new MutationObserver(function () { if (qd) return; qd = 1; requestAnimationFrame(function () { qd = 0; enhanceDates(); }); }).observe(document.documentElement, { childList: true, subtree: true }); })();
 
+  /* ===================== الأمان: الخروج التلقائي بعد عدم النشاط ===================== */
+  function setSec(x) { if (!x) return; st.sec = { idle_min: Number(x.idle_min) || 0, trust_devices: x.trust_devices !== false }; try { localStorage.setItem('rk.sec', JSON.stringify(st.sec)); } catch (e) {} }
+  function secNow() { if (st.sec) return st.sec; try { st.sec = JSON.parse(localStorage.getItem('rk.sec') || 'null'); } catch (e) {} return st.sec || { idle_min: 60, trust_devices: true }; }
+  function lastAct() { try { return Number(localStorage.getItem('rk.lastAct') || 0); } catch (e) { return 0; } }
+  function markActive(force) { var n = Date.now(); if (!force && n - (markActive.t || 0) < 10000) return; markActive.t = n; try { localStorage.setItem('rk.lastAct', String(n)); } catch (e) {} }
+  function idleExpired() { var m = secNow().idle_min, la = lastAct(); return !!(m && la && Date.now() - la > m * 60000); }
+  function idleMsg() { var m = secNow().idle_min; return 'سُجّل خروجك تلقائياً بعد ' + (m >= 60 ? (m / 60) + (m === 60 ? ' ساعة' : m === 120 ? ' ساعتين' : ' ساعات') : m + ' دقيقة') + ' دون نشاط. أدخل الرقم السري للمتابعة.'; }
+  ['pointerdown', 'keydown', 'wheel', 'touchstart'].forEach(function (ev) { document.addEventListener(ev, function () { if (st.user) markActive(); }, { passive: true, capture: true }); });
+  function idleCheck() { if (st.user && idleExpired()) { locSave(); logout(idleMsg(), true); } }
+  setInterval(idleCheck, 30000);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) idleCheck(); });
+
+  /* ===================== حفظ المكان عند إعادة تحميل الصفحة ===================== */
+  var LOC = { pendingY: 0, tries: 0 };
+  function locSave() {
+    if (!st.user || !st.tab) return;
+    var fin = FINAPI && FINAPI.navSnap ? FINAPI.navSnap() : null;
+    try { sessionStorage.setItem('rk.loc', JSON.stringify({ tab: st.tab, fin: fin, y: window.scrollY || 0 })); } catch (e) {}
+    try { var h = '#' + st.tab + (fin && fin.cur ? '/' + encodeURIComponent(fin.cur.id) : st.tab === 'settings' && fin && fin.setTab ? '/' + fin.setTab : ''); if (location.hash !== h) history.replaceState(history.state, '', h); } catch (e) {}
+  }
+  function locRestore(useHash) {
+    var l = null; try { l = JSON.parse(sessionStorage.getItem('rk.loc') || 'null'); } catch (e) {}
+    if (!l && useHash && location.hash.length > 1) l = { tab: decodeURIComponent(location.hash.slice(1).split('/')[0]) };
+    if (!l || !l.tab) return;
+    st.tab = l.tab;
+    if (l.fin && FINAPI && FINAPI.navApply) FINAPI.navApply(l.fin);
+    LOC.pendingY = l.y || 0; LOC.tries = 0;
+    if (LOC.pendingY) setTimeout(function () { if (LOC.pendingY) { var y = LOC.pendingY; LOC.pendingY = 0; restoreY(y); } }, 6000);
+  }
+  function locScroll() {
+    if (!LOC.pendingY) return;
+    var y = LOC.pendingY;
+    if (document.documentElement.scrollHeight - window.innerHeight >= y - 4 || ++LOC.tries > 12) { LOC.pendingY = 0; restoreY(y); }
+  }
+  (function () { var t = 0; window.addEventListener('scroll', function () { if (LOC.pendingY) return; clearTimeout(t); t = setTimeout(locSave, 250); }, { passive: true }); })();
+  window.addEventListener('pagehide', function () { if (!LOC.pendingY) locSave(); });
+
   /* ===================== سجل التنقل: الرجوع لنفس المكان (التبويب، التقرير، القسم، وموضع التمرير) ===================== */
   var SHEETS = [], NAV = [], NAVI = { skip: 0 };
   function navPush() {
@@ -61,6 +98,7 @@
   }
   function restoreY(y) { var n = 8, f = function () { window.scrollTo(0, y); if (--n > 0 && Math.abs((window.scrollY || 0) - y) > 2) requestAnimationFrame(f); }; requestAnimationFrame(f); }
   function navPop() {
+    if (!st.user) return false;
     var s = NAV.pop(); if (!s) return false;
     if (FINAPI && FINAPI.navApply) FINAPI.navApply(s.fin);
     var same = st.tab === s.tab; st.tab = s.tab; render(); if (!same) refresh(true); restoreY(s.y);
@@ -154,13 +192,18 @@
       if (!v[0]) S.set('device', RK.uuid());
       if (!v[1] || !v[2]) return renderLogin();
       st.user = v[2];
+      if (idleExpired()) return logout(idleMsg(), true);
       if (st.user.must_change) return renderChangePin();
-      startApp(); welcome(false);
-      if (navigator.onLine) call('me').then(function (r) { st.user = r.user; S.set('user', r.user); }).catch(function () {});
+      locRestore(true);
+      startApp(); welcome(false); markActive(true);
+      if (navigator.onLine) call('me').then(function (r) { st.user = r.user; S.set('user', r.user); setSec(r.settings); }).catch(function () {});
     });
   }
 
-  function logout(msg) {
+  function logout(msg, keepPlace) {
+    // الخروج التلقائي يحفظ المكان ليعود إليه نفس المستخدم بعد الرقم السري؛ الخروج اليدوي يبدأ من الرئيسية
+    if (!keepPlace) { try { sessionStorage.removeItem('rk.loc'); history.replaceState(null, '', location.pathname + location.search); } catch (e) {} st.tab = null; }
+    NAV.length = 0;
     // البيانات المالية لا تبقى على الجهاز بعد الخروج
     S.get('device').then(function (dev) { return S.clearAll().then(function () { return S.set('device', dev || RK.uuid()); }); });
     st.user = null;
@@ -179,6 +222,7 @@
       '<div class="field"><label for="lp">الرقم السري</label><input id="lp" class="input pin" type="password" inputmode="numeric" autocomplete="current-password" required></div>' +
       '<div class="field" id="lcw" hidden><label for="lc">رمز التحقق من البريد</label><input id="lc" class="input pin" inputmode="numeric" maxlength="6" autocomplete="one-time-code"></div>' +
       '<div id="lm"></div><button class="btn primary big" id="lb">دخول</button></form></div></div>';
+    try { var lu0 = localStorage.getItem('rk.lastUser'); if (lu0) { q('#lu').value = lu0; setTimeout(function () { var lp = q('#lp'); if (lp) lp.focus(); }, 50); } } catch (e) {}
     q('#lf').onsubmit = function (e) {
       e.preventDefault();
       var b = q('#lb'), m = q('#lm');
@@ -191,7 +235,9 @@
       }).then(function (r) {
         busy(b, false);
         if (r.ok) {
-          st.user = r.user;
+          st.user = r.user; setSec(r.settings); markActive(true);
+          var same = false; try { same = localStorage.getItem('rk.lastUser') === q('#lu').value.trim(); localStorage.setItem('rk.lastUser', q('#lu').value.trim()); } catch (e2) {}
+          if (same) locRestore(); else { try { sessionStorage.removeItem('rk.loc'); } catch (e2) {} st.tab = null; }
           return Promise.all([S.set('token', r.token), S.set('user', r.user)]).then(function () { if (r.user.must_change) renderChangePin(); else { startApp(); welcome(true); } });
         }
         if (r.error === 'code') { q('#lcw').hidden = false; q('#lc').focus(); m.innerHTML = '<div class="msg info">' + esc(r.msg) + '</div>'; return; }
@@ -336,6 +382,7 @@
     if (!m) return;
     try { if (v) m.innerHTML = v.html(); if (v && v.bind) v.bind(m); }
     catch (e) { m.innerHTML = '<div class="msg err">حدث خطأ في عرض الشاشة: ' + esc(e.message) + '</div>'; if (window.console) console.error(e); }
+    if (LOC.pendingY) locScroll(); else locSave();
   }
 
   function refresh(quiet) {
@@ -420,13 +467,12 @@
           return '<button class="item tap" data-u="' + esc(u.id) + '"><div class="main"><b>' + esc(u.name) + (u.active ? '' : ' <span class="badge">موقوف</span>') + '</b><div class="meta"><span class="ltr">' + esc(u.username) +
             '</span><span class="badge">' + esc(ROLE_AR[u.role] || u.role) + '</span>' + (u.email ? '<span>' + esc(u.email) + '</span>' : '') + '<span>آخر ظهور: ' + (u.last_seen ? N(String(u.last_seen).slice(0, 16)) : '—') + '</span></div></div></button>';
         }).join('') + '</div>' +
-        '<div class="card" style="margin-top:14px"><h3>رمز التحقق عند الدخول من جهاز جديد</h3>' +
-        '<p class="small" style="margin:0 0 8px">يُرسل الرمز إلى البريد المكتوب في حساب المستخدم نفسه (بريده الشخصي)، ويصله من حساب Google المالك للمنظومة. المستخدم الذي ليس له بريد يدخل بالرقم السري فقط.</p>' +
-        '<label class="chk"><input type="checkbox" id="c2m"' + (st.codesToMgr ? ' checked' : '') + '> من ليس له بريد: أرسل رمز دخوله إلى بريد المدير، ويعطيه المدير الرمز</label></div>';
+        '<div class="card" style="margin-top:14px"><h3>الأمان والدخول</h3><p class="small" style="margin:0 0 8px">رمز التحقق بالبريد، وتذكر الأجهزة الموثوقة، والخروج التلقائي عند عدم النشاط: من الإعدادات ← «الأمان والدخول».</p>' +
+        '<button class="btn" data-gosec>فتح إعدادات الأمان</button></div>';
     },
     bind: function (m) {
-      var c2 = q('#c2m', m);
-      if (c2) c2.onchange = function () { c2.disabled = true; call('sec_save', { codes_to_manager: c2.checked }).then(function (r) { st.codesToMgr = r.codes_to_manager; c2.disabled = false; toast('حُفظ'); }).catch(function (e) { c2.checked = !c2.checked; c2.disabled = false; toast(e.message, true); }); };
+      var gs = q('[data-gosec]', m);
+      if (gs) gs.onclick = function () { navPush(); if (FINAPI && FINAPI.openSec) FINAPI.openSec(); };
       var nb = q('[data-new]', m);
       if (nb) nb.onclick = function () { userForm(null); };
       qa('[data-u]', m).forEach(function (b) { b.onclick = function () { userForm(st.users.filter(function (u) { return u.id === b.dataset.u; })[0]); }; });
@@ -484,7 +530,7 @@
   if (window.RKFIN) try {
     window.RKFIN(FINAPI = { esc: esc, q: q, qa: qa, call: call, sheet: sheet, toast: toast, busy: busy, ICON: ICON, st: st,
       VIEWS: VIEWS, render: render, go: go, N: N, withXLSX: withXLSX, saveBook: saveBook, confirmBox: confirmBox,
-      onLogout: function (f) { window.RKFIN_RESET = f; } });
+      onLogout: function (f) { window.RKFIN_RESET = f; }, secNow: function () { return secNow(); }, setSec: function (x) { setSec(x); } });
   } catch (e) { if (window.console) console.error(e); }
 
   boot();
