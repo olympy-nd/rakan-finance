@@ -241,7 +241,7 @@
     function custSet() { if (F.cache.cset) return F.cache.cset; var o = {}, m = custNameMap(); Object.keys(m).forEach(function (k) { o[m[k]] = 1; }); recvIds().forEach(function (id) { o[id] = 1; }); return (F.cache.cset = o); }
     function groupBySel(res, flt, mode) {
       var f = parseFilter(flt) || {};
-      if (!res || res.empty || !res.rows || !res.rows.length) return res;
+      if (!res || res.empty || !res.rows || !res.rows.length || res._noCust) return res;
       if (res.rows.some(function (r) { return r._b || r._lvl; })) return res;
       var nm = custNameMap();
       // عمود العميل: أول عمود نصي تُعرف قيمه كعملاء
