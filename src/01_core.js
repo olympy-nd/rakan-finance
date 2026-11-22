@@ -630,13 +630,34 @@
       });
       return sk;
     }
+    // حسابات أخرى تُحسب في التحصيل (الإعدادات ← الصناديق والبنوك): الدائن عليها مقابل صندوق أو بنك = تحصيل، مثل حسابات العملاء
+    function collAddList() { return F.config && Array.isArray(F.config.colla) ? F.config.colla : []; }
+    // { حساب: 1 (كل الأنواع) | { نوع: 1 } } — الحساب وفروعه، دون الصناديق والبنوك نفسها
+    function collAddSet() {
+      if (F.cache.ca) return F.cache.ca;
+      var o = {}, bx = {}; boxIds('').forEach(function (x) { bx[x] = 1; });
+      collAddList().forEach(function (x) {
+        var ty = Array.isArray(x.types) ? x.types : [], v = 1;
+        if (ty.length) { v = {}; ty.forEach(function (t) { v[String(t)] = 1; }); }
+        Object.keys(accTree(x.acc)).forEach(function (id) { if (bx[id] || o[id] === 1) return; if (v === 1 || !o[id]) o[id] = v; else Object.keys(v).forEach(function (t) { o[id][t] = 1; }); });
+      });
+      return (F.cache.ca = o);
+    }
+    // حسابات الطرف الدائن في التحصيل: العملاء، ومعهم الحسابات الإضافية ما لم يكن هناك فلتر عملاء
+    function collRset(recvList) {
+      var base = recvIds(), rset = {};
+      (recvList || base).forEach(function (x) { rset[x] = 1; });
+      if (!recvList || recvList === base) { var ca = collAddSet(); Object.keys(ca).forEach(function (k) { if (!rset[k]) rset[k] = ca[k]; }); }
+      return rset;
+    }
+    function rOk(r, bt) { return r === 1 || !!(r && r[String(bt)]); }
     function collections(from, to, kind, perCust, recvList, noExcl) {
-      var bx = boxIds(kind), recv = recvList || recvIds(), bset = {}, rset = {}, tot = 0, by = {}, ex = noExcl ? null : collExcl();
+      var bx = boxIds(kind), bset = {}, rset = collRset(recvList), tot = 0, by = {}, ex = noExcl ? null : collExcl();
       if (!bx.length && kind) return perCust ? {} : 0;
-      bx.forEach(function (x) { bset[x] = 1; }); recv.forEach(function (x) { rset[x] = 1; });
+      bx.forEach(function (x) { bset[x] = 1; });
       entriesIn(from, to).forEach(function (l0) {
         var ls = F.D.byEntry[l0.e], dB = 0, cR = 0, cr = {}, sk = collExSkip(ex, ls, l0.bt);
-        ls.forEach(function (l) { if (sk && sk[l.a]) return; if (bx.length ? bset[l.a] : (l0.k === 'r' && l.dr)) dB += l.dr; if (rset[l.a] && l.cr) { cR += l.cr; cr[l.a] = (cr[l.a] || 0) + l.cr; } });
+        ls.forEach(function (l) { if (sk && sk[l.a]) return; if (bx.length ? bset[l.a] : (l0.k === 'r' && l.dr)) dB += l.dr; if (l.cr && rOk(rset[l.a], l0.bt)) { cR += l.cr; cr[l.a] = (cr[l.a] || 0) + l.cr; } });
         var amt = Math.min(dB, cR);
         if (amt <= 0) return;
         tot += amt;
@@ -658,14 +679,14 @@
     function collSplit(from, to, recvList) {
       var key = 'cs:' + from + to + (recvList ? recvList.join(',') : '');
       if (F.cache[key]) return F.cache[key];
-      var bx = boxIds(''), recv = recvList || recvIds(), bset = {}, rset = {}, out = { cash: 0, bank: 0, other: 0, tot: 0 }, ex = collExcl();
-      bx.forEach(function (x) { bset[x] = 1; }); recv.forEach(function (x) { rset[x] = 1; });
+      var bx = boxIds(''), bset = {}, rset = collRset(recvList), out = { cash: 0, bank: 0, other: 0, tot: 0 }, ex = collExcl();
+      bx.forEach(function (x) { bset[x] = 1; });
       entriesIn(from, to).forEach(function (l0) {
         var ls = F.D.byEntry[l0.e], dB = 0, cR = 0, part = { cash: 0, bank: 0, other: 0 }, sk = collExSkip(ex, ls, l0.bt);
         ls.forEach(function (l) {
           if (sk && sk[l.a]) return;
           if ((bx.length ? bset[l.a] : (l0.k === 'r' && l.dr)) && l.dr) { dB += l.dr; var k = cashBankKind(l.a); part[k === 'بنك' ? 'bank' : k === 'صندوق' ? 'cash' : 'other'] += l.dr; }
-          if (rset[l.a] && l.cr) cR += l.cr;
+          if (l.cr && rOk(rset[l.a], l0.bt)) cR += l.cr;
         });
         var amt = Math.min(dB, cR);
         if (amt <= 0 || dB <= 0) return;

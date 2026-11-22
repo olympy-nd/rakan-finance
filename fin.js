@@ -630,13 +630,34 @@
       });
       return sk;
     }
+    // حسابات أخرى تُحسب في التحصيل (الإعدادات ← الصناديق والبنوك): الدائن عليها مقابل صندوق أو بنك = تحصيل، مثل حسابات العملاء
+    function collAddList() { return F.config && Array.isArray(F.config.colla) ? F.config.colla : []; }
+    // { حساب: 1 (كل الأنواع) | { نوع: 1 } } — الحساب وفروعه، دون الصناديق والبنوك نفسها
+    function collAddSet() {
+      if (F.cache.ca) return F.cache.ca;
+      var o = {}, bx = {}; boxIds('').forEach(function (x) { bx[x] = 1; });
+      collAddList().forEach(function (x) {
+        var ty = Array.isArray(x.types) ? x.types : [], v = 1;
+        if (ty.length) { v = {}; ty.forEach(function (t) { v[String(t)] = 1; }); }
+        Object.keys(accTree(x.acc)).forEach(function (id) { if (bx[id] || o[id] === 1) return; if (v === 1 || !o[id]) o[id] = v; else Object.keys(v).forEach(function (t) { o[id][t] = 1; }); });
+      });
+      return (F.cache.ca = o);
+    }
+    // حسابات الطرف الدائن في التحصيل: العملاء، ومعهم الحسابات الإضافية ما لم يكن هناك فلتر عملاء
+    function collRset(recvList) {
+      var base = recvIds(), rset = {};
+      (recvList || base).forEach(function (x) { rset[x] = 1; });
+      if (!recvList || recvList === base) { var ca = collAddSet(); Object.keys(ca).forEach(function (k) { if (!rset[k]) rset[k] = ca[k]; }); }
+      return rset;
+    }
+    function rOk(r, bt) { return r === 1 || !!(r && r[String(bt)]); }
     function collections(from, to, kind, perCust, recvList, noExcl) {
-      var bx = boxIds(kind), recv = recvList || recvIds(), bset = {}, rset = {}, tot = 0, by = {}, ex = noExcl ? null : collExcl();
+      var bx = boxIds(kind), bset = {}, rset = collRset(recvList), tot = 0, by = {}, ex = noExcl ? null : collExcl();
       if (!bx.length && kind) return perCust ? {} : 0;
-      bx.forEach(function (x) { bset[x] = 1; }); recv.forEach(function (x) { rset[x] = 1; });
+      bx.forEach(function (x) { bset[x] = 1; });
       entriesIn(from, to).forEach(function (l0) {
         var ls = F.D.byEntry[l0.e], dB = 0, cR = 0, cr = {}, sk = collExSkip(ex, ls, l0.bt);
-        ls.forEach(function (l) { if (sk && sk[l.a]) return; if (bx.length ? bset[l.a] : (l0.k === 'r' && l.dr)) dB += l.dr; if (rset[l.a] && l.cr) { cR += l.cr; cr[l.a] = (cr[l.a] || 0) + l.cr; } });
+        ls.forEach(function (l) { if (sk && sk[l.a]) return; if (bx.length ? bset[l.a] : (l0.k === 'r' && l.dr)) dB += l.dr; if (l.cr && rOk(rset[l.a], l0.bt)) { cR += l.cr; cr[l.a] = (cr[l.a] || 0) + l.cr; } });
         var amt = Math.min(dB, cR);
         if (amt <= 0) return;
         tot += amt;
@@ -658,14 +679,14 @@
     function collSplit(from, to, recvList) {
       var key = 'cs:' + from + to + (recvList ? recvList.join(',') : '');
       if (F.cache[key]) return F.cache[key];
-      var bx = boxIds(''), recv = recvList || recvIds(), bset = {}, rset = {}, out = { cash: 0, bank: 0, other: 0, tot: 0 }, ex = collExcl();
-      bx.forEach(function (x) { bset[x] = 1; }); recv.forEach(function (x) { rset[x] = 1; });
+      var bx = boxIds(''), bset = {}, rset = collRset(recvList), out = { cash: 0, bank: 0, other: 0, tot: 0 }, ex = collExcl();
+      bx.forEach(function (x) { bset[x] = 1; });
       entriesIn(from, to).forEach(function (l0) {
         var ls = F.D.byEntry[l0.e], dB = 0, cR = 0, part = { cash: 0, bank: 0, other: 0 }, sk = collExSkip(ex, ls, l0.bt);
         ls.forEach(function (l) {
           if (sk && sk[l.a]) return;
           if ((bx.length ? bset[l.a] : (l0.k === 'r' && l.dr)) && l.dr) { dB += l.dr; var k = cashBankKind(l.a); part[k === 'بنك' ? 'bank' : k === 'صندوق' ? 'cash' : 'other'] += l.dr; }
-          if (rset[l.a] && l.cr) cR += l.cr;
+          if (l.cr && rOk(rset[l.a], l0.bt)) cR += l.cr;
         });
         var amt = Math.min(dB, cR);
         if (amt <= 0 || dB <= 0) return;
@@ -3158,6 +3179,7 @@
           h += multiBr() ? withBr(br.code, inBr) : inBr();
         });
         h += collExclHTML();
+        h += collAddHTML();
       } else if (tab === 'cards') {
         var cl = editDraft('cards'), r = presetRange('month');
         h += '<div class="card"><h2>بطاقات لوحة المؤشرات</h2><p class="small muted" style="margin:0 0 10px">كل بطاقة تختار لها ما تحسبه من قائمة (مثل: صافي المبيعات لعميل أو صنف معين، أو رصيد حساب ناقص رصيد حساب آخر). القيم الظاهرة هنا لهذا الشهر.</p>' +
@@ -3302,6 +3324,73 @@
       return call('fin_config_save', { key: 'collx', value: list }).then(function (r) { F.config = r.config || {}; S.set('fin:aux', { boxes: F.boxes, reports: F.reports, config: F.config }); resetCache(); toast('حُفظ'); A.render(); })
         .catch(function (e) { if (btn) busy(btn, false); toast(e.message, true); });
     }
+    /* ---------- حسابات أخرى تُحسب في التحصيل ---------- */
+    // ما أضافته كل قاعدة إلى التحصيل في الفترة (الحساب وفروعه، دون حسابات العملاء الأصلية): { acc: مبلغ }
+    function collAddAmounts(from, to) {
+      var lst = collAddList(), out = {}; if (!lst.length) return out;
+      var base = {}; recvIds().forEach(function (x) { base[x] = 1; });
+      var trees = lst.map(function (x) { return { acc: String(x.acc), t: accTree(x.acc) }; });
+      collLines(from, to).forEach(function (l) { if (!l.cus || !(l.cR > 0)) return; Object.keys(l.cus).forEach(function (a) { if (base[a]) return; trees.forEach(function (r) { if (r.t[a]) out[r.acc] = (out[r.acc] || 0) + l.amt * l.cus[a] / l.cR; }); }); });
+      return out;
+    }
+    // أنواع السندات التي يكون فيها الحساب (وفروعه) دائناً مقابل صندوق أو بنك منذ بداية السنة: { نوع: { name, n, amt } }
+    function collAddTypes(id) {
+      var ids = accTree(id), bx = {}, y0 = yearStart(), o = {}, seen = {}; boxIds('').forEach(function (x) { bx[x] = 1; });
+      Object.keys(ids).forEach(function (aid) { if (bx[aid]) return; (F.D.byAcc[aid] || []).forEach(function (l) {
+        if (l.d < y0 || !l.cr || seen[l.e]) return; seen[l.e] = 1;
+        var ls = F.D.byEntry[l.e] || [], dB = 0, cA = 0; ls.forEach(function (q) { if (bx[q.a] && q.dr) dB += q.dr; if (ids[q.a] && !bx[q.a] && q.cr) cA += q.cr; });
+        var t = String(l.bt), r = o[t] || (o[t] = { name: l.btn || t, n: 0, amt: 0 }); if (dB > 0) { r.n++; r.amt += Math.min(dB, cA); }
+      }); });
+      Object.keys(o).forEach(function (t) { if (!o[t].n) delete o[t]; });
+      return o;
+    }
+    function collAddTypesPick(x, br, isNew) {
+      var o = multiBr() ? withBr(br, function () { return collAddTypes(x.acc); }) : collAddTypes(x.acc), keys = Object.keys(o).sort(function (a, b) { return o[b].amt - o[a].amt; });
+      if (!keys.length) { toast('لا توجد منذ بداية السنة سندات دخل فيها مبلغ من هذا الحساب إلى صندوق أو بنك؛ سيُحسب بكل الأنواع عند حدوثها'); return Promise.resolve(isNew ? [] : null); }
+      var def = Array.isArray(x.types) && x.types.length ? x.types.map(String) : isNew ? keys.slice() : [];
+      return pickMulti({ title: 'أنواع السندات المحسوبة تحصيلاً — ' + (x.name || x.code), value: def,
+        hint: 'أنواع السندات التي دخل فيها مبلغ من هذا الحساب (دائن) إلى صندوق أو بنك معرّف منذ بداية السنة، وبجانب كل نوع ما سيضيفه إلى التحصيل. اختر ما يُحسب تحصيلاً فقط (مثلاً سندات القبض). بلا اختيار = كل الأنواع.',
+        options: keys.map(function (k) { var r = o[k]; return { id: k, name: r.name, sub: 'يضيف ' + fm(r.amt) + ' (' + r.n + ' سند منذ بداية السنة)' }; }) })
+        .then(function (v) { return v === null && isNew ? def : v; });
+    }
+    function collAddHTML() {
+      var lst = collAddList(), amt = collAddAmounts(yearStart(), today()), brs = multiBr() ? branches() : [{ code: '', name: '' }], bts = T().bt || {};
+      var tname = function (t) { return (bts[t] || T().it[t] || {}).name || t; };
+      var tot = Object.keys(amt).reduce(function (s0, k) { return s0 + amt[k]; }, 0);
+      return '<div class="card cx-card"><h2>حسابات أخرى تُحسب في التحصيل</h2><p class="small muted" style="margin:0 0 10px">التحصيل يُحسب أصلاً من حسابات العملاء فقط. أضف هنا حسابات أخرى (مثل السلف أو حسابات جارية أو إيرادات أخرى): أي سند يكون فيه الحساب دائناً مقابل صندوق أو بنك معرّف يُحسب تحصيلاً في كل التقارير ولوحة المؤشرات، بنفس قاعدة العملاء. لا يؤثر على المديونيات وأعمار الديون. حسابات الاستبعاد أعلاه تنطبق عليها أيضاً. الحساب الرئيسي يشمل فروعه.</p>' +
+        (lst.length ? '<div class="list">' + lst.map(function (x, i) { var a = acc(x.acc), ty = Array.isArray(x.types) ? x.types : [];
+          return '<div class="item"><div class="main"><b>' + esc(a ? a.name : x.name) + '</b><div class="meta"><span class="num">' + esc(a ? a.code : x.code) + '</span>' + (multiBr() ? '<span class="badge">' + esc(brName((a && a.br) || '')) + '</span>' : '') + (a ? '' : '<span class="badge warn">غير موجود في البيانات الحالية</span>') + '</div>' +
+            '<div class="meta cx-rule"><span class="badge' + (ty.length ? '' : ' warn') + '">' + (ty.length ? 'الأنواع: ' + esc(ty.map(tname).join('، ')) : 'كل أنواع السندات') + '</span></div>' +
+            '<div class="meta cx-rule"><span>أضاف للتحصيل منذ بداية السنة: <b class="num">' + fm(amt[String(x.acc)] || 0) + '</b></span></div></div>' +
+            (canEdit() ? '<div class="fe-btns"><button class="btn sm" data-caty="' + i + '">أنواع السندات</button><button class="btn sm ghost" data-cadel="' + i + '">إزالة</button></div>' : '') + '</div>'; }).join('') + '</div>' +
+          '<div class="small muted" style="margin-top:6px">المجموع المضاف منذ بداية السنة: <b class="num">' + fm(tot) + '</b></div>' :
+          '<div class="msg info">لا توجد حسابات إضافية: التحصيل من حسابات العملاء فقط.</div>') +
+        (canEdit() ? '<div class="row" style="margin-top:10px">' + brs.map(function (b) { return '<button class="btn" data-caadd="' + esc(b.code) + '">+ حساب تحصيل' + (b.name ? ' في ' + esc(b.name) : '') + '</button>'; }).join('') + '</div>' : '') + '</div>';
+    }
+    function collAddSave(list, btn) {
+      if (btn) busy(btn, true);
+      return call('fin_config_save', { key: 'colla', value: list }).then(function (r) { F.config = r.config || {}; S.set('fin:aux', { boxes: F.boxes, reports: F.reports, config: F.config }); resetCache(); toast('حُفظ'); A.render(); })
+        .catch(function (e) { if (btn) busy(btn, false); toast(e.message, true); });
+    }
+    function bindCollAdd(m) {
+      qa('[data-caadd]', m).forEach(function (b) { b.onclick = function () {
+        var code = b.dataset.caadd, inBr = function (fn) { return multiBr() ? withBr(code, fn) : fn(); };
+        var bx = {}, rv = {}; inBr(function () { boxIds('').forEach(function (x) { bx[x] = 1; }); recvIds().forEach(function (x) { rv[x] = 1; }); });
+        var list = inBr(function () { return F.D.accList.slice(); }).filter(function (a) { return !bx[a.id] && !rv[a.id]; }), cur = collAddList();
+        pickAccount({ title: 'حسابات أخرى تُحسب في التحصيل' + (multiBr() ? ' — ' + brName(code) : ''), list: list, multi: true, byId: true, value: cur.map(function (x) { return String(x.acc); }).filter(function (id) { return list.some(function (a) { return a.id === id; }); }),
+          hint: 'حسابات غير العملاء يُقبض منها مبالغ إلى الصناديق والبنوك (سلف، حسابات جارية، إيرادات أخرى…). لا تظهر هنا الصناديق والبنوك المعرّفة ولا حسابات العملاء لأنها محسوبة أصلاً. الحساب الرئيسي يشمل فروعه.' }).then(function (ids) {
+          if (!ids) return;
+          var other = cur.filter(function (x) { return !list.some(function (a) { return a.id === String(x.acc); }); });
+          var add = ids.map(function (id) { var old0 = cur.filter(function (x) { return String(x.acc) === id; })[0]; if (old0) return old0; var a = list.filter(function (x) { return x.id === id; })[0] || {}; return { acc: id, code: a.code || '', name: (a.name || '').trim(), types: [], _new: true }; });
+          var seq = Promise.resolve();
+          add.forEach(function (x) { if (!x._new) return; seq = seq.then(function () { delete x._new; return collAddTypesPick(x, code, true).then(function (t) { x.types = t || []; }); }); });
+          seq.then(function () { collAddSave(other.concat(add), b); });
+        });
+      }; });
+      qa('[data-caty]', m).forEach(function (b) { b.onclick = function () { var l = collAddList().map(function (x) { return JSON.parse(JSON.stringify(x)); }), i = Number(b.dataset.caty), x = l[i], a = acc(x.acc);
+        collAddTypesPick(x, a ? a.br || '' : '', false).then(function (t) { if (t === null) return; l[i].types = t; collAddSave(l, b); }); }; });
+      qa('[data-cadel]', m).forEach(function (b) { b.onclick = function () { var l = collAddList().slice(), x = l[Number(b.dataset.cadel)]; A.confirmBox('إزالة من التحصيل', 'لا تُحسب حركات «' + esc(x.name || x.code) + '» تحصيلاً بعد الآن؟', 'إزالة').then(function (y) { if (!y) return; l.splice(Number(b.dataset.cadel), 1); collAddSave(l, b); }); }; });
+    }
     function bindCollExcl(m) {
       qa('[data-cxadd]', m).forEach(function (b) { b.onclick = function () {
         var code = b.dataset.cxadd, list = multiBr() ? withBr(code, function () { return F.D.accList.slice(); }) : F.D.accList, cur = collExclList();
@@ -3351,6 +3440,7 @@
       if (tab === 'sec') return bindSec(m);
       if (tab === 'boxes') {
         bindCollExcl(m);
+        bindCollAdd(m);
         qa('[data-badd]', m).forEach(function (b) { b.onclick = function () { boxAdd(b.dataset.badd); }; });
         qa('[data-bedit]', m).forEach(function (b) { b.onclick = function () { boxForm(F.boxes.filter(function (x) { return x.id === b.dataset.bedit; })[0], b.dataset.bbr); }; });
         qa('[data-bon]', m).forEach(function (b) {
@@ -7185,8 +7275,8 @@
     // سطر لكل حساب مدين في كل سند تحصيل من العملاء، والمبلغ موزّع بنسبته (نفس قواعد collections وcollSplit)
     function collLines(from, to, recvList, onlyExcl) {
       // onlyExcl: الحركات التي كانت ستُحسب لولا الحسابات المستبعدة (للمراجعة)؛ 'raw': كل التحصيل دون أي استبعاد
-      var bx = boxIds(''), recv = recvList || recvIds(), bset = {}, rset = {}, out = [], ex = onlyExcl === 'raw' ? null : collExcl();
-      bx.forEach(function (x) { bset[x] = 1; }); recv.forEach(function (x) { rset[x] = 1; });
+      var bx = boxIds(''), bset = {}, rset = collRset(recvList), out = [], ex = onlyExcl === 'raw' ? null : collExcl();
+      bx.forEach(function (x) { bset[x] = 1; });
       entriesIn(from, to).forEach(function (l0) {
         var ls = F.D.byEntry[l0.e], dB = 0, cR = 0, deb = [], cus = {}, sk = collExSkip(ex, ls, l0.bt);
         if (onlyExcl === true && !sk) return;
@@ -7195,7 +7285,7 @@
           var skip = sk && sk[l.a];
           if (skip && onlyExcl !== true) return;
           if ((bx.length ? bset[l.a] : (l0.k === 'r' && l.dr)) && l.dr) { dB += l.dr; deb.push(l); if (!skip) dB2 += l.dr; }
-          if (rset[l.a] && l.cr) { cR += l.cr; cus[l.a] = (cus[l.a] || 0) + l.cr; if (!skip) cR2 += l.cr; }
+          if (l.cr && rOk(rset[l.a], l0.bt)) { cR += l.cr; cus[l.a] = (cus[l.a] || 0) + l.cr; if (!skip) cR2 += l.cr; }
         });
         var amt = Math.min(dB, cR);
         if (onlyExcl === true) amt = amt - Math.max(0, Math.min(dB2, cR2));   // المستبعد = ما نقص من التحصيل بسبب الاستبعاد فقط
@@ -7203,7 +7293,7 @@
         var cl = Object.keys(cus).sort(function (a, b) { return cus[b] - cus[a]; });
         deb.forEach(function (l) {
           var k = cashBankKind(l.a);
-          out.push({ e: l0.e, d: l0.d, dt: l0.dt, no: l0.no, bt: l0.bt, btn: l0.btn || '', ed: l0.ed || '', accs: ls.map(function (q) { return q.a; }), exa: sk ? Object.keys(sk).map(function (k) { return sk[k]; }) : [], acc: l.a, kind: k === 'بنك' ? 'بنوك' : k === 'صندوق' ? 'نقدي' : 'مقاصة', amt: amt * l.dr / dB, cust: cl, cmain: cl[0] });
+          out.push({ e: l0.e, d: l0.d, dt: l0.dt, no: l0.no, bt: l0.bt, btn: l0.btn || '', ed: l0.ed || '', accs: ls.map(function (q) { return q.a; }), exa: sk ? Object.keys(sk).map(function (k) { return sk[k]; }) : [], acc: l.a, kind: k === 'بنك' ? 'بنوك' : k === 'صندوق' ? 'نقدي' : 'مقاصة', amt: amt * l.dr / dB, cust: cl, cmain: cl[0], cus: cus, cR: cR });
         });
       });
       return out;

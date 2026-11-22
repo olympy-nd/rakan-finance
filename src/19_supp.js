@@ -225,8 +225,8 @@
     // سطر لكل حساب مدين في كل سند تحصيل من العملاء، والمبلغ موزّع بنسبته (نفس قواعد collections وcollSplit)
     function collLines(from, to, recvList, onlyExcl) {
       // onlyExcl: الحركات التي كانت ستُحسب لولا الحسابات المستبعدة (للمراجعة)؛ 'raw': كل التحصيل دون أي استبعاد
-      var bx = boxIds(''), recv = recvList || recvIds(), bset = {}, rset = {}, out = [], ex = onlyExcl === 'raw' ? null : collExcl();
-      bx.forEach(function (x) { bset[x] = 1; }); recv.forEach(function (x) { rset[x] = 1; });
+      var bx = boxIds(''), bset = {}, rset = collRset(recvList), out = [], ex = onlyExcl === 'raw' ? null : collExcl();
+      bx.forEach(function (x) { bset[x] = 1; });
       entriesIn(from, to).forEach(function (l0) {
         var ls = F.D.byEntry[l0.e], dB = 0, cR = 0, deb = [], cus = {}, sk = collExSkip(ex, ls, l0.bt);
         if (onlyExcl === true && !sk) return;
@@ -235,7 +235,7 @@
           var skip = sk && sk[l.a];
           if (skip && onlyExcl !== true) return;
           if ((bx.length ? bset[l.a] : (l0.k === 'r' && l.dr)) && l.dr) { dB += l.dr; deb.push(l); if (!skip) dB2 += l.dr; }
-          if (rset[l.a] && l.cr) { cR += l.cr; cus[l.a] = (cus[l.a] || 0) + l.cr; if (!skip) cR2 += l.cr; }
+          if (l.cr && rOk(rset[l.a], l0.bt)) { cR += l.cr; cus[l.a] = (cus[l.a] || 0) + l.cr; if (!skip) cR2 += l.cr; }
         });
         var amt = Math.min(dB, cR);
         if (onlyExcl === true) amt = amt - Math.max(0, Math.min(dB2, cR2));   // المستبعد = ما نقص من التحصيل بسبب الاستبعاد فقط
@@ -243,7 +243,7 @@
         var cl = Object.keys(cus).sort(function (a, b) { return cus[b] - cus[a]; });
         deb.forEach(function (l) {
           var k = cashBankKind(l.a);
-          out.push({ e: l0.e, d: l0.d, dt: l0.dt, no: l0.no, bt: l0.bt, btn: l0.btn || '', ed: l0.ed || '', accs: ls.map(function (q) { return q.a; }), exa: sk ? Object.keys(sk).map(function (k) { return sk[k]; }) : [], acc: l.a, kind: k === 'بنك' ? 'بنوك' : k === 'صندوق' ? 'نقدي' : 'مقاصة', amt: amt * l.dr / dB, cust: cl, cmain: cl[0] });
+          out.push({ e: l0.e, d: l0.d, dt: l0.dt, no: l0.no, bt: l0.bt, btn: l0.btn || '', ed: l0.ed || '', accs: ls.map(function (q) { return q.a; }), exa: sk ? Object.keys(sk).map(function (k) { return sk[k]; }) : [], acc: l.a, kind: k === 'بنك' ? 'بنوك' : k === 'صندوق' ? 'نقدي' : 'مقاصة', amt: amt * l.dr / dB, cust: cl, cmain: cl[0], cus: cus, cR: cR });
         });
       });
       return out;
