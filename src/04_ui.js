@@ -1502,13 +1502,49 @@
     /* ---------- حسابات لا تُحسب حركاتها في التحصيل ---------- */
     function collExclHTML() {
       var lst = collExclList(), y0 = yearStart(), t0 = today(), amt = {};
-      if (lst.length) { var ex = collExcl(), map = {}; lst.forEach(function (x) { (function w(id) { if (!id) return; if (!map[id]) map[id] = x.acc; var a = T().acc[id]; ((a && a.kids) || []).forEach(w); })(String(x.acc)); });
-        collLines(y0, t0, null, true).forEach(function (l) { var hit = ex[l.acc] ? l.acc : l.cust.filter(function (c) { return ex[c]; })[0]; if (hit) { var k = map[hit] || hit; amt[k] = (amt[k] || 0) + l.amt; } }); }
-      var brs = multiBr() ? branches() : [{ code: '', name: '' }];
-      return '<div class="card cx-card"><h2>حسابات لا تُحسب حركاتها في التحصيل</h2><p class="small muted" style="margin:0 0 10px">أي سند قبض أو قيد يكون فيه أحد هذه الحسابات (حساب العميل الدائن أو الحساب المدين) لا يُحسب تحصيلاً في كل التقارير ولوحة المؤشرات. استعملها للحسابات بين الإدارة والفروع حتى لا يُحسب نفس المبلغ مرتين، مثل: حساب «فرع طرابلس» في الإدارة العامة إذا كان تحصيل الفرع يُحسب من سنداته. الحساب الرئيسي يشمل فروعه.</p>' +
-        (lst.length ? '<div class="list">' + lst.map(function (x, i) { var a = acc(x.acc); return '<div class="item"><div class="main"><b>' + esc(a ? a.name : x.name) + '</b><div class="meta"><span class="num">' + esc(a ? a.code : x.code) + '</span>' + (multiBr() ? '<span class="badge">' + esc(brName((a && a.br) || '')) + '</span>' : '') + (a ? '' : '<span class="badge warn">غير موجود في البيانات الحالية</span>') + '<span>المستبعد منذ بداية السنة: <b class="num">' + fm(amt[x.acc] || 0) + '</b></span></div></div>' +
-          (canEdit() ? '<div class="fe-btns"><button class="btn sm ghost" data-cxdel="' + i + '">إلغاء الاستبعاد</button></div>' : '') + '</div>'; }).join('') + '</div>' : '<div class="msg info">لا توجد حسابات مستبعدة: كل ما يدخل الصناديق والبنوك المعرّفة من حسابات العملاء يُحسب تحصيلاً.</div>') +
+      if (lst.length) collLines(y0, t0, null, true).forEach(function (l) { var k = l.exa[0]; if (k) amt[k] = (amt[k] || 0) + l.amt; });
+      var brs = multiBr() ? branches() : [{ code: '', name: '' }], bts = T().bt || {};
+      var tname = function (t) { return (bts[t] || T().it[t] || {}).name || t; };
+      return '<div class="card cx-card"><h2>حسابات لا تُحسب حركاتها في التحصيل</h2><p class="small muted" style="margin:0 0 10px">لكل حساب تختار أنواع الحركات المستبعدة (افتراضياً سندات القبض فقط) والحسابات المقابلة (افتراضياً أي حساب). أي سند من هذه الأنواع بين الحساب وأحد حساباته المقابلة لا يُحسب تحصيلاً في كل التقارير ولوحة المؤشرات. استعملها للحسابات بين الإدارة والفروع حتى لا يُحسب نفس المبلغ مرتين. الحساب الرئيسي يشمل فروعه.</p>' +
+        (lst.length ? '<div class="list">' + lst.map(function (x, i) { var a = acc(x.acc), ty = Array.isArray(x.types) ? x.types : [], cps = Array.isArray(x.cps) ? x.cps : [];
+          return '<div class="item"><div class="main"><b>' + esc(a ? a.name : x.name) + '</b><div class="meta"><span class="num">' + esc(a ? a.code : x.code) + '</span>' + (multiBr() ? '<span class="badge">' + esc(brName((a && a.br) || '')) + '</span>' : '') + (a ? '' : '<span class="badge warn">غير موجود في البيانات الحالية</span>') +
+            '</div><div class="meta cx-rule"><span class="badge' + (ty.length ? '' : ' warn') + '">' + (ty.length ? 'الأنواع: ' + esc(ty.map(tname).join('، ')) : 'كل أنواع الحركات') + '</span>' +
+            '<span class="badge' + (cps.length ? '' : ' warn') + '">' + (cps.length ? 'مع الحسابات المقابلة: ' + esc(cps.map(function (c) { var ca = acc(c.acc); return ca ? ca.name : c.name || c.code; }).join('، ')) : 'مع أي حساب مقابل') + '</span>' +
+            '<span>المستبعد منذ بداية السنة: <b class="num">' + fm(amt[x.acc] || 0) + '</b></span></div></div>' +
+            (canEdit() ? '<div class="fe-btns"><button class="btn sm" data-cxty="' + i + '">أنواع الحركات</button><button class="btn sm" data-cxcp="' + i + '">الحسابات المقابلة</button><button class="btn sm ghost" data-cxdel="' + i + '">إلغاء الاستبعاد</button></div>' : '') + '</div>'; }).join('') + '</div>' :
+          '<div class="msg info">لا توجد حسابات مستبعدة: كل ما يدخل الصناديق والبنوك المعرّفة من حسابات العملاء يُحسب تحصيلاً.</div>') +
         (canEdit() ? '<div class="row" style="margin-top:10px">' + brs.map(function (b) { return '<button class="btn" data-cxadd="' + esc(b.code) + '">+ حساب مستبعد' + (b.name ? ' من ' + esc(b.name) : '') + '</button>'; }).join('') + '<span class="grow"></span><button class="btn ghost" data-cxrep>عرض الحركات المستبعدة</button></div>' : '') + '</div>';
+    }
+    // أنواع السندات التي فيها الحساب طرفاً وكانت ستُحسب تحصيلاً منذ بداية السنة: { نوع: { name, n, amt, r } }
+    function collAccTypes(id, cps) {
+      var ids = accTree(id), cp = null; if (cps && cps.length) { cp = {}; cps.forEach(function (c) { accTree(c.acc, cp); }); }
+      var o = {}, seen = {};
+      collLines(yearStart(), today(), null, 'raw').forEach(function (l) {
+        if (!l.accs.some(function (a) { return ids[a]; })) return;
+        if (cp && !l.accs.some(function (a) { return cp[a] && !ids[a]; })) return;
+        var t = String(l.bt), r = o[t] || (o[t] = { name: l.btn || t, n: 0, amt: 0, r: false });
+        if (!seen[t + '|' + l.e]) { seen[t + '|' + l.e] = 1; r.n++; } r.amt += l.amt;
+      });
+      (F.D.byAcc[id] || []).forEach(function (l) { var t = String(l.bt); if (o[t] && l.k === 'r') o[t].r = true; else if (!o[t] && l.k === 'r' && l.d >= yearStart()) o[t] = { name: l.btn || t, n: 0, amt: 0, r: true }; });
+      return o;
+    }
+    // الحسابات المقابلة: الحسابات التي ظهرت مع الحساب في سندات التحصيل منذ بداية السنة أولاً (بمبالغها)، ثم بقية الدليل
+    function collCpPick(x) {
+      var ids = accTree(x.acc), amt = {};
+      collLines(yearStart(), today(), null, 'raw').forEach(function (l) { if (!l.accs.some(function (a) { return ids[a]; })) return; var seen = {}; l.accs.forEach(function (a) { if (ids[a] || seen[a]) return; seen[a] = 1; amt[a] = (amt[a] || 0) + l.amt; }); });
+      var top = Object.keys(amt).sort(function (a, b) { return amt[b] - amt[a]; }).map(function (a) { var ac = acc(a); return ac ? Object.assign({}, ac, { name: ac.name + '  — ' + fm(amt[a]), lvl: 1 }) : null; }).filter(Boolean);
+      var rest = F.D.accList.filter(function (a) { return !amt[a.id] && !ids[a.id]; });
+      return pickAccount({ title: 'الحسابات المقابلة لـ ' + (x.name || x.code), multi: true, byId: true, list: top.concat(rest), value: (Array.isArray(x.cps) ? x.cps : []).map(function (c) { return String(c.acc); }),
+        hint: 'لا يُستبعد إلا السند الذي فيه أحد هذه الحسابات مقابل الحساب المستبعد. في الأعلى الحسابات التي ظهرت معه في سندات التحصيل منذ بداية السنة بمبالغها. بلا اختيار = أي حساب مقابل.' })
+        .then(function (v) { return v === null ? null : v.map(function (id) { var a = acc(id) || {}; return { acc: id, code: a.code || '', name: (a.name || '').trim() }; }); });
+    }
+    function collTypesPick(x, isNew) {
+      var o = collAccTypes(x.acc, x.cps), keys = Object.keys(o).sort(function (a, b) { return (o[b].r - o[a].r) || (o[b].amt - o[a].amt); });
+      if (!keys.length) { toast('لا توجد حركات تحصيل على هذا الحساب منذ بداية السنة؛ يُستبعد بكل الأنواع'); return Promise.resolve(isNew ? [] : null); }
+      var def = Array.isArray(x.types) && x.types.length ? x.types.map(String) : isNew ? keys.filter(function (k) { return o[k].r; }) : [];
+      return pickMulti({ title: 'أنواع الحركات المستبعدة — ' + (x.name || x.code), value: def, hint: 'المبالغ: ما كان سيُحسب تحصيلاً من كل نوع منذ بداية السنة. بلا اختيار = كل الأنواع.',
+        options: keys.map(function (k) { return { id: k, name: o[k].name, sub: o[k].n + ' سند · ' + fm(o[k].amt) + (o[k].r ? ' · سند قبض' : '') }; }) })
+        .then(function (v) { return v === null && isNew ? def : v; });   // إغلاق النافذة لحساب جديد = سندات القبض فقط
     }
     function collExclSave(list, btn) {
       if (btn) busy(btn, true);
@@ -1522,10 +1558,17 @@
           hint: 'مثل حساب الفرع في الإدارة العامة، أو حساب الإدارة في الفرع. الحساب الرئيسي يشمل فروعه.' }).then(function (ids) {
           if (!ids) return;
           var other = cur.filter(function (x) { return !list.some(function (a) { return a.id === String(x.acc); }); });
-          var add = ids.map(function (id) { var a = list.filter(function (x) { return x.id === id; })[0] || acc(id) || {}; return { acc: id, code: a.code || '', name: (a.name || '').trim() }; });
-          collExclSave(other.concat(add), b);
+          var add = ids.map(function (id) { var old0 = cur.filter(function (x) { return String(x.acc) === id; })[0]; if (old0) return old0; var a = list.filter(function (x) { return x.id === id; })[0] || acc(id) || {}; return { acc: id, code: a.code || '', name: (a.name || '').trim(), types: null, _new: true }; });
+          // الحسابات الجديدة: اختيار أنواع الحركات (افتراضياً سندات القبض)
+          var seq = Promise.resolve();
+          add.forEach(function (x) { if (!x._new) return; seq = seq.then(function () { return (multiBr() ? withBr(code, function () { return collTypesPick(x, true); }) : collTypesPick(x, true)).then(function (t) { x.types = t || []; delete x._new; }); }); });
+          seq.then(function () { collExclSave(other.concat(add), b); });
         });
       }; });
+      qa('[data-cxty]', m).forEach(function (b) { b.onclick = function () { var l = collExclList().map(function (x) { return Object.assign({}, x); }), x = l[Number(b.dataset.cxty)], a = acc(x.acc), br = a ? a.br || '' : '';
+        (multiBr() ? withBr(br, function () { return collTypesPick(x, false); }) : collTypesPick(x, false)).then(function (t) { if (t === null) return; x.types = t; collExclSave(l, b); }); }; });
+      qa('[data-cxcp]', m).forEach(function (b) { b.onclick = function () { var l = collExclList().map(function (x) { return Object.assign({}, x); }), x = l[Number(b.dataset.cxcp)], a = acc(x.acc), br = a ? a.br || '' : '';
+        (multiBr() ? withBr(br, function () { return collCpPick(x); }) : collCpPick(x)).then(function (c) { if (c === null) return; x.cps = c; collExclSave(l, b); }); }; });
       qa('[data-cxdel]', m).forEach(function (b) { b.onclick = function () { var l = collExclList().slice(), x = l[Number(b.dataset.cxdel)]; A.confirmBox('إلغاء الاستبعاد', 'تُحسب حركات «' + esc(x.name || x.code) + '» تحصيلاً من جديد؟', 'إلغاء الاستبعاد').then(function (y) { if (!y) return; l.splice(Number(b.dataset.cxdel), 1); collExclSave(l, b); }); }; });
       var rb = q('[data-cxrep]', m); if (rb) rb.onclick = function () { openReport('coll_offset', { view: 'excl', preset: 'year', from: yearStart(), to: today() }); A.go('reports'); };
     }

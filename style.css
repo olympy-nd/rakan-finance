@@ -971,3 +971,5 @@ input[type=date].input::-webkit-calendar-picker-indicator { position: absolute; 
 .fin-kpi .cs-oth i { background: var(--muted); }
 .fin-kpi .k-bar { display: flex; height: 4px; border-radius: 4px; overflow: hidden; background: var(--line); margin: 1px 0 2px; }
 .fin-kpi .k-bar i { display: block; height: 100%; }
+.cx-card .cx-rule { margin-top: 4px; gap: 6px; flex-wrap: wrap; }
+.cx-card .fe-btns { flex-wrap: wrap; }
