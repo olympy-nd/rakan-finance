@@ -2553,10 +2553,10 @@
         var sample = rows.length > 400 ? rows.filter(function (r, i) { return i % Math.ceil(rows.length / 400) === 0 || r._b; }) : rows;
         sample.concat(res.total ? [res.total] : []).forEach(function (r) {
           var v = plain(cell(c, r[c.k], r)); if (!v) return;
-          var w = pMeasure(v, pt, !!r._b); if (w > natural) natural = w;
+          String(v).split('\n').forEach(function (ln) { var w = pMeasure(ln, pt, !!r._b); if (w > natural) natural = w; });   // متعدد الأسطر: أطول سطر
           if (!num) v.split(/\s+/).forEach(function (x) { var ww = pMeasure(x, pt); if (ww > word) word = ww; });
         });
-        var cap = num ? 999 : c.t === 'long' ? 62 : 40, w = num ? natural : Math.max(word, Math.min(natural, cap));
+        var cap = num ? 999 : c.t === 'long' ? 46 : 40, w = num ? natural : Math.max(word, Math.min(natural, cap));
         return Math.max(w, hw, num ? 9 : 12) + 3.2;   // + الحشوة
       });
     }
@@ -6577,6 +6577,7 @@
     /* ===================== تقييم المخزون بأسعار الشراء (تقرير الإدارة) ===================== */
     var VB_METH = [['mavg', 'متوسط التكلفة المتحرك (الدفتري)'], ['fifo', 'الوارد أولاً صادر أولاً (FIFO)'], ['wavg', 'المتوسط المرجح لأسعار الشراء'], ['last', 'آخر سعر شراء'], ['min', 'أقل سعر شراء'], ['max', 'أعلى سعر شراء']];
     var VB_BY = [['item', 'الصنف'], ['st', 'المخزن'], ['icl', 'تصنيف الصنف'], ['igrp', 'مجموعة الأصناف'], ['sup', 'المورد الرئيسي']];
+    function vbFull(x) { return String(x || '').replace(/\s+/g, ' ').trim(); }
     function vbShort(x) { x = String(x || '').replace(/\s+/g, ' ').trim(); return x.length > 30 ? x.slice(0, 29) + '…' : x; }
     // كل أسعار شراء الصنف مع عدد مرات الشراء بكل سعر (عدد الفواتير، وبضاعة أول المدة مرة لكل قيد)، الأكثر تكراراً أولاً
     function vbPrices(r) {
@@ -6584,7 +6585,7 @@
       var m = {}, f = r.f;
       r.tiers.forEach(function (t) { var k = t.pb.toFixed(5), o = m[k] || (m[k] = { pb: t.pb, n: 0, o: 0 }), c = Object.keys(t.inv).length; o.n += c; if (t.label === 'o') o.o += c; });
       return Object.keys(m).map(function (k) { return m[k]; }).sort(function (a, b) { return b.n - a.n || a.pb - b.pb; })
-        .map(function (o) { return (o.pb > 0 ? fm(o.pb * f) : 'مجاني') + '\u00a0×' + o.n + (o.o ? (o.o === o.n ? '\u00a0(أول\u00a0المدة)' : '\u00a0(منها\u00a0' + o.o + '\u00a0أول\u00a0المدة)') : ''); }).join('  ·  ');
+        .map(function (o) { return (o.pb > 0 ? fm(o.pb * f) : 'مجاني') + '\u00a0×' + o.n + (o.o ? (o.o === o.n ? '\u00a0(أول\u00a0المدة)' : '\u00a0(منها\u00a0' + o.o + '\u00a0أول\u00a0المدة)') : ''); }).join('\n');
     }
     var VB_SHORT = { mavg: 'متوسط متحرك', fifo: 'FIFO', wavg: 'متوسط مرجح', last: 'آخر سعر', min: 'أقل سعر', max: 'أعلى سعر' };
     function vbMethName(m) { var o = VB_METH.filter(function (x) { return x[0] === m; })[0]; return o ? o[1] : m; }
@@ -6692,14 +6693,14 @@
             else { var k = grp(r); add(k[0], k[1], r, 1); }
           });
           rows = Object.keys(G).map(function (k) { var g = G[k], o = { name: g.name, items: Object.keys(g.items).length, fin: g.fin, share: pct(g.fin, Tt.fin), book: g.v.mavg, diff: g.fin - g.v.mavg, dpct: pct(g.fin - g.v.mavg, g.v.mavg), fifo: g.v.fifo, wavg: g.v.wavg, last: g.v.last, min: g.v.min, max: g.v.max, pv: g.pv };
-            if (g.it) { var r = g.it; o.unit = unitOf(r.it); o.q = r.q / r.f; o.np = r.has ? r.nlev : 0; o.range = priceRange(r); o.prices = vbPrices(r); o.uf = r.unitF * r.f; o.chg = r.chg; o.lastD = r.lastD || '—'; o.sup = r.sup && r.sup.length ? vbShort(r.sup[0]) + (r.sup.length > 1 ? ' +' + (r.sup.length - 1) : '') : '—'; }
+            if (g.it) { var r = g.it; o.unit = unitOf(r.it); o.q = r.q / r.f; o.np = r.has ? r.nlev : 0; o.range = priceRange(r); o.prices = vbPrices(r); o.uf = r.unitF * r.f; o.chg = r.chg; o.lastD = r.lastD || '—'; o.sup = r.sup && r.sup.length ? r.sup.map(vbFull).join('\n') : '—'; }
             return o; }).sort(function (a, b) { return b.fin - a.fin; });
           var byL = { item: 'الصنف', st: 'المخزن', icl: 'التصنيف', igrp: 'المجموعة', sup: 'المورد الرئيسي' }[by];
           cols = [C('name', byL)];
           if (by === 'item') cols = cols.concat([C('unit', 'الوحدة'), C('q', 'الكمية', 'qty'), C('np', 'عدد الأسعار', 'int'), C('prices', 'أسعار الشراء (× عدد مرات الشراء)', 'long'), C('chg', 'تغير السعر %', 'pct'), C('uf', 'تكلفة الوحدة النهائية (' + mS + ')', 'money')]);
           else cols.push(C('items', 'عدد الأصناف', 'int'));
           cols = cols.concat([C('fin', 'القيمة النهائية (' + mS + ')', 'money'), C('share', 'من الإجمالي %', 'pct'), C('book', 'الدفترية (متوسط متحرك)', 'money'), C('diff', 'الفرق عن الدفتري', 'money'), C('dpct', 'الفرق %', 'pct'), C('fifo', 'FIFO', 'money'), C('wavg', 'المتوسط المرجح', 'money'), C('last', 'بآخر سعر', 'money'), C('min', 'بأقل سعر', 'money'), C('max', 'بأعلى سعر', 'money')]);
-          if (by === 'item') cols.push(C('sup', 'المورد الرئيسي'));
+          if (by === 'item') cols.push(C('sup', 'الموردون (الرئيسي أولاً)', 'long'));
           title = 'تقييم المخزون بأسعار الشراء — ملخص حسب ' + byL + ' (' + mName + (lcm ? ' + قاعدة الأقل' : '') + ')';
         } else {
           rows = [];
@@ -6708,11 +6709,11 @@
             rows.push({ _g: gi, _gh: 1, _b: true, name: itemName(r.it) + ' (' + unitOf(r.it) + ')', src: r.has ? (r.sup.length === 1 ? 'مورد واحد' : r.sup.length === 2 ? 'موردان' : r.sup.length ? r.sup.length + (r.sup.length <= 10 ? ' موردين' : ' مورداً') : '—') : 'بدون مشتريات', d1: r.has ? r.tiers.reduce(function (m, t) { return !m || (t.d1 && t.d1 < m) ? t.d1 : m; }, '') : '—', d2: r.lastD || '—', ninv: r.has ? r.ninv : '', pq: r.has ? r.nq / f : '', rq: r.rq ? r.rq / f : '', pp: r.has ? r.wavg * f : '', pv: r.has ? r.pv : '', sq: r.q / f, uf: r.unitF * f, fin: r.fin, book: r.v.mavg, diff: r.diff });
             r.tiers.forEach(function (t) {
               var nq = Math.max(0, t.qb - t.rq), sup = Object.keys(t.sup);
-              rows.push({ _g: gi, _lvl: 1, name: t.label === 'o' ? 'بضاعة أول المدة بسعر ' + fm(t.pb * f) : t.pb > 0 ? 'سعر شراء ' + fm(t.pb * f) : 'مجاني (بونص)', src: t.label === 'o' ? '—' : vbShort(sup.sort(function (a, b) { return t.sup[b] - t.sup[a]; })[0] || '') + (sup.length > 1 ? ' +' + (sup.length - 1) : ''), d1: t.d1, d2: t.d2, ninv: Object.keys(t.inv).length, pq: nq / f, rq: t.rq ? t.rq / f : '', pp: t.pb * f, pv: nq * t.pb, sq: meth === 'fifo' ? t.fq / f : '', uf: '', fin: meth === 'fifo' ? t.fq * t.pb : '', book: '', diff: '' });
+              rows.push({ _g: gi, _lvl: 1, name: t.label === 'o' ? 'بضاعة أول المدة بسعر ' + fm(t.pb * f) : t.pb > 0 ? 'سعر شراء ' + fm(t.pb * f) : 'مجاني (بونص)', src: t.label === 'o' ? '—' : sup.sort(function (a, b) { return t.sup[b] - t.sup[a]; }).map(vbFull).join('\n'), d1: t.d1, d2: t.d2, ninv: Object.keys(t.inv).length, pq: nq / f, rq: t.rq ? t.rq / f : '', pp: t.pb * f, pv: nq * t.pb, sq: meth === 'fifo' ? t.fq / f : '', uf: '', fin: meth === 'fifo' ? t.fq * t.pb : '', book: '', diff: '' });
             });
             if (meth === 'fifo' && r.fifoX > 0) rows.push({ _g: gi, _lvl: 1, name: 'رصيد غير مغطى بمشتريات (بالتكلفة الدفترية)', src: '', d1: '', d2: '', pq: '', pp: r.book * f, sq: r.fifoX / f, fin: r.fifoX * r.book });
           });
-          cols = [C('name', 'الصنف / سعر الشراء'), C('src', 'المورد'), C('d1', 'من'), C('d2', 'إلى'), C('ninv', 'الفواتير', 'int'), C('pq', 'الكمية المشتراة', 'qty'), C('rq', 'المرتجع', 'qty'), C('pp', 'سعر الشراء', 'money'), C('pv', 'قيمة المشتريات', 'money'), C('sq', meth === 'fifo' ? 'بالمخزون (FIFO)' : 'الكمية بالمخزون', 'qty'), C('uf', 'تكلفة الوحدة النهائية (' + mS + ')', 'money'), C('fin', 'القيمة النهائية (' + mS + ')', 'money'), C('book', 'الدفترية', 'money'), C('diff', 'الفرق', 'money')];
+          cols = [C('name', 'الصنف / سعر الشراء'), C('src', 'المورد', 'long'), C('d1', 'من'), C('d2', 'إلى'), C('ninv', 'الفواتير', 'int'), C('pq', 'الكمية المشتراة', 'qty'), C('rq', 'المرتجع', 'qty'), C('pp', 'سعر الشراء', 'money'), C('pv', 'قيمة المشتريات', 'money'), C('sq', meth === 'fifo' ? 'بالمخزون (FIFO)' : 'الكمية بالمخزون', 'qty'), C('uf', 'تكلفة الوحدة النهائية (' + mS + ')', 'money'), C('fin', 'القيمة النهائية (' + mS + ')', 'money'), C('book', 'الدفترية', 'money'), C('diff', 'الفرق', 'money')];
           title = 'تقييم المخزون بأسعار الشراء — تفصيلي (' + mName + (lcm ? ' + قاعدة الأقل' : '') + ')';
         }
         var qT = D.reduce(function (a, r) { return a + r.q / r.f; }, 0), pqT = D.reduce(function (a, r) { return a + (r.has ? r.nq / r.f : 0); }, 0), rqT = D.reduce(function (a, r) { return a + (r.rq ? r.rq / r.f : 0); }, 0);

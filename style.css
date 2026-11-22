@@ -957,3 +957,6 @@ input[type=date].input::-webkit-calendar-picker-indicator { position: absolute; 
 /* صفوف عناوين المجموعات (تصنيفات الأصناف وغيرها): لون واحد ثابت لا يتأثر بتظليل الصفوف المتناوب */
 .p-tbl.p-auto tbody tr.gh td, .p-tbl.p-auto tbody tr.gh:nth-child(even) td { background: #FCE9E1; font-weight: 800; border-top: 1.5px solid #E8794A; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 .tbl.fin tbody tr.gh td, .tbl.fin tbody tr.gh:nth-child(even) td, .tbl.fin tbody tr.gh td:first-child { background: color-mix(in srgb, #F26522 11%, var(--card)); border-top: 1.5px solid color-mix(in srgb, #F26522 55%, var(--card)); }
+/* نص طويل متعدد الأسطر (مثل قائمة الموردين): كل سطر مستقل */
+.tbl.fin td.lt, .p-tbl td.lt { white-space: pre-line; }
+.tbl.fin td.lt.sup1 { min-width: 220px; }

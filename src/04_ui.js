@@ -907,10 +907,10 @@
         var sample = rows.length > 400 ? rows.filter(function (r, i) { return i % Math.ceil(rows.length / 400) === 0 || r._b; }) : rows;
         sample.concat(res.total ? [res.total] : []).forEach(function (r) {
           var v = plain(cell(c, r[c.k], r)); if (!v) return;
-          var w = pMeasure(v, pt, !!r._b); if (w > natural) natural = w;
+          String(v).split('\n').forEach(function (ln) { var w = pMeasure(ln, pt, !!r._b); if (w > natural) natural = w; });   // متعدد الأسطر: أطول سطر
           if (!num) v.split(/\s+/).forEach(function (x) { var ww = pMeasure(x, pt); if (ww > word) word = ww; });
         });
-        var cap = num ? 999 : c.t === 'long' ? 62 : 40, w = num ? natural : Math.max(word, Math.min(natural, cap));
+        var cap = num ? 999 : c.t === 'long' ? 46 : 40, w = num ? natural : Math.max(word, Math.min(natural, cap));
         return Math.max(w, hw, num ? 9 : 12) + 3.2;   // + الحشوة
       });
     }
