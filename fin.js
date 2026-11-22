@@ -3217,16 +3217,17 @@
         (canEdit() ? '<div class="row" style="margin-top:10px">' + brs.map(function (b) { return '<button class="btn" data-cxadd="' + esc(b.code) + '">+ حساب مستبعد' + (b.name ? ' من ' + esc(b.name) : '') + '</button>'; }).join('') + '<span class="grow"></span><button class="btn ghost" data-cxrep>عرض الحركات المستبعدة</button></div>' : '') + '</div>';
     }
     // أنواع السندات التي فيها الحساب طرفاً وكانت ستُحسب تحصيلاً منذ بداية السنة: { نوع: { name, n, amt, r } }
+    // كل أنواع السندات التي فيها الحساب طرفاً منذ بداية السنة، ومعها أثر كل نوع في التحصيل: { نوع: { name, lines, n, amt, r } }
     function collAccTypes(id, cps) {
-      var ids = accTree(id), cp = null; if (cps && cps.length) { cp = {}; cps.forEach(function (c) { accTree(c.acc, cp); }); }
+      var ids = accTree(id), cp = null, y0 = yearStart(); if (cps && cps.length) { cp = {}; cps.forEach(function (c) { accTree(c.acc, cp); }); }
       var o = {}, seen = {};
-      collLines(yearStart(), today(), null, 'raw').forEach(function (l) {
+      Object.keys(ids).forEach(function (aid) { (F.D.byAcc[aid] || []).forEach(function (l) { if (l.d < y0) return; var t = String(l.bt), r = o[t] || (o[t] = { name: l.btn || t, lines: 0, n: 0, amt: 0, r: false }); r.lines++; if (l.k === 'r') r.r = true; }); });
+      collLines(y0, today(), null, 'raw').forEach(function (l) {
         if (!l.accs.some(function (a) { return ids[a]; })) return;
         if (cp && !l.accs.some(function (a) { return cp[a] && !ids[a]; })) return;
-        var t = String(l.bt), r = o[t] || (o[t] = { name: l.btn || t, n: 0, amt: 0, r: false });
+        var t = String(l.bt), r = o[t] || (o[t] = { name: l.btn || t, lines: 0, n: 0, amt: 0, r: false });
         if (!seen[t + '|' + l.e]) { seen[t + '|' + l.e] = 1; r.n++; } r.amt += l.amt;
       });
-      (F.D.byAcc[id] || []).forEach(function (l) { var t = String(l.bt); if (o[t] && l.k === 'r') o[t].r = true; else if (!o[t] && l.k === 'r' && l.d >= yearStart()) o[t] = { name: l.btn || t, n: 0, amt: 0, r: true }; });
       return o;
     }
     // الحسابات المقابلة: الحسابات التي ظهرت مع الحساب في سندات التحصيل منذ بداية السنة أولاً (بمبالغها)، ثم بقية الدليل
@@ -3240,11 +3241,13 @@
         .then(function (v) { return v === null ? null : v.map(function (id) { var a = acc(id) || {}; return { acc: id, code: a.code || '', name: (a.name || '').trim() }; }); });
     }
     function collTypesPick(x, isNew) {
-      var o = collAccTypes(x.acc, x.cps), keys = Object.keys(o).sort(function (a, b) { return (o[b].r - o[a].r) || (o[b].amt - o[a].amt); });
-      if (!keys.length) { toast('لا توجد حركات تحصيل على هذا الحساب منذ بداية السنة؛ يُستبعد بكل الأنواع'); return Promise.resolve(isNew ? [] : null); }
+      var o = collAccTypes(x.acc, x.cps), keys = Object.keys(o).sort(function (a, b) { return (o[b].amt > 0.005) - (o[a].amt > 0.005) || (o[b].amt - o[a].amt) || (o[b].r - o[a].r) || (o[b].lines - o[a].lines); });
+      if (!keys.length) { toast('لا توجد حركات على هذا الحساب منذ بداية السنة؛ يُستبعد بكل الأنواع'); return Promise.resolve(isNew ? [] : null); }
       var def = Array.isArray(x.types) && x.types.length ? x.types.map(String) : isNew ? keys.filter(function (k) { return o[k].r; }) : [];
-      return pickMulti({ title: 'أنواع الحركات المستبعدة — ' + (x.name || x.code), value: def, hint: 'المبالغ: ما كان سيُحسب تحصيلاً من كل نوع منذ بداية السنة. بلا اختيار = كل الأنواع.',
-        options: keys.map(function (k) { return { id: k, name: o[k].name, sub: o[k].n + ' سند · ' + fm(o[k].amt) + (o[k].r ? ' · سند قبض' : '') }; }) })
+      var none = keys.every(function (k) { return !(o[k].amt > 0.005); });
+      return pickMulti({ title: 'أنواع الحركات المستبعدة — ' + (x.name || x.code), value: def,
+        hint: 'كل أنواع الحركات على هذا الحساب منذ بداية السنة' + (x.cps && x.cps.length ? ' (مع الحسابات المقابلة المحددة)' : '') + '. بجانب كل نوع: ما يضيفه حالياً إلى التحصيل، أو «لا يدخل في التحصيل» إن كان لا يُحسب أصلاً (فاستبعاده لا يغيّر شيئاً). بلا اختيار = كل الأنواع.' + (none ? ' تنبيه: لا شيء من حركات هذا الحساب يُحسب تحصيلاً حالياً، لأنه ليس حساب عميل ولا صندوقاً أو بنكاً معرّفاً.' : ''),
+        options: keys.map(function (k) { var r = o[k]; return { id: k, name: r.name, sub: (r.amt > 0.005 ? 'يضيف للتحصيل ' + fm(r.amt) + ' (' + r.n + ' سند)' : 'لا يدخل في التحصيل') + ' · ' + r.lines + ' سطر على الحساب' + (r.r ? ' · سند قبض' : '') }; }) })
         .then(function (v) { return v === null && isNew ? def : v; });   // إغلاق النافذة لحساب جديد = سندات القبض فقط
     }
     function collExclSave(list, btn) {
