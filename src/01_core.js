@@ -611,7 +611,8 @@
       var rules = collExclList().map(function (x) {
         var ty = Array.isArray(x.types) ? x.types : [], cps = Array.isArray(x.cps) ? x.cps : [], r = { acc: String(x.acc), ids: accTree(x.acc), cps: null, all: !ty.length, t: {} };
         ty.forEach(function (t) { r.t[String(t)] = 1; });
-        if (cps.length) { r.cps = {}; cps.forEach(function (c) { accTree(c.acc, r.cps); }); }
+        // لكل حساب مقابل (وفروعه) أنواع سنداته؛ بلا أنواع = كل الأنواع
+        if (cps.length) { r.cps = {}; cps.forEach(function (c) { var ct = Array.isArray(c.types) ? c.types : [], cr = { all: !ct.length, t: {} }; ct.forEach(function (t) { cr.t[String(t)] = 1; }); var tr = accTree(c.acc); Object.keys(tr).forEach(function (id) { if (!r.cps[id]) r.cps[id] = cr; }); }); }
         return r;
       });
       return (F.cache.cx = rules);
@@ -621,10 +622,10 @@
       if (!rules || !rules.length) return null;
       var sk = null;
       rules.forEach(function (r) {
-        if (!(r.all || r.t[String(bt)])) return;
         var mine = ls.filter(function (l) { return r.ids[l.a]; });
         if (!mine.length) return;
-        if (r.cps && !ls.some(function (l) { return r.cps[l.a] && !r.ids[l.a]; })) return;
+        if (r.cps) { if (!ls.some(function (l) { var c = !r.ids[l.a] && r.cps[l.a]; return c && (c.all || c.t[String(bt)]); })) return; }
+        else if (!(r.all || r.t[String(bt)])) return;
         sk = sk || {}; mine.forEach(function (l) { sk[l.a] = r.acc; });
       });
       return sk;
