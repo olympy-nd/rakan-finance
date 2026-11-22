@@ -228,15 +228,18 @@
       var bx = boxIds(''), recv = recvList || recvIds(), bset = {}, rset = {}, out = [], ex = onlyExcl === 'raw' ? null : collExcl();
       bx.forEach(function (x) { bset[x] = 1; }); recv.forEach(function (x) { rset[x] = 1; });
       entriesIn(from, to).forEach(function (l0) {
-        var ls = F.D.byEntry[l0.e], dB = 0, cR = 0, deb = [], cus = {}, sk = collExSkip(ex, ls, l0.bt), hit = !!sk;
+        var ls = F.D.byEntry[l0.e], dB = 0, cR = 0, deb = [], cus = {}, sk = collExSkip(ex, ls, l0.bt);
+        if (onlyExcl === true && !sk) return;
+        var dB2 = 0, cR2 = 0;   // مع الاستبعاد (لمعرفة الفرق الذي يحدثه فعلاً)
         ls.forEach(function (l) {
-          if (sk && sk[l.a] && onlyExcl !== true) return;
-          if ((bx.length ? bset[l.a] : (l0.k === 'r' && l.dr)) && l.dr) { dB += l.dr; deb.push(l); }
-          if (rset[l.a] && l.cr) { cR += l.cr; cus[l.a] = (cus[l.a] || 0) + l.cr; }
+          var skip = sk && sk[l.a];
+          if (skip && onlyExcl !== true) return;
+          if ((bx.length ? bset[l.a] : (l0.k === 'r' && l.dr)) && l.dr) { dB += l.dr; deb.push(l); if (!skip) dB2 += l.dr; }
+          if (rset[l.a] && l.cr) { cR += l.cr; cus[l.a] = (cus[l.a] || 0) + l.cr; if (!skip) cR2 += l.cr; }
         });
         var amt = Math.min(dB, cR);
-        if (amt <= 0 || dB <= 0) return;
-        if (onlyExcl === true && !hit) return;
+        if (onlyExcl === true) amt = amt - Math.max(0, Math.min(dB2, cR2));   // المستبعد = ما نقص من التحصيل بسبب الاستبعاد فقط
+        if (amt <= 0.0005 || dB <= 0) return;
         var cl = Object.keys(cus).sort(function (a, b) { return cus[b] - cus[a]; });
         deb.forEach(function (l) {
           var k = cashBankKind(l.a);
