@@ -7030,6 +7030,87 @@
           chart: p.by === 'sup' ? null : { type: 'hbar', x: 'name', y: ['val'], yl: ['القيمة'] } }, p);
       } };
 
+    /* ===================== التحصيل حسب طريقة القبض: نقدي / بنوك / مقاصة ===================== */
+    // سطر لكل حساب مدين في كل سند تحصيل من العملاء، والمبلغ موزّع بنسبته (نفس قواعد collections وcollSplit)
+    function collLines(from, to, recvList) {
+      var bx = boxIds(''), recv = recvList || recvIds(), bset = {}, rset = {}, out = [];
+      bx.forEach(function (x) { bset[x] = 1; }); recv.forEach(function (x) { rset[x] = 1; });
+      entriesIn(from, to).forEach(function (l0) {
+        var ls = F.D.byEntry[l0.e], dB = 0, cR = 0, deb = [], cus = {};
+        ls.forEach(function (l) {
+          if ((bx.length ? bset[l.a] : (l0.k === 'r' && l.dr)) && l.dr) { dB += l.dr; deb.push(l); }
+          if (rset[l.a] && l.cr) { cR += l.cr; cus[l.a] = (cus[l.a] || 0) + l.cr; }
+        });
+        var amt = Math.min(dB, cR);
+        if (amt <= 0 || dB <= 0) return;
+        var cl = Object.keys(cus).sort(function (a, b) { return cus[b] - cus[a]; });
+        deb.forEach(function (l) {
+          var k = cashBankKind(l.a);
+          out.push({ e: l0.e, d: l0.d, dt: l0.dt, no: l0.no, btn: l0.btn || '', ed: l0.ed || '', acc: l.a, kind: k === 'بنك' ? 'بنوك' : k === 'صندوق' ? 'نقدي' : 'مقاصة', amt: amt * l.dr / dB, cust: cl, cmain: cl[0] });
+        });
+      });
+      return out;
+    }
+    R.coll_offset = { cat: 'debts', name: 'التحصيل حسب طريقة القبض (نقدي · بنوك · مقاصة)', desc: 'سندات التحصيل من العملاء مصنّفة حسب الحساب الذي دخل فيه المبلغ: صندوق (نقدي) أو مصرف (بنوك) أو حساب آخر (مقاصة: تسوية دين العميل مقابل حساب آخر دون نقد). حركات المقاصة تفصيلياً، أو كل التحصيل، أو ملخصاً حسب الحساب المقابل أو العميل',
+      params: ['period', 'flt'], fdims: ['cust', 'xcust'],
+      sel: [['view', 'العرض', [['oth', 'حركات المقاصة (تفصيلي)'], ['all', 'كل التحصيل (تفصيلي)'], ['acc', 'ملخص حسب الحساب المقابل'], ['cust', 'ملخص حسب العميل']]]],
+      run: function (p) {
+        var f = parseFilter(p.flt), L = collLines(p.from, p.to, f ? recvFor(f) : null), view = p.view || 'oth';
+        if (!L.length) return emptyR('لا يوجد تحصيل من العملاء في الفترة');
+        var tot = { 'نقدي': 0, 'بنوك': 0, 'مقاصة': 0 }, all = 0, offE = {}, offAcc = {}, offCus = {};
+        L.forEach(function (x) { tot[x.kind] += x.amt; all += x.amt; if (x.kind === 'مقاصة') { offE[x.e] = 1; offAcc[x.acc] = 1; x.cust.forEach(function (c) { offCus[c] = 1; }); } });
+        var kpis = [
+          { l: 'المقاصة', v: tot['مقاصة'], t: 'money', s: Object.keys(offE).length + ' سند · ' + pct(tot['مقاصة'], all).toFixed(1) + '% من التحصيل', bad: tot['مقاصة'] > 0.5 },
+          { l: 'نقدي (الصناديق)', v: tot['نقدي'], t: 'money', s: pct(tot['نقدي'], all).toFixed(1) + '% من التحصيل' },
+          { l: 'بنوك (المصارف)', v: tot['بنوك'], t: 'money', s: pct(tot['بنوك'], all).toFixed(1) + '% من التحصيل' },
+          { l: 'إجمالي التحصيل', v: all, t: 'money', s: 'كما في بطاقة التحصيل' },
+          { l: 'الحسابات المقابلة في المقاصة', v: Object.keys(offAcc).length, t: 'int', s: Object.keys(offCus).length + ' عميل' }
+        ];
+        var note = 'المقاصة = سند قبض خُصم من حساب العميل وحُمِّل المبلغ على حساب آخر غير الصناديق والمصارف (مثل حساب فرع أو مورد أو عميل آخر)، أي تسوية لدين العميل دون دخول نقد · نوع الحساب من تعريف الصناديق والبنوك في الإعدادات، وإلا من اسمه والحسابات فوقه · السند الذي فيه أكثر من حساب مدين يُوزّع مبلغه بنسبتها';
+        var cname = function (ids) { return ids.map(function (a) { return accName(a); }).join('\n'); };
+        var acode = function (a) { var x = acc(a); return x ? x.code + ' · ' + x.name : a; };
+        var rows, cols, title, total;
+        if (view === 'oth' || view === 'all') {
+          var list = L.filter(function (x) { return view === 'all' || x.kind === 'مقاصة'; });
+          if (!list.length) return Object.assign(emptyR('لا توجد حركات مقاصة في الفترة: كل التحصيل نقدي أو بنكي'), { kpis: kpis });
+          // تجميع تحت الحساب المقابل (المقاصة) أو تحت طريقة القبض (الكل)
+          var gk = view === 'oth' ? function (x) { return x.acc; } : function (x) { return x.kind; };
+          var gn = view === 'oth' ? function (x) { return acode(x.acc); } : function (x) { return x.kind; };
+          var G = {}; list.forEach(function (x) { var k = gk(x), g = G[k] || (G[k] = { name: gn(x), l: [], amt: 0 }); g.l.push(x); g.amt += x.amt; });
+          var ord = view === 'all' ? ['نقدي', 'بنوك', 'مقاصة'] : Object.keys(G).sort(function (a, b) { return G[b].amt - G[a].amt; });
+          rows = [];
+          ord.filter(function (k) { return G[k]; }).forEach(function (k, gi) {
+            var g = G[k], ne = {}; g.l.forEach(function (x) { ne[x.e] = 1; });
+            rows.push({ _g: gi, _gh: 1, _b: true, name: g.name + ' (' + Object.keys(ne).length + ' سند)', amt: g.amt, share: pct(g.amt, view === 'oth' ? tot['مقاصة'] : all) });
+            g.l.sort(function (a, b) { return a.dt < b.dt ? -1 : a.dt > b.dt ? 1 : 0; }).forEach(function (x) {
+              rows.push({ _g: gi, _lvl: 1, name: cname(x.cust), d: x.d, no: x.no, btn: x.btn, kind: x.kind, cacc: acode(x.acc), amt: x.amt, ed: x.ed });
+            });
+          });
+          var lt = list.reduce(function (s, x) { return s + x.amt; }, 0);
+          total = { name: 'الإجمالي', _b: true, amt: lt, share: 100 };
+          cols = [C('name', view === 'oth' ? 'الحساب المقابل / العميل' : 'طريقة القبض / العميل', 'long'), C('d', 'التاريخ'), C('no', 'رقم السند'), C('btn', 'نوع السند')];
+          if (view === 'all') cols.push(C('cacc', 'الحساب المدين', 'long'));
+          cols = cols.concat([C('amt', 'المبلغ', 'money'), C('share', 'من المجموعة %', 'pct'), C('ed', 'البيان', 'long')]);
+          title = view === 'oth' ? 'حركات المقاصة في التحصيل' : 'التحصيل حسب طريقة القبض';
+          return withNote({ title: title, kpis: kpis, rows: rows, total: total, cols: cols, note: note, _grouped: true, _noCust: true }, p);
+        }
+        // الملخصات
+        var S = {};
+        L.forEach(function (x) {
+          var keys = view === 'acc' ? [x.kind === 'مقاصة' ? x.acc : x.kind] : [x.cmain];
+          keys.forEach(function (k) { var r = S[k] || (S[k] = { k: k, name: view === 'acc' ? (x.kind === 'مقاصة' ? acode(x.acc) : 'كل ' + (x.kind === 'نقدي' ? 'الصناديق' : 'المصارف')) : accName(k), kind: view === 'acc' ? x.kind : '', e: {}, cash: 0, bank: 0, off: 0, amt: 0, last: '' }); r.e[x.e] = 1; r.amt += x.amt; if (x.kind === 'نقدي') r.cash += x.amt; else if (x.kind === 'بنوك') r.bank += x.amt; else r.off += x.amt; if (x.d > r.last) r.last = x.d; });
+        });
+        rows = Object.keys(S).map(function (k) { var r = S[k]; return { name: r.name, kind: r.kind, n: Object.keys(r.e).length, cash: r.cash, bank: r.bank, off: r.off, amt: r.amt, op: pct(r.off, r.amt), share: pct(r.amt, all), last: r.last }; });
+        if (view === 'cust') rows = rows.filter(function (r) { return r.off > 0.005 || !p._onlyOff; });
+        rows.sort(function (a, b) { return view === 'acc' ? (a.kind === 'مقاصة') - (b.kind === 'مقاصة') || b.amt - a.amt : b.off - a.off || b.amt - a.amt; });
+        total = sumRow(rows, [C('n', '', 'int'), C('cash', '', 'money'), C('bank', '', 'money'), C('off', '', 'money'), C('amt', '', 'money')]); total.op = pct(total.off, total.amt); total.share = 100;
+        cols = view === 'acc'
+          ? [C('name', 'الحساب المقابل'), C('kind', 'الطريقة'), C('n', 'عدد السندات', 'int'), C('amt', 'المبلغ', 'money'), C('share', 'من التحصيل %', 'pct'), C('last', 'آخر حركة')]
+          : [C('name', 'العميل'), C('n', 'عدد السندات', 'int'), C('cash', 'نقدي', 'money'), C('bank', 'بنوك', 'money'), C('off', 'مقاصة', 'money'), C('amt', 'إجمالي التحصيل', 'money'), C('op', 'المقاصة %', 'pct'), C('last', 'آخر تحصيل')];
+        return withNote({ title: view === 'acc' ? 'التحصيل حسب الحساب المقابل' : 'التحصيل حسب العميل وطريقة القبض', kpis: kpis, rows: rows, total: total, cols: cols, note: note, _noCust: view === 'acc',
+          chart: view === 'acc' ? { type: 'hbar', x: 'name', y: ['amt'], yl: ['المبلغ'], limit: 12 } : null }, p);
+      } };
+
     // عند الخروج: مسح البيانات المالية من الجهاز
     A.paintSync = paintSync; A.navSnap = navSnap; A.navApply = navApply;
     A.openSec = function () { F.setTab = 'sec'; F.sec = null; A.go('settings'); };
