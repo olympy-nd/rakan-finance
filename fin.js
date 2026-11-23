@@ -7300,7 +7300,7 @@
         var cl = Object.keys(cus).sort(function (a, b) { return cus[b] - cus[a]; });
         deb.forEach(function (l) {
           var k = cashBankKind(l.a);
-          out.push({ e: l0.e, d: l0.d, dt: l0.dt, no: l0.no, bt: l0.bt, btn: l0.btn || '', ed: l0.ed || '', accs: ls.map(function (q) { return q.a; }), exa: sk ? Object.keys(sk).map(function (k) { return sk[k]; }) : [], acc: l.a, kind: k === 'بنك' ? 'بنوك' : k === 'صندوق' ? 'نقدي' : 'مقاصة', amt: amt * l.dr / dB, cust: cl, cmain: cl[0], cus: cus, cR: cR });
+          out.push({ e: l0.e, d: l0.d, dt: l0.dt, no: l0.no, bt: l0.bt, btn: l0.btn || '', ed: l0.ed || '', u: l0.u, ag: l0.ag, accs: ls.map(function (q) { return q.a; }), exa: sk ? Object.keys(sk).map(function (k) { return sk[k]; }) : [], acc: l.a, kind: k === 'بنك' ? 'بنوك' : k === 'صندوق' ? 'نقدي' : 'مقاصة', amt: amt * l.dr / dB, cust: cl, cmain: cl[0], cus: cus, cR: cR });
         });
       });
       return out;
@@ -7365,6 +7365,85 @@
           : [C('name', 'العميل'), C('n', 'عدد السندات', 'int'), C('cash', 'نقدي', 'money'), C('bank', 'بنوك', 'money'), C('off', 'مقاصة', 'money'), C('amt', 'إجمالي التحصيل', 'money'), C('op', 'المقاصة %', 'pct'), C('last', 'آخر تحصيل')];
         return withNote({ title: view === 'acc' ? 'التحصيل حسب الحساب المقابل' : 'التحصيل حسب العميل وطريقة القبض', kpis: kpis, rows: rows, total: total, cols: cols, note: note, _noCust: view === 'acc',
           chart: view === 'acc' ? { type: 'hbar', x: 'name', y: ['amt'], yl: ['المبلغ'], limit: 12 } : null }, p);
+      } };
+
+    // ---------- كشف التحصيلات التفصيلي: سطر لكل سند تحصيل ----------
+    var CD_GRP = [['none', 'بدون تجميع (حسب التاريخ)'], ['day', 'اليوم'], ['month', 'الشهر'], ['box', 'الصندوق / المصرف'], ['kind', 'طريقة القبض'], ['cust', 'العميل'], ['rep', 'المندوب'], ['user', 'المستخدم'], ['btn', 'نوع السند']];
+    R.coll_detail = { cat: 'debts', name: 'كشف التحصيلات التفصيلي', desc: 'كل سند تحصيل: التاريخ والوقت ورقم السند ونوعه والعميل والصندوق أو المصرف وطريقة القبض والمبلغ والمندوب والمستخدم والبيان، مع التجميع والمجاميع الفرعية أو ملخص بالمجموعات',
+      params: ['period', 'flt', 'search'], fdims: ['cust', 'xcust', 'ag'],
+      sel: [['grp', 'التجميع', CD_GRP], ['view', 'العرض', [['det', 'تفصيلي (كل سند)'], ['sum', 'ملخص بالمجموعات']]], ['meth', 'طريقة القبض', [['all', 'الكل'], ['نقدي', 'نقدي (الصناديق)'], ['بنوك', 'بنوك (المصارف)'], ['مقاصة', 'مقاصة']]]],
+      run: function (p) {
+        var f = parseFilter(p.flt), grp = p.grp || 'none', view = p.view || 'det', meth = p.meth || 'all', s = String(p.search || '').trim();
+        var L = collLines(p.from, p.to, f ? recvFor(f) : null);
+        if (!L.length) return emptyR('لا يوجد تحصيل في الفترة');
+        var acode = function (a) { var x = acc(a); return x ? x.name + ' (' + x.code + ')' : a; };
+        // دمج أسطر السند الواحد (أكثر من حساب مدين) في سطر واحد
+        var E = {}, order = [];
+        L.forEach(function (x) {
+          if (meth !== 'all' && x.kind !== meth) return;
+          var r = E[x.e];
+          if (!r) { r = E[x.e] = { e: x.e, d: x.d, dt: x.dt || x.d, no: x.no, btn: x.btn, ed: x.ed, cust: x.cust, cmain: x.cmain, u: x.u, boxes: {}, kinds: {}, amt: 0,
+            rep: F.D.repOfCust[x.cmain] || (x.ag && x.ag !== '0' ? x.ag : '0') }; order.push(r); }
+          r.amt += x.amt; r.boxes[x.acc] = (r.boxes[x.acc] || 0) + x.amt; r.kinds[x.kind] = (r.kinds[x.kind] || 0) + x.amt;
+        });
+        var list = order.map(function (r) {
+          var bk = Object.keys(r.boxes).sort(function (a, b) { return r.boxes[b] - r.boxes[a]; }), kk = Object.keys(r.kinds);
+          r.box = bk[0]; r.boxTxt = bk.map(function (a) { return accName(a); }).join('\n');
+          r.kind = kk.length === 1 ? kk[0] : 'مختلط'; r.cash = r.kinds['نقدي'] || 0; r.bank = r.kinds['بنوك'] || 0; r.off = r.kinds['مقاصة'] || 0;
+          r.custTxt = r.cust.map(acode).join('\n'); r.repTxt = r.rep && r.rep !== '0' ? repName(r.rep) : 'بدون مندوب'; r.userTxt = r.u ? userName(r.u) : '';
+          return r;
+        }).filter(function (r) { return !s || (r.no + ' ' + r.custTxt + ' ' + r.boxTxt + ' ' + (r.ed || '') + ' ' + r.repTxt + ' ' + r.userTxt).indexOf(s) >= 0; });
+        if (!list.length) return emptyR('لا توجد سندات تحصيل تطابق الاختيار');
+        list.sort(function (a, b) { return a.dt < b.dt ? -1 : a.dt > b.dt ? 1 : 0; });
+        // المؤشرات
+        var tot = 0, cash = 0, bank = 0, off = 0, cu = {}, days = {}, big = list[0];
+        list.forEach(function (r) { tot += r.amt; cash += r.cash; bank += r.bank; off += r.off; r.cust.forEach(function (c) { cu[c] = 1; }); days[r.d] = 1; if (r.amt > big.amt) big = r; });
+        var nd = Object.keys(days).length;
+        var kpis = [
+          { l: 'إجمالي التحصيل', v: tot, t: 'money', s: list.length + ' سند · ' + Object.keys(cu).length + ' عميل' },
+          { l: 'نقدي (الصناديق)', v: cash, t: 'money', s: pct(cash, tot).toFixed(1) + '%' },
+          { l: 'بنوك (المصارف)', v: bank, t: 'money', s: pct(bank, tot).toFixed(1) + '%' + (off > 0.005 ? ' · مقاصة ' + fm(off) : '') },
+          { l: 'متوسط السند', v: tot / list.length, t: 'money', s: 'متوسط اليوم ' + fm(tot / (nd || 1)) + ' (' + nd + ' يوم)' },
+          { l: 'أكبر سند', v: big.amt, t: 'money', s: big.btn + ' ' + big.no + ' · ' + accName(big.cmain) }
+        ];
+        var note = 'التحصيل = المبلغ الذي دخل صندوقاً أو مصرفاً معرّفاً مقابل حساب عميل (أو حساب تحصيل إضافي من الإعدادات)، بعد الحسابات المستبعدة — نفس رقم بطاقة التحصيل · السند الذي فيه أكثر من صندوق أو مصرف يظهر مرة واحدة بمجموعه · المندوب من آخر فاتورة للعميل أو تعريفه';
+        var MON = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
+        var GK = {
+          none: null,
+          day: function (r) { return [r.d, r.d]; },
+          month: function (r) { var m = r.d.slice(0, 7); return [m, MON[Number(m.slice(5)) - 1] + ' ' + m.slice(0, 4)]; },
+          box: function (r) { return [r.box, acode(r.box)]; },
+          kind: function (r) { return [r.kind, r.kind]; },
+          cust: function (r) { return [r.cmain, acode(r.cmain)]; },
+          rep: function (r) { return [r.rep || '0', r.repTxt]; },
+          user: function (r) { return [r.u || '', r.userTxt || 'غير معروف']; },
+          btn: function (r) { return [r.btn, r.btn || 'غير محدد']; }
+        }[grp];
+        var detCols = [C('d', 'التاريخ'), C('tm', 'الوقت'), C('no', 'رقم السند'), C('btn', 'نوع السند'), C('cust', 'العميل', 'long'), C('box', 'الصندوق / المصرف', 'long'), C('kind', 'الطريقة'), C('amt', 'المبلغ', 'money'), C('rep', 'المندوب'), C('user', 'المستخدم'), C('ed', 'البيان', 'long')];
+        var drop = { box: 'box', kind: 'kind', rep: 'rep', user: 'user', btn: 'btn' }[grp];
+        if (drop) detCols = detCols.filter(function (c) { return c.k !== drop; });
+        var detRow = function (r, gi) { return { _g: gi, _lvl: gi === undefined ? 0 : 1, d: r.d, tm: String(r.dt || '').slice(11, 16), no: r.no, btn: r.btn, cust: r.custTxt, box: r.boxTxt, kind: r.kind, amt: r.amt, rep: r.repTxt, user: r.userTxt, ed: r.ed }; };
+        var title = 'كشف التحصيلات التفصيلي' + (meth !== 'all' ? ' — ' + meth : '');
+        if (!GK) return withNote({ title: title, kpis: kpis, rows: list.map(function (r) { return detRow(r); }), cols: detCols, total: { name: 'الإجمالي', _b: true, d: 'الإجمالي', amt: tot }, note: note, _noCust: true }, p);
+        var G = {}, gord = [];
+        list.forEach(function (r) { var k = GK(r), g = G[k[0]]; if (!g) { g = G[k[0]] = { k: k[0], name: k[1], l: [], amt: 0, cash: 0, bank: 0, off: 0, cu: {}, last: '' }; gord.push(g); } g.l.push(r); g.amt += r.amt; g.cash += r.cash; g.bank += r.bank; g.off += r.off; r.cust.forEach(function (c) { g.cu[c] = 1; }); if (r.d > g.last) g.last = r.d; });
+        if (grp !== 'day' && grp !== 'month') gord.sort(function (a, b) { return b.amt - a.amt; });
+        var gl = CD_GRP.filter(function (x) { return x[0] === grp; })[0][1];
+        if (view === 'sum') {
+          var rows = gord.map(function (g) { return { name: g.name, n: g.l.length, nc: Object.keys(g.cu).length, cash: g.cash, bank: g.bank, off: g.off, amt: g.amt, share: pct(g.amt, tot), avg: g.amt / g.l.length, last: g.last }; });
+          var cols = [C('name', gl, 'long'), C('n', 'عدد السندات', 'int'), C('nc', 'العملاء', 'int'), C('cash', 'نقدي', 'money'), C('bank', 'بنوك', 'money')];
+          if (off > 0.005) cols.push(C('off', 'مقاصة', 'money'));
+          cols = cols.concat([C('amt', 'الإجمالي', 'money'), C('share', 'من التحصيل %', 'pct'), C('avg', 'متوسط السند', 'money'), C('last', 'آخر تحصيل')]);
+          var total = sumRow(rows, cols); total.share = 100; total.avg = tot / list.length; total.nc = Object.keys(cu).length;
+          return withNote({ title: title + ' — ملخص حسب ' + gl, kpis: kpis, rows: rows, cols: cols, total: total, note: note, _noCust: true,
+            chart: grp === 'day' || grp === 'month' ? { type: 'bar', x: 'name', y: ['cash', 'bank'], yl: ['نقدي', 'بنوك'] } : { type: 'hbar', x: 'name', y: ['amt'], yl: ['التحصيل'], limit: 12 } }, p);
+        }
+        var rows2 = [];
+        gord.forEach(function (g, gi) {
+          rows2.push({ _g: gi, _gh: 1, _b: true, d: g.name + ' — ' + g.l.length + ' سند', cust: Object.keys(g.cu).length + ' عميل · ' + pct(g.amt, tot).toFixed(1) + '% من التحصيل', amt: g.amt });
+          g.l.forEach(function (r) { rows2.push(detRow(r, gi)); });
+        });
+        return withNote({ title: title + ' — حسب ' + gl, kpis: kpis, rows: rows2, cols: detCols, total: { name: 'الإجمالي', _b: true, d: 'الإجمالي', amt: tot }, note: note, _grouped: true, _noCust: true }, p);
       } };
 
     // الحركات المستبعدة من التحصيل بسبب الحسابات المحددة في الإعدادات
