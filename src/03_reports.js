@@ -731,7 +731,14 @@
           { m: 'إجمالي المدين في سراج', v: fm(ck.debit) }, { m: 'إجمالي الدائن في سراج', v: fm(ck.credit) },
           { m: 'توازن القيود في سراج', v: ck.balanced === false ? 'غير متوازنة ✗' : ck.balanced ? 'متوازنة ✓' : '—' }];
         var dr = 0; Tt.jl.forEach(function (l) { dr += l.dr; });
-        rows.push({ m: 'إجمالي المدين على هذا الجهاز', v: fm(dr) }, { m: 'تطابق الجهاز مع سراج', v: ck.debit !== undefined && Math.abs(dr - ck.debit) < 0.01 ? 'مطابق ✓' : 'غير مطابق، اضغط «تحديث البيانات»' });
+        // المقارنة بإجمالي القسم المعروض نفسه (فرع واحد = إجمالي ذلك الفرع)، مع هامش تقريب الأسطر (3 خانات لكل سطر)
+        var cb = F.curBr && F.curBr !== '*' && ck.by && ck.by[F.curBr] ? ck.by[F.curBr] : ck, okDr = cb.debit !== undefined && Math.abs(dr - cb.debit) < Math.max(0.05, Tt.jl.length * 0.0005);
+        rows.push({ m: 'إجمالي المدين على هذا الجهاز' + (cb !== ck ? ' (' + brName(F.curBr) + ')' : ''), v: fm(dr) });
+        if (cb !== ck) rows.push({ m: 'إجمالي المدين في سراج (' + brName(F.curBr) + ')', v: fm(cb.debit) });
+        rows.push({ m: 'تطابق الجهاز مع سراج', v: okDr ? 'مطابق ✓' : 'غير مطابق، اضغط «تحديث البيانات»' });
+        // آخر حركة في كل قسم: يكشف القسم الذي توقفت بياناته
+        if (multiBr()) branches().forEach(function (b) { var x = withBr(b.code, function () { var le = '', li = '', n = 0, d0 = addD(today(), -1); Object.keys(F.D.byEntry).forEach(function (k) { var l = F.D.byEntry[k][0]; if (l.dt && l.dt > le) le = l.dt; if (l.d === d0) n++; }); (F.D.invs || []).forEach(function (v) { var t = v.dt || v.d; if (t && t > li) li = t; }); return { le: le, li: li, n: n }; });
+          rows.push({ m: 'آخر قيد مُدخل — ' + b.name, v: x.le || '—' }, { m: 'آخر فاتورة — ' + b.name, v: x.li || '—' }, { m: 'قيود أمس — ' + b.name, v: fk(x.n) }); });
         var hasStore = Tt.invl.some(function (l) { return l.st; });
         rows.push({ m: 'بيانات المخازن في أسطر الفواتير', v: hasStore ? 'متوفرة ✓' : 'غير متوفرة: حدّث الوكيل إلى 1.2.2 لتعمل تقارير المخزون بدقة' });
         return { cols: [C('m', 'البند'), C('v', 'القيمة')], rows: rows };
