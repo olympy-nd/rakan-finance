@@ -85,23 +85,92 @@
     }
     function perLabel(from, to) { return from === to ? N(from) : 'من ' + N(from) + ' إلى ' + N(to); }
 
+    /* ===================== التخزين المشفّر على الجهاز =====================
+     * البيانات المالية تبقى على الجهاز بعد الخروج لكن مشفّرة (AES-GCM 256)، والمفتاح عند الخادم لكل مستخدم وجهاز
+     * ولا يُعطى إلا بجلسة صحيحة. المفتاح في الذاكرة وفي sessionStorage (يُمسح عند الخروج أو إغلاق اللسان). */
+    var CK = { key: null, kid: '', p: null };
+    var CK_PLAIN = { 'fin:rev': 1, 'fin:pks': 1, 'fin:tm': 1 };   // أرقام وإصدارات فقط، لا بيانات مالية
+    function ckOk() { return !!(window.crypto && crypto.subtle && typeof CompressionStream !== 'undefined'); }
+    function b64u8(b) { var bin = atob(b), u = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u; }
+    function ckImport(o) { return crypto.subtle.importKey('raw', b64u8(o.key), { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']).then(function (k) { CK.key = k; CK.kid = o.kid; return k; }); }
+    function ckGet() {
+      if (CK.key) return Promise.resolve(CK.key);
+      if (!ckOk()) return Promise.resolve(null);
+      if (CK.p) return CK.p;
+      var o = null; try { o = JSON.parse(sessionStorage.getItem('rk.ck') || 'null'); } catch (e) {}
+      CK.p = (o && o.key ? Promise.resolve(o) : call('fin_ckey').then(function (r) { var x = { key: r.key, kid: r.kid }; try { sessionStorage.setItem('rk.ck', JSON.stringify(x)); } catch (e) {} return x; }))
+        .then(ckImport).catch(function () { return null; }).finally(function () { CK.p = null; });
+      return CK.p;
+    }
+    function ckForget() { CK.key = null; CK.kid = ''; try { sessionStorage.removeItem('rk.ck'); } catch (e) {} }
+    function zipBytes(u8) { return new Response(new Blob([u8]).stream().pipeThrough(new CompressionStream('gzip'))).arrayBuffer().then(function (b) { return new Uint8Array(b); }); }
+    function unzipBytes(u8) { return new Response(new Blob([u8]).stream().pipeThrough(new DecompressionStream('gzip'))).text(); }
+    function encBytes(u8) { var iv = crypto.getRandomValues(new Uint8Array(12)); return crypto.subtle.encrypt({ name: 'AES-GCM', iv: iv }, CK.key, u8).then(function (c) { return { kid: CK.kid, iv: iv, c: c }; }); }
+    function decBytes(r) { return crypto.subtle.decrypt({ name: 'AES-GCM', iv: r.iv }, CK.key, r.c).then(function (b) { return new Uint8Array(b); }); }
+    // غلاف التخزين: مفاتيح fin:* تُشفَّر، والحزم تُحفظ مضغوطة كما وصلت (bin) ثم تُشفَّر
+    var S0 = S;
+    S = {
+      get: function (k) {
+        if (k.indexOf('fin:') !== 0 || CK_PLAIN[k]) return S0.get(k);
+        return S0.get(k).then(function (r) {
+          if (!r) return r;
+          if (!r.iv) { S.legacy = true; return r; }   // بيانات قديمة غير مشفّرة (قبل هذا الإصدار): تُقرأ ثم تُعاد كتابتها مشفّرة
+          if (!CK.key || r.kid !== CK.kid) return null;
+          return decBytes(r).then(function (u8) { return r.pk ? { ver: r.ver, bin: u8 } : unzipBytes(u8).then(JSON.parse); }).catch(function () { return null; });
+        });
+      },
+      set: function (k, v) {
+        if (k.indexOf('fin:') !== 0 || CK_PLAIN[k]) return S0.set(k, v);
+        if (!CK.key) return Promise.resolve();   // بلا مفتاح لا نحفظ شيئاً غير مشفّر
+        var isPk = v && v.bin instanceof Uint8Array;
+        return (isPk ? Promise.resolve(v.bin) : zipBytes(new TextEncoder().encode(JSON.stringify(v)))).then(encBytes).then(function (r) {
+          if (isPk) { r.pk = 1; r.ver = v.ver; }
+          return S0.set(k, r);
+        }).catch(function () {});
+      },
+      del: function (k) { return S0.del(k); },
+      clearAll: function () { return S0.clearAll(); }
+    };
+    // أزمنة التحميل (للقياس وتقرير سلامة البيانات)
+    var TM = { t0: (window.performance && performance.now) ? performance.now() : Date.now() };
+    function now_() { return (window.performance && performance.now) ? performance.now() : Date.now(); }
+    function tmSave() { try { localStorage.setItem('rk.finTm', JSON.stringify(TM)); } catch (e) {} }
+
     /* ===================== تحميل البيانات ===================== */
     /* ===================== تحميل البيانات =====================
      * الحزم: بيانات كل شهر (لكل قاعدة) ملف مضغوط واحد، تُنزَّل الحزمة فقط إذا تغيّر إصدارها،
      * وتُحفظ على الجهاز كما هي. فوقها «سجل التغييرات» (F.rows): ما وصل بعد آخر اعتماد للحزم. */
     function readCache() {
-      return Promise.all([S.get('fin:rows'), S.get('fin:rev'), S.get('fin:meta'), S.get('fin:aux'), S.get('fin:pks')]).then(function (v) {
-        F.rows = v[0] || {}; F.rev = v[1] || 0; F.meta = v[2] || null;
+      var t = now_();
+      return ckGet().then(function () {
+        TM.key = Math.round(now_() - t); t = now_();
+        return Promise.all([S.get('fin:rows'), S.get('fin:rev'), S.get('fin:meta'), S.get('fin:aux'), S.get('fin:pks')]);
+      }).then(function (v) {
+        // بيانات من مستخدم آخر أو بلا مفتاح: نبدأ من الصفر (الحزم القديمة تُستبدل عند التنزيل)
+        var ok = !!v[0];
+        F.rows = v[0] || {}; F.rev = ok ? (v[1] || 0) : 0; F.meta = v[2] || null;
         if (v[3]) { F.boxes = v[3].boxes || []; F.reports = v[3].reports || []; F.config = v[3].config || {}; }
-        F.pks = v[4] || { gen: '', base: 0, list: {} };
+        F.pks = ok && v[4] ? v[4] : { gen: '', base: 0, list: {} };
         F.packs = {};
-        var names = Object.keys(F.pks.list || {});
+        var names = Object.keys(F.pks.list || {}), legacy = [];
         return Promise.all(names.map(function (n) { return S.get('fin:pk:' + n); })).then(function (arr) {
-          arr.forEach(function (x, i) {
-            if (!x || x.ver !== F.pks.list[names[i]]) { delete F.pks.list[names[i]]; return; }
-            try { F.packs[names[i]] = JSON.parse(x.s); } catch (e) { delete F.pks.list[names[i]]; }
+          TM.read = Math.round(now_() - t); t = now_();
+          return Promise.all(arr.map(function (x, i) {
+            var n = names[i];
+            if (!x || x.ver !== F.pks.list[n]) { delete F.pks.list[n]; return null; }
+            if (x.s !== undefined) { legacy.push(n); return x.s; }
+            return unzipBytes(x.bin);
+          })).then(function (txts) {
+            TM.unzip = Math.round(now_() - t); t = now_();
+            txts.forEach(function (txt, i) { if (txt === null) return; try { F.packs[names[i]] = JSON.parse(txt); } catch (e) { delete F.pks.list[names[i]]; } });
+            TM.parse = Math.round(now_() - t); t = now_();
+            if (hasData()) rebuild();
+            TM.rebuild = Math.round(now_() - t); TM.cachePacks = Object.keys(F.packs).length; TM.open = Math.round(now_() - TM.t0); tmSave();
+            // نسخة الحزم القديمة غير المشفّرة: تُعاد كتابتها مشفّرة ومضغوطة
+            if (legacy.length && CK.key) legacy.forEach(function (n) { var j = JSON.stringify(F.packs[n]); zipBytes(new TextEncoder().encode(j)).then(function (z) { return S.set('fin:pk:' + n, { ver: F.pks.list[n], bin: z }); }); });
+            // سجل التغييرات والإعدادات القديمة غير المشفّرة: تُعاد كتابتها مشفّرة
+            if (S.legacy && CK.key) { S.legacy = false; S.set('fin:rows', F.rows); S.set('fin:meta', F.meta); S.set('fin:aux', { boxes: F.boxes, reports: F.reports, config: F.config }); }
           });
-          if (hasData()) rebuild();
         });
       });
     }
@@ -115,6 +184,8 @@
     function load(force) {
       if (F.loading) return F.loading;
       var fresh = !F.rows;
+      // طلب حفظ دائم حتى لا يحذف المتصفح البيانات المحفوظة عند امتلاء المساحة
+      if (fresh && navigator.storage && navigator.storage.persist) navigator.storage.persist().then(function (x) { TM.persist = x; }).catch(function () {});
       F.loading = (fresh ? readCache().then(function () {
         // الفتح الفوري: نعرض آخر بيانات محفوظة الآن، والتحديث يكمل في الخلفية
         if (F.D) setTimeout(function () { if (A.render) A.render(); }, 0);
@@ -154,15 +225,18 @@
           var p = queue.shift();
           if (!p) return Promise.resolve();
           return call('fin_pack', { name: p.name }, { timeout: 180000 }).then(function (r) {
-            return gunzipText(r.data).then(function (txt) {
+            var bin = b64u8(r.data); TM.bytes = (TM.bytes || 0) + bin.length;
+            return unzipBytes(bin).then(function (txt) {
               F.packs[p.name] = JSON.parse(txt); F.pks.list[p.name] = r.ver; changed = true; done++;
               F.progress = 'جارٍ تنزيل البيانات المالية… ' + done + ' من ' + total; paintProgress();
-              return S.set('fin:pk:' + p.name, { ver: r.ver, s: txt });
+              return S.set('fin:pk:' + p.name, { ver: r.ver, bin: bin });
             });
           }).then(one);
         };
         if (total) { F.progress = 'جارٍ تنزيل البيانات المالية… 0 من ' + total; paintProgress(); }
+        var td = now_(); TM.bytes = 0;
         return Promise.all([one(), one(), one()]).then(function () {
+          TM.dlPacks = total; TM.dl = Math.round(now_() - td); TM.dlAt = RK.nowStr(); tmSave();
           // الحزم الجديدة تغطي كل ما قبل نقطة الاعتماد: سجل التغييرات القديم لم يعد لازماً
           if (genChanged || F.rev < st.meta.base) { F.rows = {}; F.rev = st.meta.base; changed = true; }
           F.pks = { gen: st.meta.gen, base: st.meta.base, list: list };

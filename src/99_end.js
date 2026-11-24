@@ -1,7 +1,7 @@
-    // عند الخروج: مسح البيانات المالية من الجهاز
+    // عند الخروج: تُنسى البيانات من الذاكرة ويُنسى المفتاح؛ النسخة المشفّرة تبقى على الجهاز لفتح فوري عند الدخول التالي
     A.paintSync = paintSync; A.navSnap = navSnap; A.navApply = navApply;
     A.openSec = function () { F.setTab = 'sec'; F.sec = null; A.go('settings'); };
-    A.onLogout(function () { F.sec = null; F.setTab = null; var pk = Object.keys((F.pks && F.pks.list) || {}); F.packs = {}; F.pks = null; F.rows = null; F.D = null; F.Dby = null; F.Dcache = null; F.br = undefined; F.rev = 0; F.meta = null; F.cur = null; F.edit = null; F.dirtyKeys = null; F.dirty = false; return Promise.all([S.del('fin:rows'), S.del('fin:rev'), S.del('fin:meta'), S.del('fin:aux'), S.del('fin:pks')].concat(pk.map(function (n) { return S.del('fin:pk:' + n); }))); });
+    A.onLogout(function () { F.sec = null; F.setTab = null; var pk = Object.keys((F.pks && F.pks.list) || {}); F.packs = {}; F.pks = null; F.rows = null; F.D = null; F.Dby = null; F.Dcache = null; F.br = undefined; F.rev = 0; F.meta = null; F.cur = null; F.edit = null; F.dirtyKeys = null; F.dirty = false; ckForget(); return Promise.resolve(); });
     try { st.finParams = JSON.parse(localStorage.getItem('rk.finParams') || '{}'); } catch (e) { st.finParams = {}; }
 
     // للاختبارات: الوصول للمحرّك

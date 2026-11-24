@@ -736,6 +736,11 @@
         rows.push({ m: 'إجمالي المدين على هذا الجهاز' + (cb !== ck ? ' (' + brName(F.curBr) + ')' : ''), v: fm(dr) });
         if (cb !== ck) rows.push({ m: 'إجمالي المدين في سراج (' + brName(F.curBr) + ')', v: fm(cb.debit) });
         rows.push({ m: 'تطابق الجهاز مع سراج', v: okDr ? 'مطابق ✓' : 'غير مطابق، اضغط «تحديث البيانات»' });
+        // أزمنة التحميل على هذا الجهاز
+        var tm = TM || {}, sec = function (ms) { return ms === undefined ? '—' : (ms / 1000).toFixed(1) + ' ث'; };
+        rows.push({ m: 'فتح المنظومة من بيانات الجهاز', v: sec(tm.open) + (tm.cachePacks !== undefined ? ' · ' + tm.cachePacks + ' حزمة محفوظة' : '') + ' (المفتاح ' + sec(tm.key) + '، القراءة ' + sec(tm.read) + '، فك الضغط ' + sec(tm.unzip) + '، التحليل ' + sec(tm.parse) + '، الفهرسة ' + sec(tm.rebuild) + ')' },
+          { m: 'آخر تنزيل من الخادم', v: tm.dlAt ? tm.dlAt.slice(11, 16) + ' · ' + (tm.dlPacks || 0) + ' حزمة' + (tm.bytes ? ' · ' + (tm.bytes / 1048576).toFixed(1) + ' م.ب' : '') + ' · ' + sec(tm.dl) : '—' },
+          { m: 'التخزين على الجهاز', v: (CK.key ? 'مشفّر ✓' : 'غير مشفّر') + (tm.persist === true ? ' · دائم ✓' : tm.persist === false ? ' · قد يحذفه المتصفح عند امتلاء المساحة' : '') });
         // آخر حركة في كل قسم: يكشف القسم الذي توقفت بياناته
         if (multiBr()) branches().forEach(function (b) { var x = withBr(b.code, function () { var le = '', li = '', n = 0, d0 = addD(today(), -1); Object.keys(F.D.byEntry).forEach(function (k) { var l = F.D.byEntry[k][0]; if (l.dt && l.dt > le) le = l.dt; if (l.d === d0) n++; }); (F.D.invs || []).forEach(function (v) { var t = v.dt || v.d; if (t && t > li) li = t; }); return { le: le, li: li, n: n }; });
           rows.push({ m: 'آخر قيد مُدخل — ' + b.name, v: x.le || '—' }, { m: 'آخر فاتورة — ' + b.name, v: x.li || '—' }, { m: 'قيود أمس — ' + b.name, v: fk(x.n) }); });

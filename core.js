@@ -27,7 +27,8 @@
     get: function (k) { return tx('readonly', function (s) { return s.get(k); }); },
     set: function (k, v) { return tx('readwrite', function (s) { s.put(v, k); }); },
     del: function (k) { return tx('readwrite', function (s) { s.delete(k); }); },
-    clearAll: function () { return tx('readwrite', function (s) { s.clear(); }); }
+    clearAll: function () { return tx('readwrite', function (s) { s.clear(); }); },
+    keys: function () { return tx('readonly', function (s) { return s.getAllKeys(); }); }
   };
   function uuid() {
     if (root.crypto && root.crypto.randomUUID) return root.crypto.randomUUID();

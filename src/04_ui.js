@@ -106,6 +106,13 @@
     function canEdit() { return !!(A.st.user && A.st.user.can_edit); }
     var SUBS = ['dash', 'daily', 'reports', 'builder', 'settings'];
 
+    function newDataBar() {
+      var m = q('#main'); if (!m || q('#newdata', m)) return;
+      var d = document.createElement('div'); d.id = 'newdata'; d.className = 'newdata';
+      d.innerHTML = '<span>' + ICON.refresh + ' وصلت بيانات أحدث من سراج</span><button class="btn sm primary" type="button">تحديث التقرير</button>';
+      m.insertBefore(d, m.firstChild);
+      d.querySelector('button').onclick = function () { var y = window.scrollY; d.remove(); A.render(); setTimeout(function () { window.scrollTo(0, y); }, 0); };
+    }
     function view(sub) {
       return {
         load: function (quiet) {
@@ -114,7 +121,12 @@
           if (quiet && had && F.lastPull && Date.now() - F.lastPull < 180000) return Promise.resolve(false);
           if (quiet && F.dirty) return Promise.resolve(false);
           F.quiet = quiet;
-          return load(false).then(function () { return !had || F.rev + '|' + ((F.pks && F.pks.gen) || '') !== rev || nb !== JSON.stringify([F.boxes, F.reports, F.config]); });
+          return load(false).then(function () {
+            var ch = !had || F.rev + '|' + ((F.pks && F.pks.gen) || '') !== rev || nb !== JSON.stringify([F.boxes, F.reports, F.config]);
+            // تقرير مفتوح: لا نغيّر أرقامه تحت يد المستخدم، نعرض شريط «بيانات أحدث» ويحدّث متى شاء
+            if (ch && had && quiet && F.sub === 'reports' && F.cur) { newDataBar(); return false; }
+            return ch;
+          });
         },
         html: function () {
           if (F.sub !== sub) { F.sub = sub; if (sub !== 'reports') F.cur = null; }

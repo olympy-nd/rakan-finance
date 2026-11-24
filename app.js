@@ -204,8 +204,11 @@
     // الخروج التلقائي يحفظ المكان ليعود إليه نفس المستخدم بعد الرقم السري؛ الخروج اليدوي يبدأ من الرئيسية
     if (!keepPlace) { try { sessionStorage.removeItem('rk.loc'); history.replaceState(null, '', location.pathname + location.search); } catch (e) {} st.tab = null; }
     NAV.length = 0;
-    // البيانات المالية لا تبقى على الجهاز بعد الخروج
-    S.get('device').then(function (dev) { return S.clearAll().then(function () { return S.set('device', dev || RK.uuid()); }); });
+    // بعد الخروج: تُمسح الجلسة وكل ما ليس مالياً؛ البيانات المالية تبقى مشفّرة (fin:*) ومفتاحها عند الخادم،
+    // فلا تُقرأ إلا بعد دخول نفس المستخدم من نفس الجهاز
+    S.keys().then(function (ks) { return Promise.all(ks.filter(function (k) { k = String(k); return k !== 'device' && k.indexOf('fin:') !== 0; }).map(function (k) { return S.del(k); })); })
+      .catch(function () { return S.get('device').then(function (dev) { return S.clearAll().then(function () { return S.set('device', dev || RK.uuid()); }); }); });
+    try { sessionStorage.removeItem('rk.ck'); } catch (e) {}
     st.user = null;
     if (window.RKFIN_RESET) window.RKFIN_RESET();
     renderLogin(msg);
