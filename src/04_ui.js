@@ -1451,7 +1451,43 @@
     }
 
     /* ---------- الإعدادات ---------- */
-    var SET_TABS = [['boxes', 'الصناديق والبنوك'], ['cards', 'بطاقات لوحة المؤشرات'], ['daily', 'التقرير اليومي'], ['groups', 'مجموعات الحسابات'], ['cgroups', 'مجموعات العملاء'], ['igroups', 'مجموعات الأصناف'], ['reps', 'المندوبون وفئاتهم'], ['data', 'البيانات']];
+    // تنظيم الإعدادات: مجموعات واضحة، ولكل صفحة عنوان ووصف قصير
+    var SV = function (d) { return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">' + d + '</svg>'; };
+    var SICON = {
+      general: SV('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>'),
+      groups: SV('<path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4z"/><path d="M14 17h6M17 14v6"/>'),
+      cgroups: SV('<circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="17.5" cy="9" r="2.5"/><path d="M16 14.2c2.9.3 5 2.6 5 5.8"/>'),
+      igroups: SV('<path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/>'),
+      reps: SV('<circle cx="12" cy="7" r="3.5"/><path d="M5 21v-1a7 7 0 0 1 14 0v1"/><path d="M9 14l3 3 3-3"/>'),
+      boxes: SV('<rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M7 15h3"/>'),
+      coll: SV('<path d="M12 3v18M17 7.5c0-1.9-2.2-3-5-3s-5 1.1-5 3 2.2 2.8 5 3.5 5 1.6 5 3.5-2.2 3-5 3-5-1.1-5-3"/>'),
+      cards: SV('<rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="5" rx="1.5"/><rect x="13" y="10" width="8" height="11" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/>'),
+      daily: SV('<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4M7 13h4M7 17h7"/>'),
+      sec: SV('<path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6l8-3z"/><path d="M9 12l2 2 4-4"/>')
+    };
+    var SET_NAV = [
+      { g: 'عام', items: [['general', 'الإعدادات العامة', 'السنة المالية، وتحديث التقارير، والبيانات على الجهاز']] },
+      { g: 'الحسابات والتصنيف', items: [['groups', 'حسابات العملاء والموردين', 'الحسابات الرئيسية للعملاء والموردين في كل فرع'], ['cgroups', 'مجموعات العملاء', 'تجميع العملاء للتقارير والتصفية'], ['igroups', 'مجموعات الأصناف', 'تجميع الأصناف للتقارير والتصفية'], ['reps', 'المندوبون وفئاتهم', 'ربط المناديب بالعملاء والمخازن وتصنيفهم']] },
+      { g: 'النقدية والتحصيل', items: [['boxes', 'الصناديق والبنوك', 'الحسابات النقدية والمصرفية وأنواع سنداتها'], ['coll', 'قواعد التحصيل', 'الحسابات المستبعدة من التحصيل وحسابات التحصيل الإضافية']] },
+      { g: 'لوحة المؤشرات والتقارير', items: [['cards', 'بطاقات لوحة المؤشرات', 'البطاقات وطريقة حساب كل منها'], ['daily', 'التقرير اليومي', 'أسطر التقرير اليومي للإدارة ومعادلاتها']] },
+      { g: 'الإدارة', mgr: true, items: [['sec', 'الأمان والدخول', 'الخروج التلقائي والأجهزة الموثوقة ورموز الدخول']] }
+    ];
+    var SET_TABS = []; SET_NAV.forEach(function (g) { g.items.forEach(function (it) { SET_TABS.push([it[0], it[1]]); }); });
+    function setNarrow() { try { return window.matchMedia('(max-width: 820px)').matches; } catch (e) { return false; } }
+    function setNavHTML(tab, isMgr) {
+      return '<nav class="set-nav" aria-label="أقسام الإعدادات">' + SET_NAV.filter(function (g) { return !g.mgr || isMgr; }).map(function (g) {
+        return '<div class="set-grp"><div class="set-gh">' + esc(g.g) + '</div>' + g.items.map(function (it) {
+          var dirty = F.dirtyKeys && F.dirtyKeys[it[0]];
+          return '<button class="set-it' + (tab === it[0] ? ' on' : '') + '" data-stab="' + it[0] + '"' + (tab === it[0] ? ' aria-current="page"' : '') + '><span class="set-ic">' + (SICON[it[0]] || '') + '</span><span class="set-tx"><b>' + esc(it[1]) + (dirty ? ' <i class="set-dot" title="تغييرات غير محفوظة"></i>' : '') + '</b><small>' + esc(it[2]) + '</small></span><span class="set-chev" aria-hidden="true">›</span></button>';
+        }).join('') + '</div>';
+      }).join('') + '</nav>';
+    }
+    function setPageHead(tab) {
+      var g = SET_NAV.filter(function (x) { return x.items.some(function (it) { return it[0] === tab; }); })[0] || SET_NAV[0], it = g.items.filter(function (x) { return x[0] === tab; })[0] || g.items[0];
+      return '<div class="set-head">' + (setNarrow() ? '<button class="btn sm ghost set-back" data-stab="">→ كل الإعدادات</button>' : '') + '<div class="set-crumb">الإعدادات › ' + esc(g.g) + '</div><h2 class="set-title">' + esc(it[1]) + '</h2><p class="set-desc">' + esc(it[2]) + '</p></div>';
+    }
+    // العنوان مكرر في أول بطاقة: يُحذف لأن رأس الصفحة يعرضه
+    function stripTitle(html, names) { names.forEach(function (nm) { html = html.replace('<h2>' + nm + '</h2>', ''); }); return html; }
     function boxSuggestions() {
       var defined = {}; F.boxes.forEach(function (b) { defined[b.acc] = 1; });
       return F.D.accList.filter(function (a) {
@@ -1468,11 +1504,26 @@
       return F.edit[k];
     }
     function settingsHTML() {
-      var isMgr = A.st.user && A.st.user.role === 'manager', TABS = SET_TABS.concat(isMgr ? [['sec', 'الأمان والدخول']] : []);
-      if (F.setTab === 'sec' && !isMgr) F.setTab = 'boxes';
-      var tab = F.setTab || 'boxes', h = '<div class="chips fin-settabs">' + TABS.map(function (t) { return '<button class="chip' + (tab === t[0] ? ' on' : '') + '" data-stab="' + t[0] + '">' + t[1] + (F.dirtyKeys && F.dirtyKeys[t[0]] ? ' •' : '') + '</button>'; }).join('') + '</div>';
-      var s = (F.meta && F.meta.settings) || {};
-      if (tab === 'sec') return h + secHTML();
+      var isMgr = A.st.user && A.st.user.role === 'manager';
+      if (F.setTab === 'data') F.setTab = 'general';
+      if (F.setTab === 'sec' && !isMgr) F.setTab = 'general';
+      var narrow = setNarrow();
+      // الهاتف: قائمة الأقسام أولاً، ثم الصفحة مع زر رجوع؛ الشاشة الكبيرة: القائمة بجانب الصفحة
+      if (narrow && !F.setTab) return '<div class="set-layout set-home"><div class="set-head"><h2 class="set-title">الإعدادات</h2><p class="set-desc">اختر القسم الذي تريد ضبطه</p></div>' + setNavHTML('', isMgr) + '</div>';
+      var tab = F.setTab || 'general';
+      return '<div class="set-layout">' + (narrow ? '' : setNavHTML(tab, isMgr)) + '<section class="set-main">' + setPageHead(tab) + settingsBody(tab, isMgr) + '</section></div>';
+    }
+    function settingsBody(tab, isMgr) {
+      var h = '', s = (F.meta && F.meta.settings) || {};
+      if (tab === 'sec') return secHTML();
+      if (tab === 'general') {
+        h += '<div class="card"><h3 class="set-ch">السنة المالية</h3><div class="field"><label class="lbl" for="fys">بداية السنة المالية</label><input type="date" class="input num" id="fys" value="' + esc(s.year_start || '2026-01-01') + '" style="max-width:220px"' + (canEdit() ? '' : ' disabled') + '><span class="small muted">تبدأ منها أرصدة الإيرادات والمصروفات والمقارنات السنوية</span></div></div>';
+        h += '<div class="card"><h3 class="set-ch">تحديث التقارير المفتوحة</h3><label class="chk"><input type="checkbox" id="arep"' + (autoRep() ? ' checked' : '') + (canEdit() ? '' : ' disabled') + '> تحديث التقرير المفتوح تلقائياً عند وصول بيانات جديدة من سراج</label><p class="small muted" style="margin:4px 0 0">دون تحديد (الافتراضي): يظهر فوق التقرير شريط «وصلت بيانات أحدث» وتحدّثه متى شئت، فلا تتغير الأرقام أثناء المراجعة أو الطباعة. مع التحديد: يُعاد التقرير وحده بنفس الفترة والتصفية ومكانك في الصفحة، ويتأجل إذا كنت تكتب أو في نافذة مفتوحة. ينطبق على كل المستخدمين.</p></div>';
+        h += '<div class="card dev-set"><h3 class="set-ch">التقرير اليومي</h3><label class="chk"><input type="checkbox" id="devd"' + (devDaily() ? ' checked' : '') + '> إظهار علامة «قيد التطوير» على التقرير اليومي</label><p class="small muted" style="margin:4px 0 0">تظهر بجانب زر التقرير في القائمة ورسالةً أعلى التقرير. أزل التحديد عند اعتماد التقرير.</p></div>';
+        h += '<div class="card"><h3 class="set-ch">البيانات على هذا الجهاز</h3><p class="small" style="margin:0">' + fk(dataCount()) + ' سجل · آخر مزامنة ' + esc((F.meta && F.meta.last) || '—') + '</p><p class="small muted">تُحفظ البيانات المالية على هذا الجهاز مشفّرة لتفتح التقارير فوراً، وتبقى بعد الخروج غير قابلة للقراءة حتى يدخل نفس المستخدم من جديد.</p><button class="btn sm ghost" data-open="data_check">فحص سلامة البيانات</button></div>';
+        return h;
+      }
+      if (tab === 'coll') return collExclHTML() + collAddHTML();
       if (tab === 'boxes') {
         // لكل فرع (والإدارة العامة) صناديقه وبنوكه منفصلة، لأن لكل منها دليل حسابات مستقل في سراج
         var brs = multiBr() ? branches() : [{ code: viewBr() === '*' ? '' : (F.curBr || ''), name: '' }];
@@ -1496,8 +1547,6 @@
           };
           h += multiBr() ? withBr(br.code, inBr) : inBr();
         });
-        h += collExclHTML();
-        h += collAddHTML();
       } else if (tab === 'cards') {
         var cl = editDraft('cards'), r = presetRange('month');
         h += '<div class="card"><h2>بطاقات لوحة المؤشرات</h2><p class="small muted" style="margin:0 0 10px">كل بطاقة تختار لها ما تحسبه من قائمة (مثل: صافي المبيعات لعميل أو صنف معين، أو رصيد حساب ناقص رصيد حساب آخر). القيم الظاهرة هنا لهذا الشهر.</p>' +
@@ -1505,8 +1554,7 @@
           '<div class="row" style="margin-top:10px"><button class="btn" data-cadd>+ بطاقة</button><span class="grow"></span><button class="btn ghost" data-creset>استعادة الافتراضي</button><button class="btn accent" data-csave' + (F.dirtyKeys && F.dirtyKeys.cards ? '' : ' disabled') + '>حفظ التغييرات</button></div></div>';
       } else if (tab === 'daily') {
         var dd = editDraft('daily'), d0 = F.D.maxDate || today();
-        h += '<div class="card dev-set"><label class="chk"><input type="checkbox" id="devd"' + (devDaily() ? ' checked' : '') + '> إظهار علامة «قيد التطوير» على التقرير اليومي</label><p class="small muted" style="margin:4px 0 0">تظهر بجانب زر التقرير في القائمة ورسالةً أعلى التقرير. أزل التحديد عند اعتماد التقرير.</p></div>' +
-          '<div class="card"><h2>التقرير اليومي للإدارة</h2><p class="small muted" style="margin:0 0 10px">رتّب الأسطر وغيّر معادلة كل سطر. القيم الظاهرة هنا ليوم ' + N(d0) + '.</p>' +
+        h +=           '<div class="card"><h2>التقرير اليومي للإدارة</h2><p class="small muted" style="margin:0 0 10px">رتّب الأسطر وغيّر معادلة كل سطر. القيم الظاهرة هنا ليوم ' + N(d0) + '.</p>' +
           '<div class="field"><label class="lbl" for="dtitle">عنوان التقرير</label><input id="dtitle" class="input" value="' + esc(dd.title || '') + '"></div>' +
           listEditorHTML('daily', dd.rows, { from: d0, to: d0 }) +
           '<div class="row" style="margin-top:10px"><button class="btn" data-dadd>+ سطر</button><button class="btn ghost" data-dsep>+ عنوان قسم</button><span class="grow"></span><button class="btn ghost" data-dreset>استعادة الافتراضي</button><button class="btn accent" data-dsave' + (F.dirtyKeys && F.dirtyKeys.daily ? '' : ' disabled') + '>حفظ التغييرات</button></div></div>' +
@@ -1525,12 +1573,9 @@
         };
         h += '<div class="card"><h2>مجموعات الحسابات</h2>' + (multiBr() ? '<p class="small muted" style="margin:0 0 10px">لكل فرع دليل حسابات مستقل في سراج، فحدّد حسابات العملاء والموردين لكل فرع.</p>' : '') + '<div class="form">' +
           (multiBr() ? branches().map(function (b) { return '<h3 style="margin:6px 0 0">' + esc(b.name) + '</h3>' + grpField('recv', b.code) + grpField('pay', b.code); }).join('') : grpField('recv', '') + grpField('pay', '')) +
-          '<div class="field"><label class="lbl" for="fys">بداية السنة المالية</label><input type="date" class="input num" id="fys" value="' + esc(s.year_start || '2026-01-01') + '" style="max-width:200px"></div></div></div>';
-      } else {
-        h += '<div class="card"><h2>تحديث التقارير المفتوحة</h2><label class="chk"><input type="checkbox" id="arep"' + (autoRep() ? ' checked' : '') + (canEdit() ? '' : ' disabled') + '> تحديث التقرير المفتوح تلقائياً عند وصول بيانات جديدة من سراج</label><p class="small muted" style="margin:4px 0 0">دون تحديد (الافتراضي): يظهر فوق التقرير شريط «وصلت بيانات أحدث» وتحدّثه متى شئت، فلا تتغير الأرقام أثناء المراجعة أو الطباعة. مع التحديد: يُعاد التقرير وحده بنفس الفترة والتصفية ومكانك في الصفحة، ويتأجل إذا كنت تكتب أو في نافذة مفتوحة. ينطبق على كل المستخدمين.</p></div>';
-        h += '<div class="card"><h2>البيانات على هذا الجهاز</h2><p class="small" style="margin:0">' + fk(dataCount()) + ' سجل · آخر مزامنة ' + esc((F.meta && F.meta.last) || '—') + '</p><p class="small muted">تُحفظ البيانات المالية على هذا الجهاز مشفّرة لتفتح التقارير فوراً، وتبقى بعد الخروج غير قابلة للقراءة حتى يدخل نفس المستخدم من جديد.</p><button class="btn sm ghost" data-open="data_check">فحص سلامة البيانات</button></div>';
+          '</div></div>';
       }
-      return h;
+      return stripTitle(h, ['الصناديق والبنوك', 'بطاقات لوحة المؤشرات', 'مجموعات الحسابات']);
     }
     function grpLabel(codes, br) { return String(codes).split(',').map(function (c) { var a = (F.D.byCodeAll[c] || []).filter(function (x) { return br === undefined || x.br === br; })[0]; return a ? c + ' · ' + a.name : c + (br !== undefined ? ' (غير موجود في هذا الفرع)' : ''); }).join('، '); }
     function markDirty(k, on) { F.dirtyKeys = F.dirtyKeys || {}; F.dirtyKeys[k] = on; F.dirty = Object.keys(F.dirtyKeys).some(function (x) { return F.dirtyKeys[x]; }); }
@@ -1754,13 +1799,17 @@
     }
     function bindSettings(m) {
         var ar = q('#arep', m); if (ar) ar.onchange = function () { var on = this.checked; setAutoRep(on).then(function () { toast(on ? 'ستُحدَّث التقارير المفتوحة تلقائياً' : 'سيظهر شريط «وصلت بيانات أحدث» بدل التحديث التلقائي'); }).catch(function (e) { toast(e.message, true); }); };
-      qa('[data-stab]', m).forEach(function (b) { b.onclick = function () { F.setTab = b.dataset.stab; A.render(); }; });
-      var onc = q('.fin-settabs .chip.on', m); if (onc && onc.scrollIntoView) try { onc.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } catch (e) {}
-      var tab = F.setTab || 'boxes';
+      qa('[data-stab]', m).forEach(function (b) { b.onclick = function () { F.setTab = b.dataset.stab || null; A.render(); try { window.scrollTo(0, 0); } catch (e) {} }; });
+      if (!F.setTab && setNarrow()) return;
+      var tab = F.setTab || 'general';
       if (tab === 'sec') return bindSec(m);
+      if (tab === 'general') {
+        var dv = q('#devd', m); if (dv) dv.onchange = function () { var on = this.checked; setDevDaily(on).then(function () { toast(on ? 'ستظهر علامة «قيد التطوير»' : 'أُزيلت علامة «قيد التطوير»'); }); };
+        var fy = q('#fys', m); if (fy) fy.onchange = function () { call('fin_settings_save', { settings: { year_start: this.value } }).then(function (r) { F.meta.settings = r.settings; resetCache(); S.set('fin:meta', F.meta); toast('حُفظت'); A.render(); }).catch(function (e) { toast(e.message, true); }); };
+        return;
+      }
+      if (tab === 'coll') { bindCollExcl(m); bindCollAdd(m); return; }
       if (tab === 'boxes') {
-        bindCollExcl(m);
-        bindCollAdd(m);
         qa('[data-badd]', m).forEach(function (b) { b.onclick = function () { boxAdd(b.dataset.badd); }; });
         qa('[data-bedit]', m).forEach(function (b) { b.onclick = function () { boxForm(F.boxes.filter(function (x) { return x.id === b.dataset.bedit; })[0], b.dataset.bbr); }; });
         qa('[data-bon]', m).forEach(function (b) {
@@ -1793,7 +1842,6 @@
         q('[data-creset]', m).onclick = function () { A.confirmBox('استعادة الافتراضي', 'استبدال البطاقات الحالية بالبطاقات الافتراضية الست؟', 'استعادة').then(function (y) { if (y) saveConfig('cards', null); }); };
       } else if (tab === 'daily') {
         var dd = editDraft('daily'), d0 = F.D.maxDate || today(), chd = function () { markDirty('daily', true); A.render(); };
-        q('#devd', m).onchange = function () { var on = this.checked; setDevDaily(on).then(function () { toast(on ? 'ستظهر علامة «قيد التطوير»' : 'أُزيلت علامة «قيد التطوير»'); }); };
         bindListEditor(m, 'daily', function () { return dd.rows; }, 'row', function (i) { return ctxFor(dd.rows, i, d0, d0, 'يوم ' + d0); }, chd);
         q('#dtitle', m).onchange = function () { dd.title = this.value.trim(); chd(); };
         q('[data-dadd]', m).onclick = function () { editDaily(null, ctxFor(dd.rows, dd.rows.length, d0, d0, 'يوم ' + d0)).then(function (o) { if (o) { dd.rows.push(o); chd(); } }); };
@@ -1818,7 +1866,6 @@
               });
           };
         });
-        q('#fys', m).onchange = function () { call('fin_settings_save', { settings: { year_start: this.value } }).then(function (r) { F.meta.settings = r.settings; resetCache(); S.set('fin:meta', F.meta); toast('حُفظت'); A.render(); }).catch(function (e) { toast(e.message, true); }); };
       }
     }
     // تعريف صندوق أو أكثر: اختر حساباً واحداً (نموذج كامل) أو عدة حسابات دفعة واحدة

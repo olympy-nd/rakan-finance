@@ -392,7 +392,7 @@
     // الحركات المستبعدة من التحصيل بسبب الحسابات المحددة في الإعدادات
     function collExclReport(p, f) {
       var lst = collExclList();
-      if (!lst.length) return emptyR('لم تُحدَّد حسابات مستبعدة من التحصيل. حدّدها من الإعدادات ← الصناديق والبنوك ← «حسابات لا تُحسب حركاتها في التحصيل»');
+      if (!lst.length) return emptyR('لم تُحدَّد حسابات مستبعدة من التحصيل. حدّدها من الإعدادات ← النقدية والتحصيل ← قواعد التحصيل');
       var L = collLines(p.from, p.to, f ? recvFor(f) : null, true);
       if (!L.length) return emptyR('لا توجد حركات مستبعدة في الفترة');
       var acode = function (a) { var x = acc(a); return x ? x.code + ' · ' + x.name + (multiBr() ? ' — ' + brName(x.br || '') : '') : a; };

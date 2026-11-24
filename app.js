@@ -287,7 +287,7 @@
   function tabIcon(k) { return '<svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (TAB_ICON[k] || TAB_ICON.dash) + '</svg>'; }
   var TAB_GROUP = { dash: 'المتابعة', daily: 'المتابعة', reports: 'التقارير', builder: 'التقارير', settings: 'الإدارة', users: 'الإدارة', audit: 'الإدارة' };
   var TAB_SHORT = { dash: 'المؤشرات', daily: 'اليومي', builder: 'تقرير جديد', audit: 'السجل' };
-  var PAGE_SUB = { dash: 'أهم الأرقام لفترة تختارها', daily: 'تقرير الإدارة اليومي', reports: 'كل التقارير الجاهزة وتقاريرك', builder: 'صمّم تقريراً خاصاً بك من الصفر', settings: 'الصناديق والبطاقات ومجموعات الحسابات', users: 'من يدخل المنظومة وصلاحياته', audit: 'كل ما حدث في المنظومة' };
+  var PAGE_SUB = { dash: 'أهم الأرقام لفترة تختارها', daily: 'تقرير الإدارة اليومي', reports: 'كل التقارير الجاهزة وتقاريرك', builder: 'صمّم تقريراً خاصاً بك من الصفر', settings: 'ضبط الحسابات والنقدية والتحصيل والتقارير والأمان', users: 'من يدخل المنظومة وصلاحياته', audit: 'كل ما حدث في المنظومة' };
   function isPhone() { return window.matchMedia('(max-width: 899px)').matches; }
 
   // رسالة ترحيب باسم المستخدم: عند تسجيل الدخول، ومرة واحدة في اليوم عند فتح التطبيق
