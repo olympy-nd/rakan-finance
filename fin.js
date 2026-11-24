@@ -129,8 +129,18 @@
         }).catch(function () {});
       },
       del: function (k) { return S0.del(k); },
-      clearAll: function () { return S0.clearAll(); }
+      clearAll: function () { return S0.clearAll(); },
+      // قراءة خام (دون فك تشفير) لتجري بالتوازي مع جلب المفتاح، ثم open لفكها
+      raw: function (k) { return S0.get(k); },
+      open: function (k, r) {
+        if (!r) return Promise.resolve(r);
+        if (!r.iv) { S.legacy = true; return Promise.resolve(r); }
+        if (!CK.key || r.kid !== CK.kid) return Promise.resolve(null);
+        return decBytes(r).then(function (u8) { return r.pk ? { ver: r.ver, bin: u8 } : unzipBytes(u8).then(JSON.parse); }).catch(function () { return null; });
+      }
     };
+    // يفسح المجال للمتصفح بين الأعمال الثقيلة حتى لا تتجمد الشاشة
+    function yieldUI() { return new Promise(function (r) { setTimeout(r, 0); }); }
     // أزمنة التحميل (للقياس وتقرير سلامة البيانات)
     var TM = { t0: (window.performance && performance.now) ? performance.now() : Date.now() };
     function now_() { return (window.performance && performance.now) ? performance.now() : Date.now(); }
@@ -141,11 +151,17 @@
      * الحزم: بيانات كل شهر (لكل قاعدة) ملف مضغوط واحد، تُنزَّل الحزمة فقط إذا تغيّر إصدارها،
      * وتُحفظ على الجهاز كما هي. فوقها «سجل التغييرات» (F.rows): ما وصل بعد آخر اعتماد للحزم. */
     function readCache() {
-      var t = now_();
-      return ckGet().then(function () {
+      var t = now_(), KS = ['fin:rows', 'fin:rev', 'fin:meta', 'fin:aux', 'fin:pks', 'fin:snap'];
+      // المفتاح والقراءة من الجهاز بالتوازي
+      var rawP = Promise.all(KS.map(function (k) { return S.raw(k); }));
+      var pkP = S.raw('fin:pks').then(function (pks) { var names = Object.keys((pks && pks.list) || {}); return Promise.all(names.map(function (n) { return S.raw('fin:pk:' + n); })).then(function (a) { return { names: names, raw: a }; }); });
+      return Promise.all([ckGet(), rawP]).then(function (x) {
         TM.key = Math.round(now_() - t); t = now_();
-        return Promise.all([S.get('fin:rows'), S.get('fin:rev'), S.get('fin:meta'), S.get('fin:aux'), S.get('fin:pks')]);
+        var raw = x[1];
+        return Promise.all(KS.map(function (k, i) { return k === 'fin:rev' || k === 'fin:pks' ? raw[i] : S.open(k, raw[i]); }));
       }).then(function (v) {
+        // آخر لوحة مؤشرات محفوظة: تظهر فوراً حتى تكتمل قراءة البيانات
+        if (v[5] && v[5].html && !F.D) { F.snap = v[5]; if (A.render) A.render(); }
         // بيانات من مستخدم آخر أو بلا مفتاح: نبدأ من الصفر (الحزم القديمة تُستبدل عند التنزيل)
         var ok = !!v[0];
         F.rows = v[0] || {}; F.rev = ok ? (v[1] || 0) : 0; F.meta = v[2] || null;
@@ -153,7 +169,9 @@
         F.pks = ok && v[4] ? v[4] : { gen: '', base: 0, list: {} };
         F.packs = {};
         var names = Object.keys(F.pks.list || {}), legacy = [];
-        return Promise.all(names.map(function (n) { return S.get('fin:pk:' + n); })).then(function (arr) {
+        return pkP.then(function (pr) {
+          return Promise.all(names.map(function (n) { var j = pr.names.indexOf(n); return j >= 0 ? S.open('fin:pk:' + n, pr.raw[j]) : S.get('fin:pk:' + n); }));
+        }).then(function (arr) {
           TM.read = Math.round(now_() - t); t = now_();
           return Promise.all(arr.map(function (x, i) {
             var n = names[i];
@@ -162,7 +180,17 @@
             return unzipBytes(x.bin);
           })).then(function (txts) {
             TM.unzip = Math.round(now_() - t); t = now_();
-            txts.forEach(function (txt, i) { if (txt === null) return; try { F.packs[names[i]] = JSON.parse(txt); } catch (e) { delete F.pks.list[names[i]]; } });
+            // التحليل حزمةً حزمة مع فسح المجال للمتصفح بينها: الشاشة تبقى تستجيب
+            var i = 0, mx = 0;
+            var step = function () {
+              if (i >= txts.length) return Promise.resolve();
+              var t1 = now_(), txt = txts[i], nm = names[i]; i++;
+              if (txt !== null) { try { F.packs[nm] = JSON.parse(txt); } catch (e) { delete F.pks.list[nm]; } }
+              mx = Math.max(mx, now_() - t1);
+              return yieldUI().then(step);
+            };
+            return step().then(function () { TM.parseMax = Math.round(mx); return txts; });
+          }).then(function (txts) {
             TM.parse = Math.round(now_() - t); t = now_();
             if (hasData()) rebuild();
             TM.rebuild = Math.round(now_() - t); TM.cachePacks = Object.keys(F.packs).length; TM.open = Math.round(now_() - TM.t0); tmSave();
@@ -1796,7 +1824,7 @@
         rows.push({ m: 'تطابق الجهاز مع سراج', v: okDr ? 'مطابق ✓' : 'غير مطابق، اضغط «تحديث البيانات»' });
         // أزمنة التحميل على هذا الجهاز
         var tm = TM || {}, sec = function (ms) { return ms === undefined ? '—' : (ms / 1000).toFixed(1) + ' ث'; };
-        rows.push({ m: 'فتح المنظومة من بيانات الجهاز', v: sec(tm.open) + (tm.cachePacks !== undefined ? ' · ' + tm.cachePacks + ' حزمة محفوظة' : '') + ' (المفتاح ' + sec(tm.key) + '، القراءة ' + sec(tm.read) + '، فك الضغط ' + sec(tm.unzip) + '، التحليل ' + sec(tm.parse) + '، الفهرسة ' + sec(tm.rebuild) + ')' },
+        rows.push({ m: 'فتح المنظومة من بيانات الجهاز', v: sec(tm.open) + (tm.cachePacks !== undefined ? ' · ' + tm.cachePacks + ' حزمة محفوظة' : '') + ' (المفتاح ' + sec(tm.key) + '، القراءة ' + sec(tm.read) + '، فك الضغط ' + sec(tm.unzip) + '، التحليل ' + sec(tm.parse) + (tm.parseMax !== undefined ? ' وأطول توقف للشاشة ' + sec(tm.parseMax) : '') + '، الفهرسة ' + sec(tm.rebuild) + ')' },
           { m: 'آخر تنزيل من الخادم', v: tm.dlAt ? tm.dlAt.slice(11, 16) + ' · ' + (tm.dlPacks || 0) + ' حزمة' + (tm.bytes ? ' · ' + (tm.bytes / 1048576).toFixed(1) + ' م.ب' : '') + ' · ' + sec(tm.dl) : '—' },
           { m: 'التخزين على الجهاز', v: (CK.key ? 'مشفّر ✓' : 'غير مشفّر') + (tm.persist === true ? ' · دائم ✓' : tm.persist === false ? ' · قد يحذفه المتصفح عند امتلاء المساحة' : '') });
         // آخر حركة في كل قسم: يكشف القسم الذي توقفت بياناته
@@ -1915,6 +1943,15 @@
     function canEdit() { return !!(A.st.user && A.st.user.can_edit); }
     var SUBS = ['dash', 'daily', 'reports', 'builder', 'settings'];
 
+    // لقطة من لوحة المؤشرات تُحفظ مشفّرة لتظهر فوراً عند الفتح التالي (للعرض فقط حتى تكتمل البيانات)
+    function snapSave(m) {
+      clearTimeout(snapSave.t);
+      snapSave.t = setTimeout(function () {
+        if (!F.D || F.sub !== 'dash' || !m.isConnected) return;
+        var c = m.cloneNode(true); qa('.fin-sync, .br-bar, .brbar, #newdata', c).forEach(function (x) { x.remove(); });
+        S.set('fin:snap', { html: c.innerHTML, at: (F.meta && F.meta.last ? String(F.meta.last).slice(5, 16) : '') });
+      }, 1500);
+    }
     function newDataBar() {
       var m = q('#main'); if (!m || q('#newdata', m)) return;
       var d = document.createElement('div'); d.id = 'newdata'; d.className = 'newdata';
@@ -1942,7 +1979,8 @@
           var h = '';
           if (!F.D && F.error && !F.loading) return '<div class="card empty"><p>تعذّر تحميل البيانات المالية: ' + esc(F.error) + '</p><button class="btn primary" data-frefresh>' + ICON.refresh + ' إعادة المحاولة</button></div>';
           if (!F.D && F.rows && !hasData() && !F.loading && F.meta) return '<div class="card empty"><p>لم تصل بيانات مالية من الوكيل بعد.</p><p class="small muted">بعد إعداد الوكيل على جهاز سراج بمفتاح المنظومة المالية سيرسل القيود والفواتير تلقائياً خلال دقائق.</p><button class="btn primary" data-frefresh>' + ICON.refresh + ' تحقق الآن</button></div>';
-          if (!F.D) return '<div class="card loading"><span class="spin"></span> <span id="finprog">' + esc(F.progress || 'جارٍ تحميل البيانات المالية… أول مرة قد تستغرق دقيقة') + '</span></div>';
+          if (!F.D && F.snap && sub === 'dash') return '<div class="snap-bar"><span class="spin"></span> تُعرض آخر لوحة محفوظة (' + esc(F.snap.at || '') + ') · جارٍ فتح البيانات على الجهاز…</div><div class="snap-view" aria-busy="true">' + F.snap.html + '</div>';
+          if (!F.D) return '<div class="card loading"><span class="spin"></span> <span id="finprog">' + esc(F.progress || (F.pks && Object.keys(F.pks.list || {}).length ? 'جارٍ فتح البيانات المحفوظة على الجهاز…' : 'جارٍ تحميل البيانات المالية… أول مرة قد تستغرق دقيقة')) + '</span></div>';
           h += syncLine();
           if (sub === 'dash' || sub === 'daily' || sub === 'reports') h += brBarHTML();
           else if (multiBr()) useBr('*');   // الإعدادات والمنشئ تعمل على كل البيانات
@@ -1961,7 +1999,7 @@
           if (!F.D) return;
           qa('[data-brv]', m).forEach(function (b) { b.onclick = function () { setBr(b.dataset.brv); A.render(); }; });
           qa('[data-open]', m).forEach(function (b) { b.addEventListener('click', function () { openReport(b.dataset.open, b.dataset.per ? { preset: b.dataset.per, from: F.lastRange && F.lastRange[0], to: F.lastRange && F.lastRange[1] } : null); }); });
-          if (sub === 'dash') bindDash(m);
+          if (sub === 'dash') { bindDash(m); snapSave(m); }
           else if (sub === 'daily') bindDaily(m);
           else if (sub === 'reports') (F.cur ? bindReport : bindCatalog)(m);
           else if (sub === 'builder') bindBuilder(m);
@@ -7562,7 +7600,7 @@
     // عند الخروج: تُنسى البيانات من الذاكرة ويُنسى المفتاح؛ النسخة المشفّرة تبقى على الجهاز لفتح فوري عند الدخول التالي
     A.paintSync = paintSync; A.navSnap = navSnap; A.navApply = navApply;
     A.openSec = function () { F.setTab = 'sec'; F.sec = null; A.go('settings'); };
-    A.onLogout(function () { F.sec = null; F.setTab = null; var pk = Object.keys((F.pks && F.pks.list) || {}); F.packs = {}; F.pks = null; F.rows = null; F.D = null; F.Dby = null; F.Dcache = null; F.br = undefined; F.rev = 0; F.meta = null; F.cur = null; F.edit = null; F.dirtyKeys = null; F.dirty = false; ckForget(); return Promise.resolve(); });
+    A.onLogout(function () { F.sec = null; F.setTab = null; var pk = Object.keys((F.pks && F.pks.list) || {}); F.packs = {}; F.pks = null; F.rows = null; F.D = null; F.Dby = null; F.Dcache = null; F.br = undefined; F.rev = 0; F.meta = null; F.cur = null; F.edit = null; F.dirtyKeys = null; F.dirty = false; F.snap = null; ckForget(); return Promise.resolve(); });
     try { st.finParams = JSON.parse(localStorage.getItem('rk.finParams') || '{}'); } catch (e) { st.finParams = {}; }
 
     // للاختبارات: الوصول للمحرّك

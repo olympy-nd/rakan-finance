@@ -106,6 +106,15 @@
     function canEdit() { return !!(A.st.user && A.st.user.can_edit); }
     var SUBS = ['dash', 'daily', 'reports', 'builder', 'settings'];
 
+    // لقطة من لوحة المؤشرات تُحفظ مشفّرة لتظهر فوراً عند الفتح التالي (للعرض فقط حتى تكتمل البيانات)
+    function snapSave(m) {
+      clearTimeout(snapSave.t);
+      snapSave.t = setTimeout(function () {
+        if (!F.D || F.sub !== 'dash' || !m.isConnected) return;
+        var c = m.cloneNode(true); qa('.fin-sync, .br-bar, .brbar, #newdata', c).forEach(function (x) { x.remove(); });
+        S.set('fin:snap', { html: c.innerHTML, at: (F.meta && F.meta.last ? String(F.meta.last).slice(5, 16) : '') });
+      }, 1500);
+    }
     function newDataBar() {
       var m = q('#main'); if (!m || q('#newdata', m)) return;
       var d = document.createElement('div'); d.id = 'newdata'; d.className = 'newdata';
@@ -133,7 +142,8 @@
           var h = '';
           if (!F.D && F.error && !F.loading) return '<div class="card empty"><p>تعذّر تحميل البيانات المالية: ' + esc(F.error) + '</p><button class="btn primary" data-frefresh>' + ICON.refresh + ' إعادة المحاولة</button></div>';
           if (!F.D && F.rows && !hasData() && !F.loading && F.meta) return '<div class="card empty"><p>لم تصل بيانات مالية من الوكيل بعد.</p><p class="small muted">بعد إعداد الوكيل على جهاز سراج بمفتاح المنظومة المالية سيرسل القيود والفواتير تلقائياً خلال دقائق.</p><button class="btn primary" data-frefresh>' + ICON.refresh + ' تحقق الآن</button></div>';
-          if (!F.D) return '<div class="card loading"><span class="spin"></span> <span id="finprog">' + esc(F.progress || 'جارٍ تحميل البيانات المالية… أول مرة قد تستغرق دقيقة') + '</span></div>';
+          if (!F.D && F.snap && sub === 'dash') return '<div class="snap-bar"><span class="spin"></span> تُعرض آخر لوحة محفوظة (' + esc(F.snap.at || '') + ') · جارٍ فتح البيانات على الجهاز…</div><div class="snap-view" aria-busy="true">' + F.snap.html + '</div>';
+          if (!F.D) return '<div class="card loading"><span class="spin"></span> <span id="finprog">' + esc(F.progress || (F.pks && Object.keys(F.pks.list || {}).length ? 'جارٍ فتح البيانات المحفوظة على الجهاز…' : 'جارٍ تحميل البيانات المالية… أول مرة قد تستغرق دقيقة')) + '</span></div>';
           h += syncLine();
           if (sub === 'dash' || sub === 'daily' || sub === 'reports') h += brBarHTML();
           else if (multiBr()) useBr('*');   // الإعدادات والمنشئ تعمل على كل البيانات
@@ -152,7 +162,7 @@
           if (!F.D) return;
           qa('[data-brv]', m).forEach(function (b) { b.onclick = function () { setBr(b.dataset.brv); A.render(); }; });
           qa('[data-open]', m).forEach(function (b) { b.addEventListener('click', function () { openReport(b.dataset.open, b.dataset.per ? { preset: b.dataset.per, from: F.lastRange && F.lastRange[0], to: F.lastRange && F.lastRange[1] } : null); }); });
-          if (sub === 'dash') bindDash(m);
+          if (sub === 'dash') { bindDash(m); snapSave(m); }
           else if (sub === 'daily') bindDaily(m);
           else if (sub === 'reports') (F.cur ? bindReport : bindCatalog)(m);
           else if (sub === 'builder') bindBuilder(m);

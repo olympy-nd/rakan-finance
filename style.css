@@ -982,3 +982,7 @@ input[type=date].input::-webkit-calendar-picker-indicator { position: absolute; 
 /* شريط «وصلت بيانات أحدث» فوق التقرير المفتوح */
 .newdata{position:sticky;top:8px;z-index:20;display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 10px;padding:8px 12px;border-radius:12px;background:var(--blue-soft,#e8f0fe);border:1px solid var(--blue,#1f5fbf);color:var(--blue-deep,#0b3a7a);font-weight:600;box-shadow:0 4px 14px rgba(0,0,0,.08)}
 .newdata svg{width:16px;height:16px;vertical-align:-3px}
+
+/* لقطة لوحة المؤشرات أثناء فتح البيانات */
+.snap-bar{display:flex;align-items:center;gap:8px;margin:0 0 10px;padding:8px 12px;border-radius:12px;background:var(--blue-soft,#e8f0fe);color:var(--blue-deep,#0b3a7a);font-weight:600}
+.snap-view{pointer-events:none;opacity:.72;filter:saturate(.85)}

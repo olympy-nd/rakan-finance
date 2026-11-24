@@ -738,7 +738,7 @@
         rows.push({ m: 'تطابق الجهاز مع سراج', v: okDr ? 'مطابق ✓' : 'غير مطابق، اضغط «تحديث البيانات»' });
         // أزمنة التحميل على هذا الجهاز
         var tm = TM || {}, sec = function (ms) { return ms === undefined ? '—' : (ms / 1000).toFixed(1) + ' ث'; };
-        rows.push({ m: 'فتح المنظومة من بيانات الجهاز', v: sec(tm.open) + (tm.cachePacks !== undefined ? ' · ' + tm.cachePacks + ' حزمة محفوظة' : '') + ' (المفتاح ' + sec(tm.key) + '، القراءة ' + sec(tm.read) + '، فك الضغط ' + sec(tm.unzip) + '، التحليل ' + sec(tm.parse) + '، الفهرسة ' + sec(tm.rebuild) + ')' },
+        rows.push({ m: 'فتح المنظومة من بيانات الجهاز', v: sec(tm.open) + (tm.cachePacks !== undefined ? ' · ' + tm.cachePacks + ' حزمة محفوظة' : '') + ' (المفتاح ' + sec(tm.key) + '، القراءة ' + sec(tm.read) + '، فك الضغط ' + sec(tm.unzip) + '، التحليل ' + sec(tm.parse) + (tm.parseMax !== undefined ? ' وأطول توقف للشاشة ' + sec(tm.parseMax) : '') + '، الفهرسة ' + sec(tm.rebuild) + ')' },
           { m: 'آخر تنزيل من الخادم', v: tm.dlAt ? tm.dlAt.slice(11, 16) + ' · ' + (tm.dlPacks || 0) + ' حزمة' + (tm.bytes ? ' · ' + (tm.bytes / 1048576).toFixed(1) + ' م.ب' : '') + ' · ' + sec(tm.dl) : '—' },
           { m: 'التخزين على الجهاز', v: (CK.key ? 'مشفّر ✓' : 'غير مشفّر') + (tm.persist === true ? ' · دائم ✓' : tm.persist === false ? ' · قد يحذفه المتصفح عند امتلاء المساحة' : '') });
         // آخر حركة في كل قسم: يكشف القسم الذي توقفت بياناته
