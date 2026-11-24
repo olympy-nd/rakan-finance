@@ -732,7 +732,7 @@
           { m: 'توازن القيود في سراج', v: ck.balanced === false ? 'غير متوازنة ✗' : ck.balanced ? 'متوازنة ✓' : '—' }];
         var dr = 0; Tt.jl.forEach(function (l) { dr += l.dr; });
         // المقارنة بإجمالي القسم المعروض نفسه (فرع واحد = إجمالي ذلك الفرع)، مع هامش تقريب الأسطر (3 خانات لكل سطر)
-        var cb = F.curBr && F.curBr !== '*' && ck.by && ck.by[F.curBr] ? ck.by[F.curBr] : ck, okDr = cb.debit !== undefined && Math.abs(dr - cb.debit) < Math.max(0.05, Tt.jl.length * 0.0005);
+        var cb = F.curBr !== undefined && F.curBr !== null && F.curBr !== '*' && ck.by && ck.by[F.curBr] ? ck.by[F.curBr] : ck, okDr = cb.debit !== undefined && Math.abs(dr - cb.debit) < Math.max(0.05, Tt.jl.length * 0.0005);
         rows.push({ m: 'إجمالي المدين على هذا الجهاز' + (cb !== ck ? ' (' + brName(F.curBr) + ')' : ''), v: fm(dr) });
         if (cb !== ck) rows.push({ m: 'إجمالي المدين في سراج (' + brName(F.curBr) + ')', v: fm(cb.debit) });
         rows.push({ m: 'تطابق الجهاز مع سراج', v: okDr ? 'مطابق ✓' : 'غير مطابق، اضغط «تحديث البيانات»' });
