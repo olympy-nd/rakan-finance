@@ -133,7 +133,7 @@
           return load(false).then(function () {
             var ch = !had || F.rev + '|' + ((F.pks && F.pks.gen) || '') !== rev || nb !== JSON.stringify([F.boxes, F.reports, F.config]);
             // تقرير مفتوح: لا نغيّر أرقامه تحت يد المستخدم، نعرض شريط «بيانات أحدث» ويحدّث متى شاء
-            if (ch && had && quiet && F.sub === 'reports' && F.cur) { newDataBar(); return false; }
+            if (ch && had && quiet && F.sub === 'reports' && F.cur) { if (autoRep()) autoRepRefresh(0); else newDataBar(); return false; }
             return ch;
           });
         },
@@ -403,6 +403,25 @@
       if (!F.config) F.config = {}; F.config.ui = ui;
       if (window.RKShell) RKShell.navBadges();
       return saveConfigKey('ui', ui, 'rk.finUi').then(function () { F.config.ui = Object.assign({}, F.config.ui || {}, { devd: !!on }); });
+    }
+    // تحديث التقرير المفتوح تلقائياً عند وصول بيانات جديدة (إعداد عام؛ الافتراضي: شريط «وصلت بيانات أحدث»)
+    function autoRep() { var u = F.config && F.config.ui; return !!(u && u.arep === true); }
+    function setAutoRep(on) {
+      var ui = Object.assign({}, (F.config && F.config.ui) || {}, { arep: !!on });
+      if (!F.config) F.config = {}; F.config.ui = ui;
+      return saveConfigKey('ui', ui, 'rk.finUi').then(function () { F.config.ui = Object.assign({}, F.config.ui || {}, { arep: !!on }); });
+    }
+    // المستخدم مشغول: يكتب في خانة، أو نافذة مفتوحة، أو يحدد نصاً
+    function userBusy() {
+      var a = document.activeElement, sel = window.getSelection ? String(window.getSelection()) : '';
+      return !!((a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) || document.querySelector('.sheet, .modal, #print:not(:empty)') || sel.trim());
+    }
+    function autoRepRefresh(tries) {
+      clearTimeout(autoRepRefresh.t);
+      if (F.sub !== 'reports' || !F.cur) return;
+      if (userBusy() && (tries || 0) < 150) { autoRepRefresh.t = setTimeout(function () { autoRepRefresh((tries || 0) + 1); }, 2000); return; }
+      var y = window.scrollY; A.render(); setTimeout(function () { window.scrollTo(0, y); }, 0);
+      toast('حُدّث التقرير بأحدث بيانات سراج');
     }
     function dailyHTML() {
       var D = dailyData(), errs = [];
@@ -1508,7 +1527,8 @@
           (multiBr() ? branches().map(function (b) { return '<h3 style="margin:6px 0 0">' + esc(b.name) + '</h3>' + grpField('recv', b.code) + grpField('pay', b.code); }).join('') : grpField('recv', '') + grpField('pay', '')) +
           '<div class="field"><label class="lbl" for="fys">بداية السنة المالية</label><input type="date" class="input num" id="fys" value="' + esc(s.year_start || '2026-01-01') + '" style="max-width:200px"></div></div></div>';
       } else {
-        h += '<div class="card"><h2>البيانات على هذا الجهاز</h2><p class="small" style="margin:0">' + fk(dataCount()) + ' سجل · آخر مزامنة ' + esc((F.meta && F.meta.last) || '—') + '</p><p class="small muted">تُحفظ البيانات المالية على هذا الجهاز لتعمل التقارير بسرعة وبلا إنترنت، وتُمسح عند الخروج من التطبيق.</p><button class="btn sm ghost" data-open="data_check">فحص سلامة البيانات</button></div>';
+        h += '<div class="card"><h2>تحديث التقارير المفتوحة</h2><label class="chk"><input type="checkbox" id="arep"' + (autoRep() ? ' checked' : '') + (canEdit() ? '' : ' disabled') + '> تحديث التقرير المفتوح تلقائياً عند وصول بيانات جديدة من سراج</label><p class="small muted" style="margin:4px 0 0">دون تحديد (الافتراضي): يظهر فوق التقرير شريط «وصلت بيانات أحدث» وتحدّثه متى شئت، فلا تتغير الأرقام أثناء المراجعة أو الطباعة. مع التحديد: يُعاد التقرير وحده بنفس الفترة والتصفية ومكانك في الصفحة، ويتأجل إذا كنت تكتب أو في نافذة مفتوحة. ينطبق على كل المستخدمين.</p></div>';
+        h += '<div class="card"><h2>البيانات على هذا الجهاز</h2><p class="small" style="margin:0">' + fk(dataCount()) + ' سجل · آخر مزامنة ' + esc((F.meta && F.meta.last) || '—') + '</p><p class="small muted">تُحفظ البيانات المالية على هذا الجهاز مشفّرة لتفتح التقارير فوراً، وتبقى بعد الخروج غير قابلة للقراءة حتى يدخل نفس المستخدم من جديد.</p><button class="btn sm ghost" data-open="data_check">فحص سلامة البيانات</button></div>';
       }
       return h;
     }
@@ -1714,7 +1734,7 @@
     function secHTML() {
       var x = F.sec;
       if (!x) { if (!F.secLoading) { F.secLoading = true; call('users_list').then(function (r) { F.sec = { idle_min: r.idle_min, trust_devices: r.trust_devices, codes_to_manager: r.codes_to_manager }; F.secLoading = false; if (A.secNow && A.setSec) A.setSec(F.sec); A.render(); }).catch(function (e) { F.secLoading = false; toast(e.message, true); }); } return '<div class="card loading"><span class="spin"></span> جارٍ التحميل…</div>'; }
-      return '<div class="card"><h2>الخروج التلقائي عند عدم النشاط</h2><p class="small muted" style="margin:0 0 10px">إذا لم يستعمل المستخدم المنظومة طوال هذه المدة (لا نقر ولا كتابة ولا تمرير) يُسجَّل خروجه تلقائياً، وتُمسح البيانات المالية من الجهاز، ويعود بالرقم السري فقط على جهازه الموثوق. تنطبق على كل المستخدمين وكل الأجهزة.</p>' +
+      return '<div class="card"><h2>الخروج التلقائي عند عدم النشاط</h2><p class="small muted" style="margin:0 0 10px">إذا لم يستعمل المستخدم المنظومة طوال هذه المدة (لا نقر ولا كتابة ولا تمرير) يُسجَّل خروجه تلقائياً، وتبقى البيانات المالية على الجهاز مشفّرة لا تُقرأ إلا بعد دخوله من جديد، ويعود بالرقم السري فقط على جهازه الموثوق. تنطبق على كل المستخدمين وكل الأجهزة.</p>' +
         '<div class="chips sec-idle">' + IDLE_OPTS.map(function (o) { return '<button class="chip' + (Number(x.idle_min) === o[0] ? ' on' : '') + '" data-idle="' + o[0] + '">' + o[1] + '</button>'; }).join('') + '</div></div>' +
         '<div class="card"><h2>تذكر الأجهزة الموثوقة</h2><p class="small muted" style="margin:0 0 10px">الجهاز الموثوق هو الذي أدخل عليه المستخدم رمز التحقق من بريده مرة واحدة (حتى 5 أجهزة لكل مستخدم). يمكن إلغاء أجهزة مستخدم من شاشة المستخدمين.</p>' +
         '<label class="chk"><input type="checkbox" id="sec_trust"' + (x.trust_devices ? ' checked' : '') + '> لا تطلب رمز البريد عند الدخول من جهاز موثوق</label>' +
@@ -1733,6 +1753,7 @@
       var c = q('#sec_c2m', m); if (c) c.onchange = function () { save({ codes_to_manager: c.checked }, c); };
     }
     function bindSettings(m) {
+        var ar = q('#arep', m); if (ar) ar.onchange = function () { var on = this.checked; setAutoRep(on).then(function () { toast(on ? 'ستُحدَّث التقارير المفتوحة تلقائياً' : 'سيظهر شريط «وصلت بيانات أحدث» بدل التحديث التلقائي'); }).catch(function (e) { toast(e.message, true); }); };
       qa('[data-stab]', m).forEach(function (b) { b.onclick = function () { F.setTab = b.dataset.stab; A.render(); }; });
       var onc = q('.fin-settabs .chip.on', m); if (onc && onc.scrollIntoView) try { onc.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } catch (e) {}
       var tab = F.setTab || 'boxes';
