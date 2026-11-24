@@ -140,7 +140,13 @@
       }
     };
     // يفسح المجال للمتصفح بين الأعمال الثقيلة حتى لا تتجمد الشاشة
-    function yieldUI() { return new Promise(function (r) { setTimeout(r, 0); }); }
+    // (MessageChannel لا يُبطئه المتصفح في الألسنة الخلفية بعكس setTimeout)
+    var YCH = typeof MessageChannel !== 'undefined' ? new MessageChannel() : null, YQ = [];
+    if (YCH) YCH.port1.onmessage = function () { var f = YQ.shift(); if (f) f(); };
+    function yieldUI() {
+      if (window.scheduler && typeof scheduler.yield === 'function') return scheduler.yield();
+      return new Promise(function (r) { if (YCH) { YQ.push(r); YCH.port2.postMessage(0); } else setTimeout(r, 0); });
+    }
     // أزمنة التحميل (للقياس وتقرير سلامة البيانات)
     var TM = { t0: (window.performance && performance.now) ? performance.now() : Date.now() };
     function now_() { return (window.performance && performance.now) ? performance.now() : Date.now(); }
