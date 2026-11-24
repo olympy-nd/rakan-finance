@@ -7748,11 +7748,14 @@
       } };
 
     /* ---------- الأصول ---------- */
+    var AGRP = [['all', 'كل الأصول'], ['fixed', 'الأصول الثابتة'], ['cur', 'الأصول المتداولة']];
+    function agrpRoots(g) { return g === 'fixed' ? assetGroup(/ثابت/) : g === 'cur' ? assetGroup(/متداول/) : assetRoots(); }
+    function agrpName(g) { return g === 'fixed' ? 'الأصول الثابتة' : g === 'cur' ? 'الأصول المتداولة' : 'الأصول'; }
     var ACMP = [['ys', 'بداية السنة المالية'], ['pm', 'نهاية الشهر السابق'], ['ly', 'نفس التاريخ من السنة السابقة'], ['none', 'بدون مقارنة']];
     R.assets_summary = { cat: 'assets', name: 'هيكل الأصول وتطورها', desc: 'شجرة الأصول بأرصدتها في تاريخ تختاره، ومقارنتها ببداية السنة أو بنهاية الشهر السابق، والتغير، وحصة كل بند، مع الأصول الثابتة والمتداولة والنقدية والذمم والمخزون',
-      params: ['asof', 'level'], sel: [['cmp', 'المقارنة بـ', ACMP]],
+      params: ['asof', 'level'], sel: [['agrp', 'الأصول', AGRP], ['cmp', 'المقارنة بـ', ACMP]],
       run: function (p) {
-        var roots = assetRoots(); if (!roots.length) return emptyR('لم يُعثر على حساب الأصول (1)');
+        var ag = p.agrp || 'all', roots = agrpRoots(ag); if (!roots.length) return emptyR(ag === 'all' ? 'لم يُعثر على حساب الأصول (1)' : 'لم يُعثر على مجموعة «' + agrpName(ag) + '» في دليل الحسابات');
         var rs = {}; roots.forEach(function (r) { rs[r] = 1; });
         var asof = p.asof || p.to || today(), cmp = p.cmp || 'ys', lvl = Number(p.level || 3);
         var cd = cmp === 'ys' ? addD(yearStart(), -1) : cmp === 'pm' ? addD(asof.slice(0, 7) + '-01', -1) : cmp === 'ly' ? lyRange(asof, asof)[0] : null;
@@ -7761,20 +7764,28 @@
         roots.forEach(function (r) {
           descend(r).forEach(function (id) {
             var a = acc(id), d = depthUnder(id, rs); if (!a || !d || d > lvl + 1) return;
-            if (d === 1 && roots.length === 1) return;   // الجذر نفسه يظهر في الإجمالي
+            if (d === 1 && roots.length === 1 && ag === 'all') return;   // الجذر نفسه يظهر في الإجمالي
             var ids = descend(id), v = bal(ids, asof), c = cd ? bal(ids, cd) : 0;
             if (Math.abs(v) < 0.0005 && Math.abs(c) < 0.0005) return;
-            rows.push({ code: a.code, name: a.name + (d === 1 ? ' — ' + brName(a.br || '') : ''), bal: v, cmpv: c, ch: v - c, chp: c ? (v - c) / Math.abs(c) * 100 : null, _acc: id, _lvl: roots.length === 1 ? d - 2 : d - 1, _b: !a.leaf && d <= lvl });
+            var one = roots.length === 1 && ag === 'all';
+            rows.push({ code: a.code, name: a.name + (d === 1 && multiBr() && viewBr() === '*' ? ' — ' + brName(a.br || '') : ''), bal: v, cmpv: c, ch: v - c, chp: c ? (v - c) / Math.abs(c) * 100 : null, _acc: id, _lvl: one ? d - 2 : d - 1, _b: !a.leaf && d <= lvl });
           });
         });
         var tot = roots.reduce(function (s0, r) { return s0 + bal(descend(r), asof); }, 0), totC = cd ? roots.reduce(function (s0, r) { return s0 + bal(descend(r), cd); }, 0) : 0;
-        rows.forEach(function (r) { r.share = pct(r.bal, tot); });
+        var allTot = assetRoots().reduce(function (s0, r) { return s0 + bal(descend(r), asof); }, 0);
+        rows.forEach(function (r) { r.share = pct(r.bal, tot); r.shareAll = pct(r.bal, allTot); });
         var g = function (re) { var ids = idsOf(assetGroup(re)); return { v: bal(ids, asof), c: cd ? bal(ids, cd) : 0 }; };
         var fx = g(/ثابت/), cu = g(/متداول/), inv = g(/مخزون|المستودعات/);
         var cash = (function () { var ids = boxIds(''); return { v: bal(ids, asof), c: cd ? bal(ids, cd) : 0 }; })();
         var rcv = (function () { var ids = recvIds(); return { v: bal(ids, asof), c: cd ? bal(ids, cd) : 0 }; })();
         var chs = function (o) { return cd ? (o.v - o.c >= 0 ? '▲ ' : '▼ ') + fm(Math.abs(o.v - o.c)) + ' عن ' + cd : ''; };
-        var kpis = [
+        var kpis = ag !== 'all' ? [
+          { l: 'إجمالي ' + agrpName(ag), v: tot, t: 'money', s: chs({ v: tot, c: totC }) },
+          { l: 'من إجمالي الأصول', v: pct(tot, allTot), t: 'pct', s: 'إجمالي الأصول ' + fm(allTot) },
+          { l: 'عدد الحسابات بأرصدة', v: rows.filter(function (r) { return acc(r._acc) && acc(r._acc).leaf; }).length, t: 'int', s: 'في ' + asof },
+          ag === 'cur' ? { l: 'النقدية والمصارف', v: cash.v, t: 'money', s: chs(cash) } : { l: 'الإضافات منذ بداية السنة', v: sumBal(idsOf(roots), yearStart(), asof, 1).dr, t: 'money', s: 'مدين على حسابات الأصول الثابتة' },
+          ag === 'cur' ? { l: 'ذمم العملاء والمخزون', v: rcv.v + inv.v, t: 'money', s: 'العملاء ' + fm(rcv.v) + ' · المخزون ' + fm(inv.v) } : { l: 'الاستبعادات منذ بداية السنة', v: sumBal(idsOf(roots), yearStart(), asof, 1).cr, t: 'money', s: 'دائن على حسابات الأصول الثابتة' }
+        ] : [
           { l: 'إجمالي الأصول', v: tot, t: 'money', s: chs({ v: tot, c: totC }) },
           { l: 'الأصول الثابتة', v: fx.v, t: 'money', s: pct(fx.v, tot).toFixed(1) + '% · ' + chs(fx) },
           { l: 'الأصول المتداولة', v: cu.v, t: 'money', s: pct(cu.v, tot).toFixed(1) + '% · ' + chs(cu) },
@@ -7784,28 +7795,31 @@
         ];
         var cols = [C('code', 'الرمز'), C('name', 'الحساب', 'long'), C('bal', 'الرصيد في ' + asof, 'money')];
         if (cd) cols = cols.concat([C('cmpv', 'الرصيد في ' + cd, 'money'), C('ch', 'التغير', 'money'), C('chp', 'التغير %', 'pct')]);
-        cols.push(C('share', 'من الأصول %', 'pct'));
+        cols.push(C('share', ag === 'all' ? 'من الأصول %' : 'من ' + agrpName(ag) + ' %', 'pct'));
+        if (ag !== 'all') cols.push(C('shareAll', 'من إجمالي الأصول %', 'pct'));
         var top = rows.filter(function (r) { return r._lvl === 0; });
-        return withNote({ title: 'هيكل الأصول في ' + asof, kpis: kpis, rows: rows, cols: cols, _lvlc: 1, total: { name: 'إجمالي الأصول', _b: true, bal: tot, cmpv: totC, ch: tot - totC, chp: totC ? (tot - totC) / Math.abs(totC) * 100 : null, share: 100 },
+        return withNote({ title: 'هيكل ' + agrpName(ag) + ' في ' + asof, kpis: kpis, rows: rows, cols: cols, _lvlc: 1, total: { name: 'إجمالي ' + agrpName(ag), _b: true, bal: tot, cmpv: totC, ch: tot - totC, chp: totC ? (tot - totC) / Math.abs(totC) * 100 : null, share: 100, shareAll: pct(tot, allTot) },
           note: 'الرصيد = مدين − دائن من أول البيانات حتى التاريخ · الأصول الثابتة والمتداولة والمخزون حسب أسماء الحسابات في الدليل، والنقدية من الصناديق والبنوك المعرّفة، والذمم من حسابات العملاء في الإعدادات · اضغط أي سطر لكشف حسابه',
           chart: { type: 'hbar', x: 'name', y: ['bal'], yl: ['الرصيد'], rowsOverride: top.slice().sort(function (a, b) { return b.bal - a.bal; }).slice(0, 12) } }, p);
       } };
 
-    R.fixed_assets = { cat: 'assets', name: 'الأصول الثابتة: الحركة والاهتلاك وصافي القيمة', desc: 'لكل أصل ثابت: رصيد أول المدة والإضافات والاستبعادات ورصيد آخر المدة، ومصروف الاهتلاك في الفترة ومجمع الاهتلاك وصافي القيمة الدفترية، أو حركات الأصول تفصيلياً',
-      params: ['period'], sel: [['view', 'العرض', [['sum', 'ملخص لكل أصل'], ['det', 'حركات الأصول الثابتة تفصيلياً']]]],
+    R.fixed_assets = { cat: 'assets', name: 'حركة الأصول: الإضافات والاستبعادات والاهتلاك', desc: 'لكل أصل (ثابت أو متداول): رصيد أول المدة والإضافات والاستبعادات ورصيد آخر المدة، ومع الأصول الثابتة مصروف الاهتلاك ومجمع الاهتلاك وصافي القيمة الدفترية، أو الحركات تفصيلياً',
+      params: ['period'], sel: [['agrp', 'الأصول', [['fixed', 'الأصول الثابتة'], ['cur', 'الأصول المتداولة'], ['all', 'كل الأصول']]], ['view', 'العرض', [['sum', 'ملخص لكل أصل'], ['det', 'الحركات تفصيلياً']]]],
       run: function (p) {
-        var fx = assetGroup(/ثابت/); if (!fx.length) return emptyR('لم يُعثر على مجموعة «الأصول الثابتة» في دليل الحسابات');
+        var ag = p.agrp || 'fixed', isFx = ag === 'fixed', gName = agrpName(ag);
+        var fx = agrpRoots(ag); if (!fx.length) return emptyR('لم يُعثر على مجموعة «' + gName + '» في دليل الحسابات');
         var rs = {}; fx.forEach(function (r) { rs[r] = 1; });
         var depE = idsOf(expRoots()).filter(function (id) { var a = acc(id); return a && a.leaf && /اهتلاك|إهتلاك|اهلاك|إهلاك/.test(a.name + ' ' + (acc(a.parent) || {}).name); });
         var accum = F.D.accList.filter(function (a) { return a.leaf && /مجمع|مخصص/.test(a.name + ' ' + (acc(a.parent) || {}).name) && /اهتلاك|إهتلاك|اهلاك|إهلاك/.test(a.name + ' ' + (acc(a.parent) || {}).name) && a.rootCode !== '3'; }).map(function (a) { return a.id; });
+        if (!isFx) { depE = []; accum = []; }
         var depAmt = sumBal(depE, p.from, p.to, 1).mv, accB = -balance(accum, null, p.to).close;
-        var note = 'الإضافات = المدين على حسابات الأصول الثابتة في الفترة، والاستبعادات = الدائن · مصروف الاهتلاك من حسابات المصروفات التي في اسمها «اهتلاك/إهلاك»' + (accum.length ? '، ومجمع الاهتلاك من الحسابات التي في اسمها «مجمع/مخصص الاهتلاك»' : ' · لا توجد في الدليل حسابات «مجمع اهتلاك»، فصافي القيمة = التكلفة') + ' · اضغط أي سطر لكشف حسابه';
+        var note = !isFx ? 'الإضافات = المدين على حسابات ' + gName + ' في الفترة، والاستبعادات = الدائن (للأصول المتداولة: المقبوض والمحصّل والمصروف منها) · اضغط أي سطر لكشف حسابه' : 'الإضافات = المدين على حسابات الأصول الثابتة في الفترة، والاستبعادات = الدائن · مصروف الاهتلاك من حسابات المصروفات التي في اسمها «اهتلاك/إهلاك»' + (accum.length ? '، ومجمع الاهتلاك من الحسابات التي في اسمها «مجمع/مخصص الاهتلاك»' : ' · لا توجد في الدليل حسابات «مجمع اهتلاك»، فصافي القيمة = التكلفة') + ' · اضغط أي سطر لكشف حسابه';
         if ((p.view || 'sum') === 'det') {
           var L = []; idsOf(fx).forEach(function (id) { (F.D.byAcc[id] || []).forEach(function (l) { if (l.d < p.from || l.d > p.to) return; var ls = F.D.byEntry[l.e] || [], side = l.dr ? 'cr' : 'dr'; L.push({ d: l.d, dt: l.dt || l.d, no: l.no, btn: l.btn, acc: acLabel(l.a), dr: l.dr, cr: l.cr, cp: ls.filter(function (q) { return q[side] && !rs[q.a] && q.a !== l.a; }).map(function (q) { return accName(q.a); }).join('\n'), ed: l.ld || '', _acc: l.a }); }); });
-          if (!L.length) return Object.assign(emptyR('لا توجد حركات على الأصول الثابتة في الفترة'), {});
+          if (!L.length) return emptyR('لا توجد حركات على ' + gName + ' في الفترة');
           L.sort(function (a, b) { return a.dt < b.dt ? -1 : 1; });
           var tdr = sum(L, 'dr'), tcr = sum(L, 'cr');
-          return withNote({ title: 'حركات الأصول الثابتة', rows: L, cols: [C('d', 'التاريخ'), C('no', 'رقم السند'), C('btn', 'النوع'), C('acc', 'الأصل', 'long'), C('dr', 'إضافة (مدين)', 'money'), C('cr', 'استبعاد (دائن)', 'money'), C('cp', 'الحساب المقابل', 'long'), C('ed', 'البيان', 'long')],
+          return withNote({ title: 'حركات ' + gName, rows: L, cols: [C('d', 'التاريخ'), C('no', 'رقم السند'), C('btn', 'النوع'), C('acc', 'الأصل', 'long'), C('dr', 'إضافة (مدين)', 'money'), C('cr', 'استبعاد (دائن)', 'money'), C('cp', 'الحساب المقابل', 'long'), C('ed', 'البيان', 'long')],
             total: { d: 'الإجمالي', _b: true, dr: tdr, cr: tcr }, kpis: [{ l: 'الإضافات', v: tdr, t: 'money', s: L.filter(function (x) { return x.dr; }).length + ' حركة' }, { l: 'الاستبعادات', v: tcr, t: 'money', s: L.filter(function (x) { return x.cr; }).length + ' حركة' }], note: note }, p);
         }
         var rows = [];
@@ -7820,7 +7834,13 @@
         var T0 = fx.reduce(function (o, r) { var b = sumBal(descend(r), p.from, p.to, 1); o.open += b.open; o.add += b.dr; o.disp += b.cr; o.close += b.close; return o; }, { open: 0, add: 0, disp: 0, close: 0 });
         rows.forEach(function (r) { r.share = pct(r.close, T0.close); });
         var nbv = T0.close - accB;
-        var kpis = [
+        var kpis = !isFx ? [
+          { l: 'رصيد ' + gName + ' آخر المدة', v: T0.close, t: 'money', s: 'في ' + p.to },
+          { l: 'رصيد أول المدة', v: T0.open, t: 'money', s: 'في ' + addD(p.from, -1) },
+          { l: 'الإضافات (مدين)', v: T0.add, t: 'money', s: 'في الفترة' },
+          { l: 'الاستبعادات (دائن)', v: T0.disp, t: 'money', s: 'في الفترة' },
+          { l: 'صافي التغير', v: T0.close - T0.open, t: 'money', s: T0.open ? ((T0.close - T0.open) / Math.abs(T0.open) * 100).toFixed(1) + '%' : '' }
+        ] : [
           { l: 'تكلفة الأصول الثابتة', v: T0.close, t: 'money', s: 'في ' + p.to },
           { l: 'الإضافات في الفترة', v: T0.add, t: 'money', s: 'شراء ورسملة' },
           { l: 'الاستبعادات في الفترة', v: T0.disp, t: 'money', s: 'بيع أو شطب أو تحويل' },
@@ -7831,7 +7851,7 @@
         var extra = [];
         if (depE.length) extra.push({ name: 'مصروف الاهتلاك في الفترة', _b: true, close: depAmt, _hl: 1 });
         if (accum.length) extra.push({ name: 'مجمع الاهتلاك', _b: true, close: -accB, _hl: 1 }, { name: 'صافي القيمة الدفترية', _b: true, close: nbv, _hl: 1 });
-        return withNote({ title: 'الأصول الثابتة من ' + p.from + ' إلى ' + p.to, kpis: kpis, rows: rows.concat(extra), cols: cols, _lvlc: 1, total: { name: 'إجمالي الأصول الثابتة', _b: true, open: T0.open, add: T0.add, disp: T0.disp, close: T0.close, share: 100 }, note: note,
+        return withNote({ title: gName + ' من ' + p.from + ' إلى ' + p.to, kpis: kpis, rows: rows.concat(extra), cols: cols, _lvlc: 1, total: { name: 'إجمالي ' + gName, _b: true, open: T0.open, add: T0.add, disp: T0.disp, close: T0.close, share: 100 }, note: note,
           chart: { type: 'hbar', x: 'name', y: ['close'], yl: ['التكلفة آخر المدة'], rowsOverride: rows.filter(function (r) { return acc(r._acc) && acc(r._acc).leaf; }).sort(function (a, b) { return b.close - a.close; }).slice(0, 12) } }, p);
       } };
 
